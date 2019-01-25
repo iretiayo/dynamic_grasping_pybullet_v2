@@ -1,5 +1,6 @@
 import pybullet as p
 from collections import namedtuple
+from mico_moveit import MicoMoveit
 
 class MicoController(object):
     JOINT_TYPES = {
@@ -45,6 +46,7 @@ class MicoController(object):
     def __init__(self, mico_id):
         self.id = mico_id
         self.num_joints = p.getNumJoints(self.id)
+        self.mico_moveit = MicoMoveit()
 
     ### Control
 
@@ -63,12 +65,22 @@ class MicoController(object):
         pass
 
     ### Helper functions
+    def get_arm_eef_pose(self):
+        """
+        :return: pose_2d, [[x, y, z], [x, y, x, w]]
+        """
+        link_state = self.get_link_state(self.ARM_EEF_INDEX)
+        position = list(link_state.linkWorldPosition)
+        orn = list(link_state.linkWorldOrientation)
+        return [position, orn]
 
-    def get_arm_ik(self, pose):
-        names = self.get_movable_joint_names()
-        values = p.calculateInverseKinematics(self.id, self.ARM_EEF_INDEX, pose[0], pose[1])
-        d = {n:v for (n, v) in zip(names, values)}
-        return [d[n] for n in self.GROUPS['arm']]
+    def get_arm_ik(self, pose_2d):
+        ## pybullet ik seems problematic and I do not want to deal with it
+        # names = self.get_movable_joint_names()
+        # values = p.calculateInverseKinematics(self.id, self.ARM_EEF_INDEX, pose[0], pose[1])
+        # d = {n:v for (n, v) in zip(names, values)}
+        # return [d[n] for n in self.GROUPS['arm']]
+        return self.mico_moveit.get_arm_ik(pose_2d)
 
     def get_joint_state(self, joint_index):
         return self.JointState(*p.getJointState(self.id, joint_index))

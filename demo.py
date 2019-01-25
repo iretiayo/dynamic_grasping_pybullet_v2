@@ -2,9 +2,9 @@ import pybullet as p
 import time
 import pybullet_data
 from mico_controller import MicoController
+import rospy
 
 ## TODO
-## 1. pybullet IK is problematic
 ## 2. arm hangs down after useing the correct IK to reset the arm from moveit
 
 physicsClient = p.connect(p.GUI)#or p.DIRECT for non-graphical version
@@ -25,6 +25,7 @@ cube = p.loadURDF("cube_small.urdf", [0, -0.5, 0])
 test_eef_pose = [[-0.002576703886924381, -0.2696029068425193, 0.41288797205298017], [0.6823486760628231, -0.2289190614409086, 0.6884473485808099, 0.08964706250836511]]
 
 if __name__ == "__main__":
+    rospy.init_node("demo")
 
     j_v = mc.get_arm_ik(test_eef_pose)
     mc.reset_arm_joint_values(j_v)
