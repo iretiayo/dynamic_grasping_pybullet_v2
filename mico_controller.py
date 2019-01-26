@@ -1,8 +1,15 @@
 import pybullet as p
 from collections import namedtuple
 from mico_moveit import MicoMoveit
+import time
 
 class MicoController(object):
+    ### NOTE 'm1n6s200_joint_1', 'm1n6s200_joint_4', 'm1n6s200_joint_5', 'm1n6s200_joint_6' are circular/continuous joints
+    ### NOTE 'm1n6s200_joint_2', 'm1n6s200_joint_3' are not circular/continuous joints
+    ### moveit uses a range of [-pi, pi] for circular/continuous joints
+
+
+
     JOINT_TYPES = {
         p.JOINT_REVOLUTE: 'revolute',  # 0
         p.JOINT_PRISMATIC: 'prismatic',  # 1
@@ -53,10 +60,24 @@ class MicoController(object):
     def move_arm_eef_pose(self, pose):
         pass
 
-    def move_arm_joint_values(self, joint_values):
-        pass
+    def move_arm_joint_values(self, goal_joint_values):
+        start_joint_values = self.get_arm_joint_values()
+        start_joint_values = MicoMoveit.convert_range(start_joint_values)
+        goal_joint_values = MicoMoveit.convert_range(goal_joint_values)
+
+        plan = self.mico_moveit.plan(start_joint_values, goal_joint_values)
+        position_trajectory, velocity_trajectory, time_trajectory_delta = self.mico_moveit.convert_plan(plan)
+        # position_trajectory has start_joint_values but not goal_joint_values
+
+        ## NOTE, if you really want to be more precise
+        ## 1. add some time for the arm to reach first position in trajecotry
+        ## 2. manually add the goal_joint_values to the trajectory
+        for i, t in enumerate(time_trajectory_delta):
+            p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL, position_trajectory[i], forces=[500]*len(self.GROUP_INDEX['arm']))
+            time.sleep(t)
 
     def reset_arm_joint_values(self, joint_values):
+        joint_values = MicoMoveit.convert_range(joint_values)
         arm_idx = [self.get_joint_names().index(n) for n in self.GROUPS['arm']]
         for i, v in zip(arm_idx, joint_values):
             p.resetJointState(self.id, i, v)
@@ -74,13 +95,13 @@ class MicoController(object):
         orn = list(link_state.linkWorldOrientation)
         return [position, orn]
 
-    def get_arm_ik(self, pose_2d):
+    def get_arm_ik(self, pose_2d, timeout=3, avoid_collisions=True):
         ## pybullet ik seems problematic and I do not want to deal with it
         # names = self.get_movable_joint_names()
         # values = p.calculateInverseKinematics(self.id, self.ARM_EEF_INDEX, pose[0], pose[1])
         # d = {n:v for (n, v) in zip(names, values)}
         # return [d[n] for n in self.GROUPS['arm']]
-        return self.mico_moveit.get_arm_ik(pose_2d)
+        return MicoMoveit.convert_range(self.mico_moveit.get_arm_ik(pose_2d, timeout, avoid_collisions))
 
     def get_joint_state(self, joint_index):
         return self.JointState(*p.getJointState(self.id, joint_index))

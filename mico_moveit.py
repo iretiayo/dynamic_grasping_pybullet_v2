@@ -1,7 +1,13 @@
 import moveit_commander
 import rospy
-
+from math import pi
 from threading import Lock
+
+from moveit_msgs.msg import RobotState
+from sensor_msgs.msg import JointState
+from std_msgs.msg import Header
+import rospy
+
 
 import rospy
 import moveit_commander as mc
@@ -47,7 +53,55 @@ class MicoMoveit(object):
                                                             queue_size=20)
         self.eef_link = self.arm_commander_group.get_end_effector_link()
 
-    rospy.loginfo('connected to controllers.')
+    def plan(self, start_joint_values, goal_joint_values):
+        ## get moveit_start_state
+        start_joint_state = JointState()
+        start_joint_state.header = Header()
+        start_joint_state.header.stamp = rospy.Time.now() # What is the use of time?
+        start_joint_state.name = self.ARM_JOINT_NAMES
+        start_joint_state.position = start_joint_values
+        start_robot_state = RobotState()
+        start_robot_state.joint_state = start_joint_state
+        self.arm_commander_group.set_start_state(start_robot_state)
+        self.arm_commander_group.set_joint_value_target(goal_joint_values)
+        plan = self.arm_commander_group.plan()
+        # plan = self.arm_commander_group.plan(joints=goal_joint_values)
+        ## TODO catch exception from plan()
+        return plan
+
+    @staticmethod
+    def convert_plan(plan):
+        points = plan.joint_trajectory.points
+        header = plan.joint_trajectory.header
+        joint_names = plan.joint_trajectory.joint_names
+        position_trajecotry = []
+        velocity_trajectory = []
+        time_trajectory = []
+        for p in points:
+            position_trajecotry.append(MicoMoveit.convert_range(p.positions))
+            velocity_trajectory.append(list(p.velocities))
+            time_trajectory.append(p.time_from_start.to_sec())
+
+        ## convert time to be time difference
+        time_trajectory_delta = list()
+        time_trajectory_delta.append(0.0)
+        for i in range(1, len(time_trajectory)):
+            time_trajectory_delta.append(time_trajectory[i]-time_trajectory[i-1])
+        return position_trajecotry, velocity_trajectory, time_trajectory_delta
+
+    @staticmethod
+    def convert_range(joint_values):
+        """ Convert continuous joint to range [-pi, pi] """
+        circular_idx = [0, 3, 4, 5]
+        new_joint_values = []
+        for i, v in enumerate(joint_values):
+            if v > pi and i in circular_idx:
+                new_joint_values.append(v-2*pi)
+            elif v < -pi and i in circular_idx:
+                new_joint_values.append(v+2*pi)
+            else:
+                new_joint_values.append(v)
+        return new_joint_values
 
     def get_arm_eff_pose(self):
         """ Return [[x, y, x], [x, y, z, w]]"""
@@ -57,11 +111,12 @@ class MicoMoveit(object):
         orientation = [pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
         return [position, orientation]
 
-    def get_arm_ik(self, pose_2d, timeout=3):
+    def get_arm_ik(self, pose_2d, timeout, avoid_collisions):
         """
         Compute arm IK.
         :param pose_2d: 2d list, [[x, y, z], [x, y, z, w]]
         :param timeout: timeout in seconds
+        :param avoid_collisions: whether to avoid collisions when computing ik
         :return: a list of joint values if success; None if no ik
         """
         rospy.wait_for_service('compute_ik')
@@ -79,7 +134,7 @@ class MicoMoveit(object):
         service_request.ik_link_name = self.TIP_LINK
         service_request.pose_stamped = gripper_pose_stamped
         service_request.timeout.secs = timeout
-        service_request.avoid_collisions = True
+        service_request.avoid_collisions = avoid_collisions
 
         try:
             resp = self.arm_ik_svr(ik_request=service_request)

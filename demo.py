@@ -9,7 +9,7 @@ import rospy
 
 physicsClient = p.connect(p.GUI)#or p.DIRECT for non-graphical version
 p.setAdditionalSearchPath(pybullet_data.getDataPath()) #optionally
-p.setGravity(0,0,0)
+p.setGravity(0,0,-9.8)
 planeId = p.loadURDF("plane.urdf")
 cubeStartPos = [0,0,1]
 cubeStartOrientation = p.getQuaternionFromEuler([0,0,0])
@@ -28,8 +28,15 @@ if __name__ == "__main__":
     rospy.init_node("demo")
 
     j_v = mc.get_arm_ik(test_eef_pose)
-    mc.reset_arm_joint_values(j_v)
-    print(mc.get_link_state(mc.ARM_EEF_INDEX))
+
+    mc.move_arm_joint_values(mc.HOME)
+    mc.move_arm_joint_values(j_v)
+
+
+    # mc.reset_arm_joint_values(j_v)
+    # print(mc.get_link_state(mc.ARM_EEF_INDEX))
+
+
 
     while 1:
         time.sleep(1)
