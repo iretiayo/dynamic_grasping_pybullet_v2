@@ -2,6 +2,7 @@ import pybullet as p
 from collections import namedtuple
 from mico_moveit import MicoMoveit
 import time
+import numpy as np
 
 class MicoController(object):
     ### NOTE 'm1n6s200_joint_1', 'm1n6s200_joint_4', 'm1n6s200_joint_5', 'm1n6s200_joint_6' are circular/continuous joints
@@ -33,11 +34,12 @@ class MicoController(object):
                                          'localInertialFramePosition', 'localInertialFrameOrientation',
                                          'worldLinkFramePosition', 'worldLinkFrameOrientation'])
 
+    # movable joints for each moveit group
     GROUPS = {
         'arm': ['m1n6s200_joint_1', 'm1n6s200_joint_2',
                 'm1n6s200_joint_3', 'm1n6s200_joint_4',
                 'm1n6s200_joint_5', 'm1n6s200_joint_6', ],
-        'gripper': ['m1n6s300_joint_finger_1', 'm1n6s300_joint_finger_2', 'm1n6s300_joint_finger_3']
+        'gripper': ['m1n6s300_joint_finger_1', 'm1n6s300_joint_finger_2']
     }
 
     GROUP_INDEX = {
@@ -58,7 +60,8 @@ class MicoController(object):
     ### Control
 
     def move_arm_eef_pose(self, pose):
-        pass
+        pose_joint_values = self.get_arm_ik(pose)
+        self.move_arm_joint_values(pose_joint_values)
 
     def move_arm_joint_values(self, goal_joint_values):
         start_joint_values = self.get_arm_joint_values()
@@ -73,8 +76,10 @@ class MicoController(object):
         ## 1. add some time for the arm to reach first position in trajecotry
         ## 2. manually add the goal_joint_values to the trajectory
         for i, t in enumerate(time_trajectory_delta):
-            p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL, position_trajectory[i], forces=[500]*len(self.GROUP_INDEX['arm']))
-            time.sleep(t)
+            p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL, position_trajectory[i], forces=[5000]*len(self.GROUP_INDEX['arm']))
+            # time.sleep(t)
+            # instead of sleeping t
+            time.sleep(0.1)
 
     def reset_arm_joint_values(self, joint_values):
         joint_values = MicoMoveit.convert_range(joint_values)
@@ -84,6 +89,24 @@ class MicoController(object):
 
     def reset_arm_eef_pose(self, pose):
         pass
+
+    def move_gripper_joint_values(self, joint_values):
+        start_joint_values = self.get_gripper_joint_values()
+        goal_joint_values = joint_values
+        step = 100
+        a = np.linspace(start_joint_values[0], goal_joint_values[0], step)
+        b = np.linspace(start_joint_values[1], goal_joint_values[1], step)
+        position_trajectory = [[i, j] for (i, j) in zip(a, b)]
+        duration = 5
+        for i in range(step):
+            p.setJointMotorControlArray(self.id, self.GROUP_INDEX['gripper'], p.POSITION_CONTROL, position_trajectory[i], forces=[50]*2)
+            time.sleep(float(duration)/float(step))
+
+    def open_gripper(self):
+        self.move_gripper_joint_values([0.0, 0.0])
+
+    def close_gripper(self):
+        self.move_gripper_joint_values([2.0, 2.0])
 
     ### Helper functions
     def get_arm_eef_pose(self):
@@ -109,6 +132,9 @@ class MicoController(object):
     def get_arm_joint_values(self):
         return [self.get_joint_state(i).jointPosition for i in self.GROUP_INDEX['arm']]
 
+    def get_gripper_joint_values(self):
+        return [self.get_joint_state(i).jointPosition for i in self.GROUP_INDEX['gripper']]
+
     def get_joint_names(self, group=None):
         if not group:
             return [p.getJointInfo(self.id, i)[1] for i in range(self.num_joints)]
@@ -121,11 +147,18 @@ class MicoController(object):
     def get_link_state(self, link):
         return self.LinkState(*p.getLinkState(self.id, link))
 
-    def get_joint_info(self, joint_index):
-        return self.JointInfo(*p.getJointInfo(self.id, joint_index))
+    def get_joint_info(self, joint):
+        """ Get joint info by index or name """
+        if type(joint) is int:
+            return self.JointInfo(*p.getJointInfo(self.id, joint))
+        elif type(joint) is str:
+            return self.JointInfo(*p.getJointInfo(self.id, self.get_joint_index(joint)))
 
     def get_movable_joint_names(self):
         return [self.get_joint_info(i).jointName for i in range(self.num_joints) if self.get_joint_info(i).jointType!=p.JOINT_FIXED]
+
+    def get_joint_index(self, name):
+        return self.get_joint_names().index(name)
 
 
 
