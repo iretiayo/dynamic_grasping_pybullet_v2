@@ -3,8 +3,18 @@ import time
 import pybullet_data
 from mico_controller import MicoController
 import rospy
+import graspit_commander
+from geometry_msgs.msg import Pose, Point, Quaternion, PoseStamped
+import pickle
+import tf_conversions
+import tf_manager
+import tf
+import tf2_ros
+import tf2_kdl
+import numpy as np
 
-## TODO Finish open gripper and close gripper
+## TODO embed graspit, and check on static object
+## TODO move object and update scene in moveit
 
 physicsClient = p.connect(p.GUI)#or p.DIRECT for non-graphical version
 p.setAdditionalSearchPath(pybullet_data.getDataPath()) #optionally
@@ -23,25 +33,152 @@ mc = MicoController(mico)
 mc.reset_arm_joint_values(mc.HOME)
 cube = p.loadURDF("model/cube_small_modified.urdf", [0, -0.3, 0.3])
 
-test_eef_pose = [[-0.002576703886924381, -0.2696029068425193, 0.41288797205298017], [0.6823486760628231, -0.2289190614409086, 0.6884473485808099, 0.08964706250836511]]
-pre_g_pose = ((-0.010223939612620055, -0.3314153914498819, 0.0738960532210591), (-0.6530495821195196, 0.6914430009073206, 0.1480400136529272, 0.27114013747035265))
-g_pose = ((-0.0011438914860288536, -0.30347247297334357, 0.05343933520003911), (-0.6530495821195195, 0.6914430009073207, 0.14804001365292718, 0.27114013747035254))
+# a test pose
+# test_eef_pose = [[-0.002576703886924381, -0.2696029068425193, 0.41288797205298017], [0.6823486760628231, -0.2289190614409086, 0.6884473485808099, 0.08964706250836511]]
+# j_v = mc.get_arm_ik(test_eef_pose)
 
+# a grasp pose (modified)
+# pre_g_pose = ((-0.010223939612620055, -0.3314153914498819, 0.0738960532210591), (-0.6530495821195196, 0.6914430009073206, 0.1480400136529272, 0.27114013747035265))
+# g_pose = ((-0.0011438914860288536, -0.30347247297334357, 0.05343933520003911), (-0.6530495821195195, 0.6914430009073207, 0.14804001365292718, 0.27114013747035254))
+# pre_g_joint_values = mc.get_arm_ik(pre_g_pose)
+# g_joint_values = mc.get_arm_ik(g_pose)
+# mc.move_arm_joint_values(j_v)
+# mc.move_arm_joint_values(pre_g_joint_values)
+# mc.move_arm_joint_values(g_joint_values)
+
+def generate_grasps(load_fnm=None, save_fnm=None):
+    ## NOTE, now use sim-ann anf then switch
+
+    if load_fnm:
+        grasps = pickle.load(open(load_fnm, "rb"))
+        return grasps.grasps
+    else:
+        gc = graspit_commander.GraspitCommander()
+        gc.clearWorld()
+
+        gc.importRobot('MicoGripper')
+        gc.importGraspableBody('cube')
+
+        floor_offset = -0.025 # half of the block size
+        gc.importObstacle('floor', Pose(Point(-1, -1, floor_offset), Quaternion(0, 0, 0, 1)))
+        grasps = gc.planGrasps()
+        if save_fnm:
+            pickle.dump(grasps, open(save_fnm, "wb"))
+        return grasps.grasps
+
+## Question: does ik need the pose to be in base_link
+
+def get_world_grasps(grasps, objectID):
+    """
+
+    :param grasps: grasps.grasps returned by graspit
+    :param objectID: object id
+    :return: a list of tf tuples
+    """
+    object_pose = p.getBasePositionAndOrientation(objectID)
+    world_T_object = tf_conversions.toMatrix(tf_conversions.fromTf(object_pose))
+    grasps_in_world = list()
+    for g in grasps:
+        object_g = tf_conversions.toMatrix(tf_conversions.fromMsg(g.pose))
+        world_g = world_T_object.dot(object_g)
+        world_g_pose = tf_conversions.toMsg(tf_conversions.fromMatrix(world_g))
+        # change end effector link
+        old_ee_to_new_ee_translation_rotation = get_transfrom("m1n6s200_link_6", "m1n6s200_end_effector")
+        world_g_pose_new = change_end_effector_link(world_g_pose, old_ee_to_new_ee_translation_rotation)
+        grasps_in_world.append(tf_conversions.toTf(tf_conversions.fromMsg(world_g_pose_new)))
+    return grasps_in_world
+
+def pose_2_list(pose):
+    """
+
+    :param pose: geometry_msgs.msg.Pose
+    :return: pose_2d: [[x, y, z], [x, y, z, w]]
+    """
+    position = [pose.position.x, pose.position.y, pose.position.z]
+    orientation = [pose.quaternion.x, pose.quaternion.y, pose.quaternion.z, pose.quaternion.w]
+    return [position, orientation]
+
+def list_2_pose(pose_2d):
+    """
+
+    :param pose_2d: [[x, y, z], [x, y, z, w]]
+    :return: pose: geometry_msgs.msg.Pose
+    """
+    return Pose(Point(*pose_2d[0]), Quaternion(*pose_2d[1]))
+
+
+def display_grasp_pose_in_rviz(pose_2d_list, reference_frame):
+    """
+
+    :param pose_2d_list: a list of 2d array like poses
+    :param reference_frame: which frame to reference
+    """
+    my_tf_manager = tf_manager.TFManager()
+    for i, pose_2d in enumerate(pose_2d_list):
+        pose = list_2_pose(pose_2d)
+        ps = PoseStamped()
+        ps.pose = pose
+        ps.header.frame_id = reference_frame
+        my_tf_manager.add_tf('G_{}'.format(i), ps)
+        # import ipdb; ipdb.set_trace()
+        my_tf_manager.broadcast_tfs()
+
+# https://www.youtube.com/watch?v=aaDUIZVNCDM
+def get_transfrom(reference_frame, target_frame):
+    listener = tf.TransformListener()
+    try:
+        listener.waitForTransform(reference_frame, target_frame,
+                                  rospy.Time(0), timeout=rospy.Duration(1))
+        translation_rotation = listener.lookupTransform(reference_frame, target_frame,
+                                                        rospy.Time())
+    except Exception as e1:
+        try:
+            tf_buffer = tf2_ros.Buffer()
+            tf2_listener = tf2_ros.TransformListener(tf_buffer)
+            transform_stamped = tf_buffer.lookup_transform(reference_frame, target_frame,
+                                                           rospy.Time(0), timeout=rospy.Duration(1))
+            translation_rotation = tf_conversions.toTf(tf2_kdl.transform_to_kdl(transform_stamped))
+        except Exception as e2:
+            rospy.logerr("get_transfrom::\n " +
+                         "Failed to find transform from %s to %s" % (
+                             reference_frame, target_frame,))
+    return translation_rotation
+
+def change_end_effector_link(graspit_grasp_msg_pose, old_link_to_new_link_translation_rotation):
+    """
+    :param old_link_to_new_link_translation_rotation: geometry_msgs.msg.Pose,
+        result of listener.lookupTransform((old_link, new_link, rospy.Time(0), timeout=rospy.Duration(1))
+    :param graspit_grasp_msg_pose: The pose of a graspit grasp message i.e. g.pose
+    ref_T_nl = ref_T_ol * ol_T_nl
+    """
+    graspit_grasp_pose_for_old_link_matrix = tf_conversions.toMatrix(
+        tf_conversions.fromMsg(graspit_grasp_msg_pose)
+    )
+
+    old_link_to_new_link_tranform_matrix = tf.TransformerROS().fromTranslationRotation(
+        old_link_to_new_link_translation_rotation[0],
+        old_link_to_new_link_translation_rotation[1])
+    graspit_grasp_pose_for_new_link_matrix = np.dot(graspit_grasp_pose_for_old_link_matrix,
+                                                    old_link_to_new_link_tranform_matrix)  # ref_T_nl = ref_T_ol * ol_T_nl
+    graspit_grasp_pose_for_new_link = tf_conversions.toMsg(
+        tf_conversions.fromMatrix(graspit_grasp_pose_for_new_link_matrix))
+
+    return graspit_grasp_pose_for_new_link
 
 if __name__ == "__main__":
     rospy.init_node("demo")
 
-    j_v = mc.get_arm_ik(test_eef_pose)
-    pre_g_joint_values = mc.get_arm_ik(pre_g_pose)
-    g_joint_values = mc.get_arm_ik(g_pose)
-
+    ## starting pose
     mc.move_arm_joint_values(mc.HOME)
     mc.open_gripper()
 
-    ## everything is set up
-    mc.move_arm_joint_values(j_v)
-    mc.move_arm_joint_values(pre_g_joint_values)
-    mc.move_arm_joint_values(g_joint_values)
+    grasps = generate_grasps(load_fnm="grasps.pk")
+    grasps_in_world = get_world_grasps(grasps, cube)
+
+    ## TODO Check ik exists or not
+
+    mc.mico_moveit.add_box("cube", p.getBasePositionAndOrientation(cube), size=(0.05, 0.05, 0.05))
+
 
 
     # mc.reset_arm_joint_values(j_v)

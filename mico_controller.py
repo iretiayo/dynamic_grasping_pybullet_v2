@@ -108,6 +108,7 @@ class MicoController(object):
     def close_gripper(self):
         self.move_gripper_joint_values([2.0, 2.0])
 
+
     ### Helper functions
     def get_arm_eef_pose(self):
         """
@@ -124,6 +125,7 @@ class MicoController(object):
         # values = p.calculateInverseKinematics(self.id, self.ARM_EEF_INDEX, pose[0], pose[1])
         # d = {n:v for (n, v) in zip(names, values)}
         # return [d[n] for n in self.GROUPS['arm']]
+        # TODO no ik, handle it
         return MicoMoveit.convert_range(self.mico_moveit.get_arm_ik(pose_2d, timeout, avoid_collisions))
 
     def get_joint_state(self, joint_index):

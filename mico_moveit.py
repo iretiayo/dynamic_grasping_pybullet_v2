@@ -154,6 +154,27 @@ class MicoMoveit(object):
         return [d[n] for n in self.ARM_JOINT_NAMES]
 
 
+    ### scene and collision
+    def clear_scene(self):
+        ## TODO do we need to remove tf as well?
+        for obj_name in self.get_attached_object_names():
+            self.scene.remove_attached_object(self.eef_link, obj_name)
+        for obj_name in self.get_known_object_names():
+            self.scene.remove_world_object(obj_name)
+
+    def add_box(self, name, pose_2d, size=(1, 1, 1)):
+        pose_stamped = PoseStamped()
+        pose = Pose(Point(*pose_2d[0]), Quaternion(*pose_2d[1]))
+        pose_stamped.pose = pose
+        pose_stamped.header.frame_id = "/world"
+        self.scene.add_box(name, pose_stamped, size)
+
+    def get_known_object_names(self):
+        return self.scene.get_known_object_names()
+
+    def get_attached_object_names(self):
+        return self.scene.get_attached_objects().keys()
+
 if __name__ == "__main__":
     rospy.init_node('mico_moveit')
 
