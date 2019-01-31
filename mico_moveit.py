@@ -119,6 +119,7 @@ class MicoMoveit(object):
         :param avoid_collisions: whether to avoid collisions when computing ik
         :return: a list of joint values if success; None if no ik
         """
+        # TODO why is there a timeout in computing ik, this is not practical
         rospy.wait_for_service('compute_ik')
 
         position = pose_2d[0]
@@ -139,7 +140,7 @@ class MicoMoveit(object):
         try:
             resp = self.arm_ik_svr(ik_request=service_request)
             if resp.error_code.val == -31:
-                print("No ik exixts!")
+                print("No ik exists!")
                 return None
             elif resp.error_code.val == 1:
                 return self.parse_joint_state_arm(resp.solution.joint_state)

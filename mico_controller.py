@@ -97,9 +97,9 @@ class MicoController(object):
         a = np.linspace(start_joint_values[0], goal_joint_values[0], step)
         b = np.linspace(start_joint_values[1], goal_joint_values[1], step)
         position_trajectory = [[i, j] for (i, j) in zip(a, b)]
-        duration = 5
+        duration = 3
         for i in range(step):
-            p.setJointMotorControlArray(self.id, self.GROUP_INDEX['gripper'], p.POSITION_CONTROL, position_trajectory[i], forces=[50]*2)
+            p.setJointMotorControlArray(self.id, self.GROUP_INDEX['gripper'], p.POSITION_CONTROL, position_trajectory[i], forces=[200]*2)
             time.sleep(float(duration)/float(step))
 
     def open_gripper(self):
@@ -125,8 +125,12 @@ class MicoController(object):
         # values = p.calculateInverseKinematics(self.id, self.ARM_EEF_INDEX, pose[0], pose[1])
         # d = {n:v for (n, v) in zip(names, values)}
         # return [d[n] for n in self.GROUPS['arm']]
-        # TODO no ik, handle it
-        return MicoMoveit.convert_range(self.mico_moveit.get_arm_ik(pose_2d, timeout, avoid_collisions))
+        j = self.mico_moveit.get_arm_ik(pose_2d, timeout, avoid_collisions)
+        if j is None:
+            # print("No ik exists!")
+            return None
+        else:
+            return MicoMoveit.convert_range(j)
 
     def get_joint_state(self, joint_index):
         return self.JointState(*p.getJointState(self.id, joint_index))

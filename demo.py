@@ -13,8 +13,8 @@ import tf2_ros
 import tf2_kdl
 import numpy as np
 
-## TODO embed graspit, and check on static object
 ## TODO move object and update scene in moveit
+## TODO using long box
 
 physicsClient = p.connect(p.GUI)#or p.DIRECT for non-graphical version
 p.setAdditionalSearchPath(pybullet_data.getDataPath()) #optionally
@@ -165,20 +165,49 @@ def change_end_effector_link(graspit_grasp_msg_pose, old_link_to_new_link_transl
 
     return graspit_grasp_pose_for_new_link
 
+def back_off(pose_2d, offset):
+    """
+    Back up a grasp pose in world
+
+    :param pose_2d: world pose, [[x, y, z], [x, y, z, w]]
+    :param offset: the amount of distance to back off
+    """
+    world_T_old = tf_conversions.toMatrix(tf_conversions.fromTf(pose_2d))
+    old_T_new = tf_conversions.toMatrix(tf_conversions.fromTf(((0, 0, -offset), (0, 0, 0, 1))))
+    world_T_new = world_T_old.dot(old_T_new)
+    pose_2d_new = tf_conversions.toTf(tf_conversions.fromMatrix(world_T_new))
+    return  pose_2d_new
+
+
 if __name__ == "__main__":
     rospy.init_node("demo")
 
     ## starting pose
     mc.move_arm_joint_values(mc.HOME)
     mc.open_gripper()
+    mc.mico_moveit.clear_scene()
 
     grasps = generate_grasps(load_fnm="grasps.pk")
     grasps_in_world = get_world_grasps(grasps, cube)
 
-    ## TODO Check ik exists or not
-
     mc.mico_moveit.add_box("cube", p.getBasePositionAndOrientation(cube), size=(0.05, 0.05, 0.05))
+    mc.mico_moveit.add_box("floor", ((0, 0, -0.005), (0, 0, 0, 1)), size=(2, 2, 0.01))
 
+    ##
+    g_pose = None
+    for i, g in enumerate(grasps_in_world):
+        # the first grasp has ik if not including cube in the scene
+        # backoff 0.01, 0.02, 0.005 does not help first grasp
+        g = back_off(g, 0.01)
+        j = mc.get_arm_ik(g)
+        if j is None:
+            print("no ik exists for the {}-th grasp".format(i))
+        else:
+            print("the {}-th grasp is reachable".format(i))
+            g_pose = g
+            break
+
+    mc.move_arm_eef_pose(g_pose)
 
 
     # mc.reset_arm_joint_values(j_v)
