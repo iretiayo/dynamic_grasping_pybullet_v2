@@ -12,9 +12,14 @@ import tf
 import tf2_ros
 import tf2_kdl
 import numpy as np
+from math import pi
+import tf.transformations as tft
 
 ## TODO move object and update scene in moveit
-## TODO using long box
+## TODO long box, not working
+## TODO set the state of other joints for ik
+## TODO make ik be able to tell why no ik
+## TODO uniform sampling grasps
 
 physicsClient = p.connect(p.GUI)#or p.DIRECT for non-graphical version
 p.setAdditionalSearchPath(pybullet_data.getDataPath()) #optionally
@@ -31,7 +36,7 @@ p.setRealTimeSimulation(1)
 mico = p.loadURDF("/home/jxu/model.urdf", flags=p.URDF_USE_SELF_COLLISION)
 mc = MicoController(mico)
 mc.reset_arm_joint_values(mc.HOME)
-cube = p.loadURDF("model/cube_small_modified.urdf", [0, -0.3, 0.3])
+cube = p.loadURDF("model/cube_small_modified.urdf", [0, -0.3, 0.09])
 
 # a test pose
 # test_eef_pose = [[-0.002576703886924381, -0.2696029068425193, 0.41288797205298017], [0.6823486760628231, -0.2289190614409086, 0.6884473485808099, 0.08964706250836511]]
@@ -46,7 +51,7 @@ cube = p.loadURDF("model/cube_small_modified.urdf", [0, -0.3, 0.3])
 # mc.move_arm_joint_values(pre_g_joint_values)
 # mc.move_arm_joint_values(g_joint_values)
 
-def generate_grasps(load_fnm=None, save_fnm=None):
+def generate_grasps(load_fnm=None, save_fnm=None, body="cube"):
     ## NOTE, now use sim-ann anf then switch
 
     if load_fnm:
@@ -56,11 +61,22 @@ def generate_grasps(load_fnm=None, save_fnm=None):
         gc = graspit_commander.GraspitCommander()
         gc.clearWorld()
 
-        gc.importRobot('MicoGripper')
-        gc.importGraspableBody('cube')
+        ## creat scene in graspit
+        if body=="cube":
+            floor_offset = -0.025  # half of the block size
+            floor_pose = Pose(Point(-1, -1, floor_offset), Quaternion(0, 0, 0, 1))
+            body_pose = Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1))
+        elif body=="longBox":
+            floor_offset = -0.09
+            q = tft.quaternion_from_euler(0, 0.5*pi, 0)
+            floor_pose = Pose(Point(-1, -1, floor_offset), Quaternion(0, 0, 0, 1))
+            body_pose = Pose(Point(0, 0, 0), Quaternion(*q))
+        else:
+            raise ValueError("Invalid graspable body!")
 
-        floor_offset = -0.025 # half of the block size
-        gc.importObstacle('floor', Pose(Point(-1, -1, floor_offset), Quaternion(0, 0, 0, 1)))
+        gc.importRobot('MicoGripper')
+        gc.importGraspableBody(body, body_pose)
+        gc.importObstacle('floor', floor_pose)
         grasps = gc.planGrasps()
         if save_fnm:
             pickle.dump(grasps, open(save_fnm, "wb"))
@@ -187,9 +203,10 @@ if __name__ == "__main__":
     mc.open_gripper()
     mc.mico_moveit.clear_scene()
 
-    grasps = generate_grasps(load_fnm="grasps.pk")
+    grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
     grasps_in_world = get_world_grasps(grasps, cube)
 
+    # mc.mico_moveit.add_box("cube", p.getBasePositionAndOrientation(cube), size=(0.048, 0.048, 0.18))
     mc.mico_moveit.add_box("cube", p.getBasePositionAndOrientation(cube), size=(0.05, 0.05, 0.05))
     mc.mico_moveit.add_box("floor", ((0, 0, -0.005), (0, 0, 0, 1)), size=(2, 2, 0.01))
 
