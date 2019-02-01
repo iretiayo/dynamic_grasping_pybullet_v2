@@ -157,7 +157,6 @@ class MicoMoveit(object):
 
     ### scene and collision
     def clear_scene(self):
-        ## TODO do we need to remove tf as well?
         for obj_name in self.get_attached_object_names():
             self.scene.remove_attached_object(self.eef_link, obj_name)
         for obj_name in self.get_known_object_names():

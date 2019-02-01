@@ -1,5 +1,5 @@
 <?xml version="1.0" ?>
-<robot name="target">
+<robot name="cube_small_modified">
   <link name="baseLink">
     <contact>
     	<friction_anchor/>
