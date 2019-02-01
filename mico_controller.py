@@ -167,4 +167,3 @@ class MicoController(object):
         return self.get_joint_names().index(name)
 
 
-

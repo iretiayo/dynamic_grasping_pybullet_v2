@@ -1,16 +1,13 @@
 <?xml version="1.0" ?>
-<robot name="target">
+<robot name="cube.urdf">
   <link name="baseLink">
     <contact>
     	<friction_anchor/>
-           <!--<lateral_friction value="1.0"/>-->
-    	   <lateral_friction value="20.0"/>
+    	   <lateral_friction value="1.0"/>
     </contact>
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
-       <!-- mass controls penetration -->
-       <!--<mass value=".1"/>-->
-       <mass value=".7"/>
+       <mass value=".1"/>
        <inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1"/>
     </inertial>
     <visual>
@@ -30,6 +27,4 @@
     </collision>
   </link>
 </robot>
-
-
 

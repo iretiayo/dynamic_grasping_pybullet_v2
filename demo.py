@@ -14,16 +14,21 @@ import tf2_kdl
 import numpy as np
 from math import pi
 import tf.transformations as tft
+import utils as ut
 
-## TODO move object and update scene in moveit
+## TODO update scene in moveit ***
 ## TODO long box, not working
-## TODO set the state of other joints for ik
-## TODO make ik be able to tell why no ik
+## TODO set the state of other joints for ik ***
+## TODO make ik be able to tell why no ik ***
 ## TODO uniform sampling grasps
 
-physicsClient = p.connect(p.GUI)#or p.DIRECT for non-graphical version
-p.setAdditionalSearchPath(pybullet_data.getDataPath()) #optionally
+
+physicsClient = p.connect(p.GUI_SERVER)#or p.DIRECT for non-graphical version
+p.configureDebugVisualizer(p.COV_ENABLE_GUI,0)
+ut.reset_camera(dist=1.5)
+p.setAdditionalSearchPath("/home/jxu/bullet3/data") #optionally
 # /home/jxu/.local/lib/python2.7/site-packages/pybullet_data
+# /home/jxu/bullet3/examples/pybullet/examples
 
 p.setGravity(0,0,-9.8)
 planeId = p.loadURDF("plane.urdf")
@@ -36,7 +41,8 @@ p.setRealTimeSimulation(1)
 mico = p.loadURDF("/home/jxu/model.urdf", flags=p.URDF_USE_SELF_COLLISION)
 mc = MicoController(mico)
 mc.reset_arm_joint_values(mc.HOME)
-cube = p.loadURDF("model/cube_small_modified.urdf", [0, -0.3, 0.09])
+cube = p.loadURDF("model/cube_small_modified.urdf", [0, -0.3, 0.025+0.01])
+conveyor = p.loadURDF("model/conveyor.urdf", [0, -0.3, 0.01])
 
 # a test pose
 # test_eef_pose = [[-0.002576703886924381, -0.2696029068425193, 0.41288797205298017], [0.6823486760628231, -0.2289190614409086, 0.6884473485808099, 0.08964706250836511]]
@@ -223,7 +229,6 @@ if __name__ == "__main__":
             print("the {}-th grasp is reachable".format(i))
             g_pose = g
             break
-
     mc.move_arm_eef_pose(g_pose)
 
 
