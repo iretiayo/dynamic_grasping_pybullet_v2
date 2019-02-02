@@ -12,6 +12,8 @@ import tf
 import tf2_ros
 import tf2_kdl
 import numpy as np
+np.set_printoptions(precision=6)
+np.set_printoptions(suppress=True)
 from math import pi
 import tf.transformations as tft
 import utils as ut
@@ -19,7 +21,6 @@ import utils as ut
 ## TODO long box, not working
 ## TODO set the state of other joints for ik ***
 ## TODO uniform sampling grasps
-
 
 physicsClient = p.connect(p.GUI_SERVER)#or p.DIRECT for non-graphical version
 p.configureDebugVisualizer(p.COV_ENABLE_GUI,0)
@@ -36,13 +37,19 @@ cubeStartOrientation = p.getQuaternionFromEuler([0,0,0])
 ## memory leaks happen sometimes without this but a breakpoint
 p.setRealTimeSimulation(1)
 
-mico = p.loadURDF("/home/jxu/model.urdf", flags=p.URDF_USE_SELF_COLLISION)
+mico = p.loadURDF("model/mico.urdf", flags=p.URDF_USE_SELF_COLLISION)
 mc = MicoController(mico)
 mc.reset_arm_joint_values(mc.HOME)
 cube = p.loadURDF("model/cube_small_modified.urdf", [0, -0.5, 0.025+0.01])
 conveyor = p.loadURDF("model/conveyor.urdf", [0, -0.5, 0.01])
 
 def generate_grasps(load_fnm=None, save_fnm=None, body="cube"):
+    """
+    :param load_fnm: load file name
+    :param save_fnm: save file name
+    :param body: the name of the graspable object to load in graspit
+    :return: graspit grasps.grasps
+    """
     ## NOTE, now use sim-ann anf then switch
 
     if load_fnm:
@@ -185,37 +192,8 @@ def back_off(pose_2d, offset):
     pose_2d_new = tf_conversions.toTf(tf_conversions.fromMatrix(world_T_new))
     return  pose_2d_new
 
-def visualize_grasp_in_graspit(pose_2d_list):
-    pass
-    # ## TODO
-    # gc = graspit_commander.GraspitCommander()
-    # gc.clearWorld()
-    #
-    # body = 'cube'
-    # cube = ut.get_body_id("cube_small_modified")
-    # body_pose = p.getBasePositionAndOrientation(cube)
-    #
-    # for pose_2d in pose_2d_list:
-    #     new_g = tf_conversions.toMatrix(tf_conversions.fromTf(pose_2d))
-    #     # change end effector link
-    #     old_g = change_end_effector_link(world_g_pose, get_transfrom("m1n6s200_end_effector", "m1n6s200_link_6"))
-    #     grasps_in_world.append(tf_conversions.toTf(tf_conversions.fromMsg(world_g_pose_new)))
-    #
-    # # floor_offset = -0.025  # half of the block size
-    # # floor_pose = Pose(Point(-1, -1, floor_offset), Quaternion(0, 0, 0, 1))
-    # body_pose = Pose(Point(*body_pose[0]), Quaternion(*body_pose[1]))
-    #
-    # gc.importRobot('MicoGripper')
-    # gc.importGraspableBody(body, body_pose)
-    # # gc.importObstacle('floor', floor_pose)
-    #
-    # pose_l = list()
-    # for pose_2d in pose_2d_list:
-    #     pose_l.append(list_2_pose(pose_2d))
-    #
-    # for pose in pose_l:
-    #     gc.setRobotPose(pose)
-    #     time.sleep(3)
+# TODO make starting motion slow down, by giving time to reach start_joint values?
+# TODO sometimes moveit plan a weird motion from pregrasp to grasp, maybe we just want a brute-force catesian controller for that?
 
 if __name__ == "__main__":
     rospy.init_node("demo")
@@ -230,44 +208,45 @@ if __name__ == "__main__":
     mc.mico_moveit.add_box("conveyor", p.getBasePositionAndOrientation(conveyor), size=(.1, .1, .02))
     mc.mico_moveit.add_box("floor", ((0, 0, -0.005), (0, 0, 0, 1)), size=(2, 2, 0.01))
 
-    # TODO 2. g_pose after backing off, is too far from object
+    # TODO write the logic to track object
 
+    # get grasps
     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
     grasps_in_world = get_world_grasps(grasps, cube)
+    pre_grasps_in_world = list()
+    for g in grasps_in_world:
+        pre_grasps_in_world.append(back_off(g, 0.05))
 
-    # g = back_off(grasps_in_world[0], 0.03)
-    # mc.move_arm_eef_pose(g)
-    # mc.close_gripper()
-    # mc.move_arm_joint_values(mc.HOME)
-
-    ##
+    pre_g_pose = None
     g_pose = None
-    for i, g in enumerate(grasps_in_world):
-        # the first grasp has ik if not including cube in the scene
-        # backoff 0.01, 0.02, 0.005 does not help first grasp
-        g = back_off(g, 0.01)
+    # TODO, now just check reachability of pregrasp with target
+    for i, g in enumerate(pre_grasps_in_world):
         j = mc.get_arm_ik(g)
         if j is None:
-            print("no ik exists for the {}-th grasp".format(i))
+            print("no ik exists for the {}-th pre-grasp".format(i))
         else:
-            print("the {}-th grasp is reachable".format(i))
-            g_pose = g
+            print("the {}-th pre-grasp is reachable".format(i))
+            pre_g_pose = g
+            g_pose = grasps_in_world[i]
             break
+
+    ## grasp
+    mc.move_arm_eef_pose(pre_g_pose)
+    mc.mico_moveit.scene.remove_world_object("cube")
+    g_pose = back_off(pre_g_pose, -0.05)
     mc.move_arm_eef_pose(g_pose)
-
-
-    # mc.reset_arm_joint_values(j_v)
-    # print(mc.get_link_state(mc.ARM_EEF_INDEX))
-
     mc.close_gripper()
     mc.move_arm_joint_values(mc.HOME)
 
-
+    ## code to reproduce moveit collision bug
+    # g = back_off(grasps_in_world[0], 0.03)
+    # mc.move_arm_eef_pose(g)
+    # mc.mico_moveit.arm_commander_group.go(mc.get_arm_ik(g))
+    # mc.close_gripper()
+    # mc.move_arm_joint_values(mc.HOME)
 
     while 1:
         time.sleep(1)
-    # cubePos, cubeOrn = p.getBasePositionAndOrientation(mico)
-    # print(cubePos,cubeOrn)
     # p.disconnect()
 
 

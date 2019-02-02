@@ -5,9 +5,16 @@ To indicate that a joint is continuous/circular
 
 When planning using MoveIt!, it first converts start joint values and goal joint values of circular joints 
 to be within [-pi, pi] (no matter what) and then return a plan. This plan is then adapted by
-the contoller to work the current joint values. This means if you want a particular joint 
+the contoller to work with the current joint values. This means if you want a particular joint 
 to rotate 1000 cycles, you can only do it gradually because set the target to be 1000 cycles 
 will have the same effect as 1 cycle.
+
+## Grasp Planning
+MoveIt! has problems planning a trajectory to the grasp pose returned by GraspIt! because it considers a grasp 
+pose very close to a target as collision (even though there is actually some room). So we back off the grasp 
+to get a pre-grasp. We then need to check two things:
+- the pre-grasp is reachable with the target
+- the grasp is reachable without the target
  
 ## Useful Commands
 xacro

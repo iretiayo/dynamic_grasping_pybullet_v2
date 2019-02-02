@@ -22,6 +22,8 @@ import utils as ut
 ## TODO make ik be able to tell why no ik ***
 ## TODO uniform sampling grasps
 
+rospy.init_node("joint_limits")
+
 
 physicsClient = p.connect(p.GUI_SERVER)#or p.DIRECT for non-graphical version
 p.configureDebugVisualizer(p.COV_ENABLE_GUI,0)
@@ -46,23 +48,34 @@ conveyor = p.loadURDF("model/conveyor.urdf", [0, -0.5, 0.01])
 
 j = mc.get_arm_joint_values()
 
+j = [-1.0145597675702775,
+ 2.6088722128122135,
+ 1.391523728269374,
+ -6.281699036011064,
+ 1.5914453106308333,
+ 1.0442557489854931]
 
-# test pybullet
-# while True:
-#
-#     j[5] += 0.01
-#     print(j)
-#     p.setJointMotorControlArray(mico, mc.GROUP_INDEX['arm'], p.POSITION_CONTROL, j,
-#                                 forces=[2000] * len(mc.GROUP_INDEX['arm']))
-#     time.sleep(0.01)
+mc.reset_arm_joint_values(j)
+mc.move_arm_joint_values(j)
 
-mico_moveit = MicoMoveit()
-j = mico_moveit.arm_commander_group.get_current_joint_values()
-
+### test pybullet
 while True:
-    j[5] += 0.01
-    print(mico_moveit.arm_commander_group.get_current_joint_values())
-    plan = mico_moveit.arm_commander_group.plan(j)
-    print(plan.joint_trajectory.points)
-    mico_moveit.arm_commander_group.execute(plan)
-    time.sleep(0.1)
+
+    j[3] -= 0.01
+    print(j)
+    p.setJointMotorControlArray(mico, mc.GROUP_INDEX['arm'], p.POSITION_CONTROL, j,
+                                forces=[2000] * len(mc.GROUP_INDEX['arm']))
+    time.sleep(0.01)
+
+
+### test moveit
+# mico_moveit = MicoMoveit()
+# j = mico_moveit.arm_commander_group.get_current_joint_values()
+
+# while True:
+#     j[5] += 0.01
+#     print(mico_moveit.arm_commander_group.get_current_joint_values())
+#     plan = mico_moveit.arm_commander_group.plan(j)
+#     print(plan.joint_trajectory.points)
+#     mico_moveit.arm_commander_group.execute(plan)
+#     time.sleep(0.1)

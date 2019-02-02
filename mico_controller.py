@@ -142,7 +142,8 @@ class MicoController(object):
         # values = p.calculateInverseKinematics(self.id, self.ARM_EEF_INDEX, pose[0], pose[1])
         # d = {n:v for (n, v) in zip(names, values)}
         # return [d[n] for n in self.GROUPS['arm']]
-        j = self.mico_moveit.get_arm_ik(pose_2d, timeout, avoid_collisions)
+        gripper_joint_values = self.get_gripper_joint_values()
+        j = self.mico_moveit.get_arm_ik(pose_2d, timeout, avoid_collisions, gripper_joint_values)
         if j is None:
             # print("No ik exists!")
             return None

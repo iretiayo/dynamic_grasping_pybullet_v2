@@ -26,16 +26,18 @@ class MicoMoveit(object):
     TIP_LINK = "m1n6s200_end_effector"
     BASE_LINK = "root"
     ARM = "arm"
+    GRIPPER = "gripper"
     ARM_JOINT_NAMES = ['m1n6s200_joint_1',
                        'm1n6s200_joint_2',
                        'm1n6s200_joint_3',
                        'm1n6s200_joint_4',
                        'm1n6s200_joint_5',
                        'm1n6s200_joint_6', ]
-    GRIPPER = "gripper"
+    GRIPPER_JOINT_NAMES = ["m1n6s200_joint_finger_1", "m1n6s200_joint_finger_2"]
+    JOINT_NAMES = ARM_JOINT_NAMES + GRIPPER_JOINT_NAMES
 
-    OPEN_POSITION = [0] * 2
-    CLOSED_POSITION = [1.1] * 2
+    OPEN_POSITION = [0.0, 0.0]
+    CLOSED_POSITION = [1.1, 1.1]
     FINGER_MAXTURN = 1.3
 
     def __init__(self):
@@ -107,7 +109,7 @@ class MicoMoveit(object):
         orientation = [pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
         return [position, orientation]
 
-    def get_arm_ik(self, pose_2d, timeout, avoid_collisions):
+    def get_arm_ik(self, pose_2d, timeout, avoid_collisions, gripper_joint_values):
         """
         Compute arm IK.
         :param pose_2d: 2d list, [[x, y, z], [x, y, z, w]]
@@ -115,7 +117,7 @@ class MicoMoveit(object):
         :param avoid_collisions: whether to avoid collisions when computing ik
         :return: a list of joint values if success; None if no ik
         """
-        # TODO why is there a timeout in computing ik, this is not practical
+        # when there is collision, we need timeout to control the time to search
         rospy.wait_for_service('compute_ik')
 
         position = pose_2d[0]
@@ -132,7 +134,18 @@ class MicoMoveit(object):
         service_request.pose_stamped = gripper_pose_stamped
         service_request.timeout.secs = timeout
         service_request.avoid_collisions = avoid_collisions
-        service_request.robot_state = self.robot.get_current_state()
+
+        ## set the gripper joint values when computing arm ik
+        from moveit_msgs.msg import RobotState
+        from sensor_msgs.msg import JointState
+
+        robot_state = RobotState()
+        joint_state = JointState()
+        joint_state.position = [0] * 6 + gripper_joint_values
+        joint_state.name = MicoMoveit.JOINT_NAMES
+        joint_state.header.frame_id = "/world"
+        robot_state.joint_state = joint_state
+        service_request.robot_state = robot_state
 
         try:
             resp = self.arm_ik_svr(ik_request=service_request)
