@@ -64,21 +64,22 @@ class MicoController(object):
         self.move_arm_joint_values(pose_joint_values)
 
     def move_arm_joint_values(self, goal_joint_values):
+        """
+        Move arm by joint values.
+        :param goal_joint_values: a list of joint values
+        """
         start_joint_values = self.get_arm_joint_values()
-        start_joint_values = MicoMoveit.convert_range(start_joint_values)
-        goal_joint_values = MicoMoveit.convert_range(goal_joint_values)
 
         plan = self.mico_moveit.plan(start_joint_values, goal_joint_values)
-        position_trajectory, velocity_trajectory, time_trajectory_delta = self.mico_moveit.convert_plan(plan)
+        position_trajectory, velocity_trajectory, time_trajectory_delta = MicoController.convert_plan(plan, start_joint_values)
         # position_trajectory has start_joint_values but not goal_joint_values
 
         ## NOTE, if you really want to be more precise
         ## 1. add some time for the arm to reach first position in trajecotry
         ## 2. manually add the goal_joint_values to the trajectory
         for i, t in enumerate(time_trajectory_delta):
-            p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL, position_trajectory[i], forces=[5000]*len(self.GROUP_INDEX['arm']))
-            # time.sleep(t)
-            # instead of sleeping t
+            p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL, position_trajectory[i], forces=[2000]*len(self.GROUP_INDEX['arm']))
+            # time.sleep(t) # instead of sleeping t
             time.sleep(0.1)
 
     def reset_arm_joint_values(self, joint_values):
@@ -108,6 +109,22 @@ class MicoController(object):
     def close_gripper(self):
         self.move_gripper_joint_values([2.0, 2.0])
 
+    @staticmethod
+    def convert_plan(plan, start_joint_values):
+        position_trajecotry, velocity_trajectory, time_trajectory = MicoMoveit.extract_plan(plan)
+        ## convert position trajectory to work with current joint values
+        diff = np.array(start_joint_values) - position_trajecotry[0]
+        new_position_trajectory = np.zeros(position_trajecotry.shape)
+        for i in range(position_trajecotry.shape[0]):
+            new_position_trajectory[i] = position_trajecotry[i] + diff
+
+        ## convert time to be time difference
+        time_trajectory_delta = list()
+        time_trajectory_delta.append(0.0)
+        for i in range(1, len(time_trajectory)):
+            time_trajectory_delta.append(time_trajectory[i] - time_trajectory[i - 1])
+        return new_position_trajectory, velocity_trajectory, time_trajectory_delta
+
 
     ### Helper functions
     def get_arm_eef_pose(self):
@@ -119,7 +136,7 @@ class MicoController(object):
         orn = list(link_state.linkWorldOrientation)
         return [position, orn]
 
-    def get_arm_ik(self, pose_2d, timeout=3, avoid_collisions=True):
+    def get_arm_ik(self, pose_2d, timeout=0.01, avoid_collisions=True):
         ## pybullet ik seems problematic and I do not want to deal with it
         # names = self.get_movable_joint_names()
         # values = p.calculateInverseKinematics(self.id, self.ARM_EEF_INDEX, pose[0], pose[1])

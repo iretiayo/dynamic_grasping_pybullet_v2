@@ -5,7 +5,9 @@ To indicate that a joint is continuous/circular
 
 When planning using MoveIt!, it first converts start joint values and goal joint values of circular joints 
 to be within [-pi, pi] (no matter what) and then return a plan. This plan is then adapted by
-the contoller to work the current joint values.
+the contoller to work the current joint values. This means if you want a particular joint 
+to rotate 1000 cycles, you can only do it gradually because set the target to be 1000 cycles 
+will have the same effect as 1 cycle.
  
 ## Useful Commands
 xacro

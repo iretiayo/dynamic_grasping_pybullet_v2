@@ -113,3 +113,6 @@ devel/
 # ROS workspace
 .catkin_workspace
 src/
+
+# log file
+note.txt

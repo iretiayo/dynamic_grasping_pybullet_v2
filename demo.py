@@ -16,10 +16,8 @@ from math import pi
 import tf.transformations as tft
 import utils as ut
 
-## TODO update scene in moveit ***
 ## TODO long box, not working
 ## TODO set the state of other joints for ik ***
-## TODO make ik be able to tell why no ik ***
 ## TODO uniform sampling grasps
 
 
@@ -41,8 +39,8 @@ p.setRealTimeSimulation(1)
 mico = p.loadURDF("/home/jxu/model.urdf", flags=p.URDF_USE_SELF_COLLISION)
 mc = MicoController(mico)
 mc.reset_arm_joint_values(mc.HOME)
-cube = p.loadURDF("model/cube_small_modified.urdf", [0, -0.3, 0.025+0.01])
-conveyor = p.loadURDF("model/conveyor.urdf", [0, -0.3, 0.01])
+cube = p.loadURDF("model/cube_small_modified.urdf", [0, -0.5, 0.025+0.01])
+conveyor = p.loadURDF("model/conveyor.urdf", [0, -0.5, 0.01])
 
 def generate_grasps(load_fnm=None, save_fnm=None, body="cube"):
     ## NOTE, now use sim-ann anf then switch
@@ -187,6 +185,37 @@ def back_off(pose_2d, offset):
     pose_2d_new = tf_conversions.toTf(tf_conversions.fromMatrix(world_T_new))
     return  pose_2d_new
 
+def visualize_grasp_in_graspit(pose_2d_list):
+    pass
+    # ## TODO
+    # gc = graspit_commander.GraspitCommander()
+    # gc.clearWorld()
+    #
+    # body = 'cube'
+    # cube = ut.get_body_id("cube_small_modified")
+    # body_pose = p.getBasePositionAndOrientation(cube)
+    #
+    # for pose_2d in pose_2d_list:
+    #     new_g = tf_conversions.toMatrix(tf_conversions.fromTf(pose_2d))
+    #     # change end effector link
+    #     old_g = change_end_effector_link(world_g_pose, get_transfrom("m1n6s200_end_effector", "m1n6s200_link_6"))
+    #     grasps_in_world.append(tf_conversions.toTf(tf_conversions.fromMsg(world_g_pose_new)))
+    #
+    # # floor_offset = -0.025  # half of the block size
+    # # floor_pose = Pose(Point(-1, -1, floor_offset), Quaternion(0, 0, 0, 1))
+    # body_pose = Pose(Point(*body_pose[0]), Quaternion(*body_pose[1]))
+    #
+    # gc.importRobot('MicoGripper')
+    # gc.importGraspableBody(body, body_pose)
+    # # gc.importObstacle('floor', floor_pose)
+    #
+    # pose_l = list()
+    # for pose_2d in pose_2d_list:
+    #     pose_l.append(list_2_pose(pose_2d))
+    #
+    # for pose in pose_l:
+    #     gc.setRobotPose(pose)
+    #     time.sleep(3)
 
 if __name__ == "__main__":
     rospy.init_node("demo")
@@ -196,12 +225,20 @@ if __name__ == "__main__":
     mc.open_gripper()
     mc.mico_moveit.clear_scene()
 
+    # mc.mico_moveit.add_box("cube", p.getBasePositionAndOrientation(cube), size=(0.048, 0.048, 0.18))
+    mc.mico_moveit.add_box("cube", p.getBasePositionAndOrientation(cube), size=(0.05, 0.05, 0.05))
+    mc.mico_moveit.add_box("conveyor", p.getBasePositionAndOrientation(conveyor), size=(.1, .1, .02))
+    mc.mico_moveit.add_box("floor", ((0, 0, -0.005), (0, 0, 0, 1)), size=(2, 2, 0.01))
+
+    # TODO 2. g_pose after backing off, is too far from object
+
     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
     grasps_in_world = get_world_grasps(grasps, cube)
 
-    # mc.mico_moveit.add_box("cube", p.getBasePositionAndOrientation(cube), size=(0.048, 0.048, 0.18))
-    mc.mico_moveit.add_box("cube", p.getBasePositionAndOrientation(cube), size=(0.05, 0.05, 0.05))
-    mc.mico_moveit.add_box("floor", ((0, 0, -0.005), (0, 0, 0, 1)), size=(2, 2, 0.01))
+    # g = back_off(grasps_in_world[0], 0.03)
+    # mc.move_arm_eef_pose(g)
+    # mc.close_gripper()
+    # mc.move_arm_joint_values(mc.HOME)
 
     ##
     g_pose = None
