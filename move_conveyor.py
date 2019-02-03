@@ -10,7 +10,7 @@ import utils as ut
 p.connect(p.SHARED_MEMORY)
 mico_moveit = mico_moveit.MicoMoveit()
 
-MOVE = True # if not MOVE, just update scene
+MOVE = False # if not MOVE, just update scene
 
 if __name__ == "__main__":
 
@@ -22,24 +22,31 @@ if __name__ == "__main__":
     cube = ut.get_body_id("cube_small_modified")
     conveyor = ut.get_body_id("conveyor")
 
+    # distance along x to travel
+    max_x = 0.3
+    min_x = -0.3
+    step = 0.003 # meters per 0.1 seconds
+
+    pivot = ut.get_body_pose(conveyor)[0]
+
     if MOVE:
-        cid = p.createConstraint(conveyor, -1, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0, -0.3, 0.01])
-        a = 0
+        cid = p.createConstraint(parentBodyUniqueId=conveyor, parentLinkIndex=-1, childBodyUniqueId=-1,
+                                 childLinkIndex=-1, jointType=p.JOINT_FIXED, jointAxis=[0, 0, 0],
+                                 parentFramePosition=[0, 0, 0], childFramePosition=pivot)
         direction = '+'
         try:
             while True:
                 print(direction)
-                print(a)
+                print(pivot[0])
                 if direction == "+":
-                    a = a + 0.003
+                    pivot[0] = pivot[0] + step
                 else:
-                    a = a - 0.003
-                pivot = [a, -0.3, 0.01]
+                    pivot[0] = pivot[0] - step
                 # p.changeConstraint(cid, pivot, jointChildFrameOrientation=orn, maxForce=50)
                 p.changeConstraint(cid, pivot, maxForce=5000)
-                if a > 0.3:
+                if pivot[0] > max_x:
                     direction = "-"
-                elif a < -0.3:
+                elif pivot[0] < min_x:
                     direction = "+"
                 mico_moveit.add_box("cube", p.getBasePositionAndOrientation(cube), size=(0.05, 0.05, 0.05))
                 mico_moveit.add_box("conveyor", p.getBasePositionAndOrientation(conveyor), size=(.1, .1, .02))

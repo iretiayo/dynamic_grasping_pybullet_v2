@@ -12,7 +12,7 @@ will have the same effect as 1 cycle.
 ## Grasp Planning
 MoveIt! has problems planning a trajectory to the grasp pose returned by GraspIt! because it considers a grasp 
 pose very close to a target as collision (even though there is actually some room). So we back off the grasp 
-to get a pre-grasp. We then need to check two things:
+to get a pre-grasp. Assuming there is no obstacles between grasp and pre-grasp, we then need to check two things:
 - the pre-grasp is reachable with the target
 - the grasp is reachable without the target
  
