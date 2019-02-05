@@ -10,7 +10,7 @@ import utils as ut
 p.connect(p.SHARED_MEMORY)
 mico_moveit = mico_moveit.MicoMoveit()
 
-MOVE = False # if not MOVE, just update scene
+MOVE = True # if not MOVE, just update scene
 
 if __name__ == "__main__":
 
