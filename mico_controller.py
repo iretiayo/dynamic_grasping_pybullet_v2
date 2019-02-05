@@ -3,6 +3,19 @@ from collections import namedtuple
 from mico_moveit import MicoMoveit
 import time
 import numpy as np
+import utils as ut
+
+
+
+import rospy
+
+# Brings in the SimpleActionClient
+import actionlib
+
+# Brings in the messages used by the trajectory_execution action, including the
+# goal message and the result message.
+import pybullet_trajectory_execution.msg
+
 
 class MicoController(object):
     ### NOTE 'm1n6s200_joint_1', 'm1n6s200_joint_4', 'm1n6s200_joint_5', 'm1n6s200_joint_6' are circular/continuous joints
@@ -57,30 +70,53 @@ class MicoController(object):
         self.num_joints = p.getNumJoints(self.id)
         self.mico_moveit = MicoMoveit()
 
+        self.client = actionlib.SimpleActionClient('trajectory_execution',
+                                              pybullet_trajectory_execution.msg.TrajectoryAction)
+        self.client.wait_for_server()
     ### Control
 
     def move_arm_eef_pose(self, pose):
         pose_joint_values = self.get_arm_ik(pose)
         self.move_arm_joint_values(pose_joint_values)
 
-    def move_arm_joint_values(self, goal_joint_values):
-        """
-        Move arm by joint values.
-        :param goal_joint_values: a list of joint values
-        """
-        start_joint_values = self.get_arm_joint_values()
+    # def move_arm_joint_values(self, goal_joint_values, interrupt=True):
+    #     """
+    #     Move arm by joint values.
+    #     :param goal_joint_values: a list of joint values
+    #     """
+    #     start_joint_values = self.get_arm_joint_values()
+    #     target = ut.get_body_id("cube_small_modified")
+    #     target_initial_pose = ut.get_body_pose(target)
+    #
+    #     plan = self.mico_moveit.plan(start_joint_values, goal_joint_values)
+    #     position_trajectory, velocity_trajectory, time_trajectory_delta = MicoController.convert_plan(plan, start_joint_values)
+    #     # position_trajectory has start_joint_values but not goal_joint_values
+    #
+    #     ## NOTE, if you really want to be more precise
+    #     ## 1. add some time for the arm to reach first position in trajecotry
+    #     ## 2. manually add the goal_joint_values to the trajectory
+    #     for i, t in enumerate(time_trajectory_delta):
+    #         threshold = 0.05
+    #         if interrupt:
+    #             target_current_pose = ut.get_body_pose(target)
+    #             diff = np.linalg.norm(np.array(target_initial_pose[0]) - np.array(target_current_pose[0])) # orientation is not that important
+    #             if diff > threshold:
+    #                 break
+    #         p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL, position_trajectory[i], forces=[2000]*len(self.GROUP_INDEX['arm']))
+    #         # time.sleep(t) # instead of sleeping t
+    #         time.sleep(0.1)
 
+    def move_arm_joint_values(self, goal_joint_values):
+        start_joint_values = self.get_arm_joint_values()
         plan = self.mico_moveit.plan(start_joint_values, goal_joint_values)
         position_trajectory, velocity_trajectory, time_trajectory_delta = MicoController.convert_plan(plan, start_joint_values)
         # position_trajectory has start_joint_values but not goal_joint_values
 
-        ## NOTE, if you really want to be more precise
-        ## 1. add some time for the arm to reach first position in trajecotry
-        ## 2. manually add the goal_joint_values to the trajectory
-        for i, t in enumerate(time_trajectory_delta):
-            p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL, position_trajectory[i], forces=[2000]*len(self.GROUP_INDEX['arm']))
-            # time.sleep(t) # instead of sleeping t
-            time.sleep(0.1)
+        goal = pybullet_trajectory_execution.msg.TrajectoryGoal(
+            waypoints=[pybullet_trajectory_execution.msg.Waypoint(waypoint) for waypoint in position_trajectory],
+            robot_id=self.id,
+            joint_indices = self.GROUP_INDEX['arm'])
+        self.client.send_goal(goal)
 
     def reset_arm_joint_values(self, joint_values):
         joint_values = MicoMoveit.convert_range(joint_values)
@@ -125,6 +161,22 @@ class MicoController(object):
             time_trajectory_delta.append(time_trajectory[i] - time_trajectory[i - 1])
         return new_position_trajectory, velocity_trajectory, time_trajectory_delta
 
+    def plan_arm_joint_values(self, goal_joint_values):
+        """
+        Plan a trajectory from current joint values to goal joint values
+        :param goal_joint_values: a list of joint values
+        """
+        start_joint_values = self.get_arm_joint_values()
+
+        plan = self.mico_moveit.plan(start_joint_values, goal_joint_values)
+        position_trajectory, velocity_trajectory, time_trajectory_delta = MicoController.convert_plan(plan, start_joint_values)
+        # position_trajectory has start_joint_values but not goal_joint_values
+
+        return position_trajectory
+
+    def plan_arm_eef_pose(self, pose):
+        pose_joint_values = self.get_arm_ik(pose)
+        return self.plan_arm_joint_values(pose_joint_values)
 
     ### Helper functions
     def get_arm_eef_pose(self):
