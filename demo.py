@@ -220,71 +220,6 @@ if __name__ == "__main__":
 
     print("here")
 
-    # # distance along x to travel
-    # max_x = 0.3
-    # min_x = -0.3
-    # step = 0.003 # meters per 0.1 seconds
-    #
-    # pivot = ut.get_body_pose(conveyor)[0]
-    #
-    # cid = p.createConstraint(parentBodyUniqueId=conveyor, parentLinkIndex=-1, childBodyUniqueId=-1,
-    #                          childLinkIndex=-1, jointType=p.JOINT_FIXED, jointAxis=[0, 0, 0],
-    #                          parentFramePosition=[0, 0, 0], childFramePosition=pivot)
-    # direction = '+'
-    #
-    # #### trying step simulation and replan in each step
-    # grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
-    # p.setRealTimeSimulation(0)
-    #
-    # while True:
-    #     print(direction)
-    #     print(pivot[0])
-    #     if direction == "+":
-    #         pivot[0] = pivot[0] + step
-    #     else:
-    #         pivot[0] = pivot[0] - step
-    #     # p.changeConstraint(cid, pivot, jointChildFrameOrientation=orn, maxForce=50)
-    #     p.changeConstraint(cid, pivot, maxForce=5000)
-    #     if pivot[0] > max_x:
-    #         direction = "-"
-    #     elif pivot[0] < min_x:
-    #         direction = "+"
-    #     mc.mico_moveit.add_box("cube", p.getBasePositionAndOrientation(cube), size=(0.05, 0.05, 0.05))
-    #     mc.mico_moveit.add_box("conveyor", p.getBasePositionAndOrientation(conveyor), size=(.1, .1, .02))
-    #
-    #     grasps_in_world = get_world_grasps(grasps, cube)
-    #     pre_grasps_in_world = list()
-    #     for g in grasps_in_world:
-    #         pre_grasps_in_world.append(back_off(g, 0.05))
-    #
-    #     pre_g_pose = None
-    #     g_pose = None
-    #     # TODO, now just check reachability of pregrasp with target
-    #     for i, g in enumerate(pre_grasps_in_world):
-    #         j = mc.get_arm_ik(g)
-    #         if j is None:
-    #             print("no ik exists for the {}-th pre-grasp".format(i))
-    #         else:
-    #             print("the {}-th pre-grasp is reachable".format(i))
-    #             pre_g_pose = g
-    #             g_pose = grasps_in_world[i]
-    #             break
-    #
-    #     # did not find a reachable pre-grasp
-    #     if pre_g_pose is None:
-    #         print("object out of range!")
-    #         continue
-    #
-    #     position_trajectory = mc.plan_arm_eef_pose(pre_g_pose)
-    #     # the 0-th position is the current joint values
-    #     p.setJointMotorControlArray(mc.id, mc.GROUP_INDEX['arm'], p.POSITION_CONTROL, position_trajectory[1],
-    #                                 forces=[2000] * len(mc.GROUP_INDEX['arm']))
-    #     step_simulate(0.1)
-    #     # p.setTimeStep(0.1)
-    #     # p.stepSimulation()
-    #     # time.sleep(1.0/240.0)
-    #     # time.sleep(0.1)
-
     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
 
     while True:
@@ -314,56 +249,8 @@ if __name__ == "__main__":
             ## grasp
             mc.move_arm_eef_pose(pre_g_pose)
             print(pre_g_pose)
-            time.sleep(0.1)
+            time.sleep(0.2)
             continue
-
-
-
-    # # TODO write the logic to track object by following the pregrasp poses *******
-    # for i in range(1000):
-    #     # get grasps
-    #     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
-    #     grasps_in_world = get_world_grasps(grasps, cube)
-    #     pre_grasps_in_world = list()
-    #     for g in grasps_in_world:
-    #         pre_grasps_in_world.append(back_off(g, 0.05))
-    #
-    #     pre_g_pose = None
-    #     g_pose = None
-    #     # TODO, now just check reachability of pregrasp with target
-    #     for i, g in enumerate(pre_grasps_in_world):
-    #         j = mc.get_arm_ik(g)
-    #         if j is None:
-    #             print("no ik exists for the {}-th pre-grasp".format(i))
-    #         else:
-    #             print("the {}-th pre-grasp is reachable".format(i))
-    #             pre_g_pose = g
-    #             g_pose = grasps_in_world[i]
-    #             break
-    #
-    #     # did not find a reachable pre-grasp
-    #     if pre_g_pose is None:
-    #         print("object out of range!")
-    #         continue
-    #
-    #     ## grasp
-    #     mc.move_arm_eef_pose(pre_g_pose)
-    #     continue
-    #
-    #     mc.mico_moveit.scene.remove_world_object("cube")
-    #     g_pose = back_off(pre_g_pose, -0.05)
-    #     mc.move_arm_eef_pose(g_pose)
-    #     mc.close_gripper()
-    #     mc.move_arm_joint_values(mc.HOME)
-    #
-    #
-    # exit(0)
-
-
-
-
-
-
 
     # get grasps
     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")

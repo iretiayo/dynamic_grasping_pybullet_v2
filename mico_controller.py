@@ -107,16 +107,26 @@ class MicoController(object):
     #         time.sleep(0.1)
 
     def move_arm_joint_values(self, goal_joint_values):
-        start_joint_values = self.get_arm_joint_values()
-        plan = self.mico_moveit.plan(start_joint_values, goal_joint_values)
-        position_trajectory, velocity_trajectory, time_trajectory_delta = MicoController.convert_plan(plan, start_joint_values)
-        # position_trajectory has start_joint_values but not goal_joint_values
-
         goal = pybullet_trajectory_execution.msg.TrajectoryGoal(
-            waypoints=[pybullet_trajectory_execution.msg.Waypoint(waypoint) for waypoint in position_trajectory],
+            joint_values=goal_joint_values,
             robot_id=self.id,
             joint_indices = self.GROUP_INDEX['arm'])
         self.client.send_goal(goal)
+        #
+        # self.client.cancel_all_goals()
+        # start_joint_values = self.get_arm_joint_values()
+        # plan = self.mico_moveit.plan(start_joint_values, goal_joint_values)
+        # if len(plan.joint_trajectory.points):
+        #     position_trajectory, velocity_trajectory, time_trajectory_delta = MicoController.convert_plan(plan, start_joint_values)
+        #     # position_trajectory has start_joint_values but not goal_joint_values
+        #
+        #     goal = pybullet_trajectory_execution.msg.TrajectoryGoal(
+        #         waypoints=[pybullet_trajectory_execution.msg.Waypoint(waypoint) for waypoint in position_trajectory],
+        #         robot_id=self.id,
+        #         joint_indices = self.GROUP_INDEX['arm'])
+        #     self.client.send_goal(goal)
+        # else:
+        #     print('No path found')
 
     def reset_arm_joint_values(self, joint_values):
         joint_values = MicoMoveit.convert_range(joint_values)
