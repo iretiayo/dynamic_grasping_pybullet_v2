@@ -69,6 +69,7 @@ class MicoMoveit(object):
         start_robot_state.joint_state = start_joint_state
         self.arm_commander_group.set_start_state(start_robot_state)
         self.arm_commander_group.set_joint_value_target(goal_joint_values)
+        # takes around 0.11 second
         plan = self.arm_commander_group.plan()
         return plan
 
@@ -109,12 +110,14 @@ class MicoMoveit(object):
         orientation = [pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
         return [position, orientation]
 
-    def get_arm_ik(self, pose_2d, timeout, avoid_collisions, gripper_joint_values):
+    def get_arm_ik(self, pose_2d, timeout, avoid_collisions, arm_joint_values, gripper_joint_values):
         """
         Compute arm IK.
         :param pose_2d: 2d list, [[x, y, z], [x, y, z, w]]
         :param timeout: timeout in seconds
         :param avoid_collisions: whether to avoid collisions when computing ik
+        :param arm_joint_values: arm joint values to seed the IK
+        :param gripper_joint_values: gripper joint values for computing IK
         :return: a list of joint values if success; None if no ik
         """
         # when there is collision, we need timeout to control the time to search
@@ -141,7 +144,7 @@ class MicoMoveit(object):
 
         robot_state = RobotState()
         joint_state = JointState()
-        joint_state.position = [0] * 6 + gripper_joint_values
+        joint_state.position = arm_joint_values + gripper_joint_values
         joint_state.name = MicoMoveit.JOINT_NAMES
         joint_state.header.frame_id = "/world"
         robot_state.joint_state = joint_state

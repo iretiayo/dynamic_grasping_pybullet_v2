@@ -27,6 +27,10 @@ def get_constraint_info(constraint):
 ### Body and base
 BodyInfo = namedtuple('BodyInfo', ['base_name', 'body_name'])
 
+def remove_all_bodies():
+    for i in get_body_ids():
+        p.removeBody(i)
+
 def reset_body_base(body, pose_2d):
     p.resetBasePositionAndOrientation(body, pose_2d[0], pose_2d[1])
 

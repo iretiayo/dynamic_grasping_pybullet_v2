@@ -18,6 +18,8 @@ from math import pi
 import tf.transformations as tft
 import utils as ut
 
+PATH = "/home/jxu/dynamic_grasping_pybullet/"
+
 ## TODO uniform sampling grasps
 
 def generate_grasps(load_fnm=None, save_fnm=None, body="cube"):
@@ -183,27 +185,28 @@ def step_simulate(t):
 if __name__ == "__main__":
     rospy.init_node("demo")
 
-    physicsClient = p.connect(p.GUI_SERVER)  # or p.DIRECT for non-graphical version
+    physicsClient = p.connect(p.GUI_SERVER)
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
     ut.reset_camera(dist=1.5)
+    ut.remove_all_bodies()
     # p.setAdditionalSearchPath("/home/jxu/bullet3/data") #optionally
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     # /home/jxu/.local/lib/python2.7/site-packages/pybullet_data
     # /home/jxu/bullet3/examples/pybullet/examples
 
     p.setGravity(0, 0, -9.8)
-    planeId = p.loadURDF("plane.urdf")
+    plane = p.loadURDF("plane.urdf")
     cubeStartPos = [0, 0, 1]
     cubeStartOrientation = p.getQuaternionFromEuler([0, 0, 0])
 
     ## memory leaks happen sometimes without this but a breakpoint
     p.setRealTimeSimulation(1)
 
-    mico = p.loadURDF("model/mico.urdf", flags=p.URDF_USE_SELF_COLLISION)
+    mico = p.loadURDF(PATH+"model/mico.urdf", flags=p.URDF_USE_SELF_COLLISION)
     mc = MicoController(mico)
     mc.reset_arm_joint_values(mc.HOME)
-    cube = p.loadURDF("model/cube_small_modified.urdf", [0, -0.5, 0.025 + 0.01])
-    conveyor = p.loadURDF("model/conveyor.urdf", [0, -0.5, 0.01])
+    cube = p.loadURDF(PATH+"model/cube_small_modified.urdf", [0, -0.5, 0.025 + 0.01])
+    conveyor = p.loadURDF(PATH+"model/conveyor.urdf", [0, -0.5, 0.01])
 
 
 

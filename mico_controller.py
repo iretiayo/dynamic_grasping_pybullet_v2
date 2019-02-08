@@ -207,7 +207,8 @@ class MicoController(object):
         # d = {n:v for (n, v) in zip(names, values)}
         # return [d[n] for n in self.GROUPS['arm']]
         gripper_joint_values = self.get_gripper_joint_values()
-        j = self.mico_moveit.get_arm_ik(pose_2d, timeout, avoid_collisions, gripper_joint_values)
+        arm_joint_values = self.get_arm_joint_values()
+        j = self.mico_moveit.get_arm_ik(pose_2d, timeout, avoid_collisions, arm_joint_values, gripper_joint_values)
         if j is None:
             # print("No ik exists!")
             return None
