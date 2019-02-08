@@ -9,6 +9,7 @@ import utils as ut
 
 p.connect(p.SHARED_MEMORY)
 mico_moveit = mico_moveit.MicoMoveit()
+ut.remove_all_constraints()
 
 MOVE = True # if not MOVE, just update scene
 
