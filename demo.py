@@ -210,7 +210,8 @@ if __name__ == "__main__":
 
 
     ## starting pose
-    mc.move_arm_joint_values(mc.HOME)
+    gid = 0
+    mc.move_arm_joint_values(mc.HOME, gid)
     mc.open_gripper()
     mc.mico_moveit.clear_scene()
 
@@ -222,6 +223,7 @@ if __name__ == "__main__":
 
     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
 
+    gid+=1
     while True:
         grasps_in_world = get_world_grasps(grasps, cube)
         pre_grasps_in_world = list()
@@ -234,7 +236,8 @@ if __name__ == "__main__":
             for i, g in enumerate(pre_grasps_in_world):
                 j = mc.get_arm_ik(g)
                 if j is None:
-                    print("no ik exists for the {}-th pre-grasp".format(i))
+                    pass
+                    # print("no ik exists for the {}-th pre-grasp".format(i))
                 else:
                     print("the {}-th pre-grasp is reachable".format(i))
                     pre_g_pose = g
@@ -247,10 +250,15 @@ if __name__ == "__main__":
                 continue
 
             ## grasp
-            mc.move_arm_eef_pose(pre_g_pose)
+
+            mc.move_arm_eef_pose(pre_g_pose, gid)
+            gid+=1
+            print(gid)
             print(pre_g_pose)
             time.sleep(0.2)
             continue
+
+
 
     # get grasps
     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")

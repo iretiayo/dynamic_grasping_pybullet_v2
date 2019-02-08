@@ -75,9 +75,9 @@ class MicoController(object):
         self.client.wait_for_server()
     ### Control
 
-    def move_arm_eef_pose(self, pose):
+    def move_arm_eef_pose(self, pose, goal_id):
         pose_joint_values = self.get_arm_ik(pose)
-        self.move_arm_joint_values(pose_joint_values)
+        self.move_arm_joint_values(pose_joint_values, goal_id)
 
     # def move_arm_joint_values(self, goal_joint_values, interrupt=True):
     #     """
@@ -106,11 +106,13 @@ class MicoController(object):
     #         # time.sleep(t) # instead of sleeping t
     #         time.sleep(0.1)
 
-    def move_arm_joint_values(self, goal_joint_values):
+    def move_arm_joint_values(self, goal_joint_values, goal_id):
         goal = pybullet_trajectory_execution.msg.TrajectoryGoal(
             joint_values=goal_joint_values,
             robot_id=self.id,
-            joint_indices = self.GROUP_INDEX['arm'])
+            joint_indices = self.GROUP_INDEX['arm'],
+            goal_id = goal_id
+        )
         self.client.send_goal(goal)
         #
         # self.client.cancel_all_goals()
