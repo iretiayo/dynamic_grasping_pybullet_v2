@@ -73,62 +73,22 @@ class MicoController(object):
         self.client = actionlib.SimpleActionClient('trajectory_execution',
                                               pybullet_trajectory_execution.msg.TrajectoryAction)
         self.client.wait_for_server()
+        self.goal_id = 0
+        self.seq = None
     ### Control
 
-    def move_arm_eef_pose(self, pose, goal_id):
+    def move_arm_eef_pose(self, pose):
+        """ Plan and then execute, using goal eff pose """
         pose_joint_values = self.get_arm_ik(pose)
-        self.move_arm_joint_values(pose_joint_values, goal_id)
+        self.move_arm_joint_values(pose_joint_values)
 
-    # def move_arm_joint_values(self, goal_joint_values, interrupt=True):
-    #     """
-    #     Move arm by joint values.
-    #     :param goal_joint_values: a list of joint values
-    #     """
-    #     start_joint_values = self.get_arm_joint_values()
-    #     target = ut.get_body_id("cube_small_modified")
-    #     target_initial_pose = ut.get_body_pose(target)
-    #
-    #     plan = self.mico_moveit.plan(start_joint_values, goal_joint_values)
-    #     position_trajectory, velocity_trajectory, time_trajectory_delta = MicoController.convert_plan(plan, start_joint_values)
-    #     # position_trajectory has start_joint_values but not goal_joint_values
-    #
-    #     ## NOTE, if you really want to be more precise
-    #     ## 1. add some time for the arm to reach first position in trajecotry
-    #     ## 2. manually add the goal_joint_values to the trajectory
-    #     for i, t in enumerate(time_trajectory_delta):
-    #         threshold = 0.05
-    #         if interrupt:
-    #             target_current_pose = ut.get_body_pose(target)
-    #             diff = np.linalg.norm(np.array(target_initial_pose[0]) - np.array(target_current_pose[0])) # orientation is not that important
-    #             if diff > threshold:
-    #                 break
-    #         p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL, position_trajectory[i], forces=[2000]*len(self.GROUP_INDEX['arm']))
-    #         # time.sleep(t) # instead of sleeping t
-    #         time.sleep(0.1)
-
-    def move_arm_joint_values(self, goal_joint_values, goal_id):
-        goal = pybullet_trajectory_execution.msg.TrajectoryGoal(
-            joint_values=goal_joint_values,
-            robot_id=self.id,
-            joint_indices = self.GROUP_INDEX['arm'],
-            goal_id = goal_id
-        )
-        self.client.send_goal(goal)
-        #
-        # self.client.cancel_all_goals()
-        # start_joint_values = self.get_arm_joint_values()
-        # plan = self.mico_moveit.plan(start_joint_values, goal_joint_values)
-        # if len(plan.joint_trajectory.points):
-        #     position_trajectory, velocity_trajectory, time_trajectory_delta = MicoController.convert_plan(plan, start_joint_values)
-        #     # position_trajectory has start_joint_values but not goal_joint_values
-        #
-        #     goal = pybullet_trajectory_execution.msg.TrajectoryGoal(
-        #         waypoints=[pybullet_trajectory_execution.msg.Waypoint(waypoint) for waypoint in position_trajectory],
-        #         robot_id=self.id,
-        #         joint_indices = self.GROUP_INDEX['arm'])
-        #     self.client.send_goal(goal)
-        # else:
-        #     print('No path found')
+    def move_arm_joint_values(self, goal_joint_values):
+        """ Plan and then execute, using goal joint values """
+        position_trajectory = self.plan_arm_joint_values(goal_joint_values)
+        if position_trajectory is not None:
+            self.execute_arm_trajectory(position_trajectory)
+        else:
+            print("No path found!")
 
     def reset_arm_joint_values(self, joint_values):
         joint_values = MicoMoveit.convert_range(joint_values)
@@ -173,22 +133,39 @@ class MicoController(object):
             time_trajectory_delta.append(time_trajectory[i] - time_trajectory[i - 1])
         return new_position_trajectory, velocity_trajectory, time_trajectory_delta
 
-    def plan_arm_joint_values(self, goal_joint_values):
+    def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None):
         """
         Plan a trajectory from current joint values to goal joint values
-        :param goal_joint_values: a list of joint values
+        :param goal_joint_values: a list of goal joint values
+        :param start_joint_values: a list of start joint values; if None, use current values
         """
-        start_joint_values = self.get_arm_joint_values()
+        if start_joint_values is None:
+            start_joint_values = self.get_arm_joint_values()
 
         plan = self.mico_moveit.plan(start_joint_values, goal_joint_values)
+        # check if there exists a plan
+        if len(plan.joint_trajectory.points) == 0:
+            return None
         position_trajectory, velocity_trajectory, time_trajectory_delta = MicoController.convert_plan(plan, start_joint_values)
         # position_trajectory has start_joint_values but not goal_joint_values
-
         return position_trajectory
 
     def plan_arm_eef_pose(self, pose):
         pose_joint_values = self.get_arm_ik(pose)
         return self.plan_arm_joint_values(pose_joint_values)
+
+    def execute_arm_trajectory(self, position_trajectory):
+        goal = pybullet_trajectory_execution.msg.TrajectoryGoal(
+            waypoints=[pybullet_trajectory_execution.msg.Waypoint(waypoint) for waypoint in position_trajectory],
+            robot_id=self.id,
+            joint_indices=self.GROUP_INDEX['arm'],
+            goal_id = self.goal_id)
+        self.client.send_goal(goal, feedback_cb=self.feedback_cb)
+        self.goal_id += 1
+
+    def feedback_cb(self, feedback):
+        rospy.loginfo("receive feedback: " + str(feedback))
+        self.seq = feedback.seq
 
     ### Helper functions
     def get_arm_eef_pose(self):

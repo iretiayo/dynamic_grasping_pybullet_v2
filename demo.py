@@ -213,8 +213,7 @@ if __name__ == "__main__":
 
 
     ## starting pose
-    gid = 0
-    mc.move_arm_joint_values(mc.HOME, gid)
+    mc.move_arm_joint_values(mc.HOME)
     mc.open_gripper()
     mc.mico_moveit.clear_scene()
 
@@ -223,10 +222,9 @@ if __name__ == "__main__":
     mc.mico_moveit.add_box("floor", ((0, 0, -0.005), (0, 0, 0, 1)), size=(2, 2, 0.01))
 
     print("here")
-
+    pre_position_trajectory = None
     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
 
-    gid+=1
     while True:
         grasps_in_world = get_world_grasps(grasps, cube)
         pre_grasps_in_world = list()
@@ -235,6 +233,7 @@ if __name__ == "__main__":
 
             pre_g_pose = None
             g_pose = None
+            pre_g_joint_values = None
             # TODO, now just check reachability of pregrasp with target
             for i, g in enumerate(pre_grasps_in_world):
                 j = mc.get_arm_ik(g)
@@ -245,6 +244,7 @@ if __name__ == "__main__":
                     print("the {}-th pre-grasp is reachable".format(i))
                     pre_g_pose = g
                     g_pose = grasps_in_world[i]
+                    pre_g_joint_values = j
                     break
 
             # did not find a reachable pre-grasp
@@ -253,12 +253,23 @@ if __name__ == "__main__":
                 continue
 
             ## grasp
-
-            mc.move_arm_eef_pose(pre_g_pose, gid)
-            gid+=1
-            print(gid)
             print(pre_g_pose)
-            time.sleep(0.2)
+            ## TODO write a feedback to return currently executing waypoint - does not work
+            ## TODO try a better IK - relaxed Ik
+            ## TODO using the predicted target pose
+            ## NOTE this takes around 0.2 seconds
+            # print("previous trajectory is reaching: ", mc.seq)
+            if pre_position_trajectory is None:
+                position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values)
+            else:
+                position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values, start_joint_values=pre_position_trajectory[3])
+
+            if position_trajectory is None:
+                print("No plans found!")
+            else:
+                pre_position_trajectory = position_trajectory
+                mc.execute_arm_trajectory(position_trajectory)
+                time.sleep(0.2)
             continue
 
 
