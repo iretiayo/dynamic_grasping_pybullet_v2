@@ -17,6 +17,7 @@ np.set_printoptions(suppress=True)
 from math import pi
 import tf.transformations as tft
 import utils as ut
+import time
 
 PATH = "/home/jxu/dynamic_grasping_pybullet/"
 
@@ -171,7 +172,6 @@ def back_off(pose_2d, offset):
     pose_2d_new = tf_conversions.toTf(tf_conversions.fromMatrix(world_T_new))
     return  pose_2d_new
 
-# TODO make starting motion slow down, by giving time to reach start_joint values?
 # TODO sometimes moveit plan a weird motion from pregrasp to grasp, maybe we just want a brute-force catesian controller for that?
 
 def step_simulate(t):
@@ -226,73 +226,63 @@ if __name__ == "__main__":
     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
 
     while True:
+        #### grasp planning
+        c = time.time()
         grasps_in_world = get_world_grasps(grasps, cube)
         pre_grasps_in_world = list()
         for g in grasps_in_world:
             pre_grasps_in_world.append(back_off(g, 0.05))
 
-            pre_g_pose = None
-            g_pose = None
-            pre_g_joint_values = None
-            # TODO, now just check reachability of pregrasp with target
-            for i, g in enumerate(pre_grasps_in_world):
-                j = mc.get_arm_ik(g)
-                if j is None:
-                    pass
-                    # print("no ik exists for the {}-th pre-grasp".format(i))
-                else:
-                    print("the {}-th pre-grasp is reachable".format(i))
-                    pre_g_pose = g
-                    g_pose = grasps_in_world[i]
-                    pre_g_joint_values = j
-                    break
-
-            # did not find a reachable pre-grasp
-            if pre_g_pose is None:
-                print("object out of range!")
-                continue
-
-            ## grasp
-            print(pre_g_pose)
-            ## TODO write a feedback to return currently executing waypoint - does not work
-            ## TODO try a better IK - relaxed Ik
-            ## TODO using the predicted target pose
-            ## NOTE this takes around 0.2 seconds
-            # print("previous trajectory is reaching: ", mc.seq)
-            if pre_position_trajectory is None:
-                position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values)
+        pre_g_pose = None
+        g_pose = None
+        pre_g_joint_values = None
+        # TODO, now just check reachability of pregrasp with target
+        for i, g in enumerate(pre_grasps_in_world):
+            j = mc.get_arm_ik(g)
+            if j is None:
+                pass
+                # print("no ik exists for the {}-th pre-grasp".format(i))
             else:
-                position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values, start_joint_values=pre_position_trajectory[3])
+                rospy.loginfo("the {}-th pre-grasp is reachable".format(i))
+                pre_g_pose = g
+                g_pose = grasps_in_world[i]
+                pre_g_joint_values = j
+                break
 
-            if position_trajectory is None:
-                print("No plans found!")
-            else:
-                pre_position_trajectory = position_trajectory
-                mc.execute_arm_trajectory(position_trajectory)
-                time.sleep(0.2)
+        # did not find a reachable pre-grasp
+        if pre_g_pose is None:
+            rospy.loginfo("object out of range!")
             continue
+        rospy.loginfo("grasp planning takes {}".format(time.time()-c))
 
 
 
-    # get grasps
-    grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
-    grasps_in_world = get_world_grasps(grasps, cube)
-    pre_grasps_in_world = list()
-    for g in grasps_in_world:
-        pre_grasps_in_world.append(back_off(g, 0.05))
+        #### move to pre-grasp pose
+        looking_ahead = 3
+        rospy.loginfo("trying to reach pre-grasp pose {}".format(pre_g_pose))
+        c = time.time()
+        rospy.loginfo("previous trajectory is reaching: {}".format(mc.seq))
 
-    pre_g_pose = None
-    g_pose = None
-    # TODO, now just check reachability of pregrasp with target
-    for i, g in enumerate(pre_grasps_in_world):
-        j = mc.get_arm_ik(g)
-        if j is None:
-            print("no ik exists for the {}-th pre-grasp".format(i))
+        if pre_position_trajectory is None:
+            position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values)
         else:
-            print("the {}-th pre-grasp is reachable".format(i))
-            pre_g_pose = g
-            g_pose = grasps_in_world[i]
-            break
+            start_index = min(mc.seq+looking_ahead, len(pre_position_trajectory))
+            position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values, start_joint_values=pre_position_trajectory[start_index])
+        rospy.loginfo("planning takes {}".format(time.time()-c))
+
+        if position_trajectory is None:
+            rospy.loginfo("No plans found!")
+        else:
+            c = time.time()
+            rospy.loginfo("start executing")
+            pre_position_trajectory = position_trajectory # just another reference
+            mc.execute_arm_trajectory(position_trajectory)
+            time.sleep(0.2)
+        rospy.loginfo("execution takes {}".format(time.time() - c))
+
+        # TODO sometimes grasp planning takes longer with some errors after tracking for a long time, This results the previous
+        # trajectory to have finished before we send another goal to move arm
+
 
     ## grasp
     mc.move_arm_eef_pose(pre_g_pose)
