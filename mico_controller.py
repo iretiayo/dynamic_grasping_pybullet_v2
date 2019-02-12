@@ -97,18 +97,18 @@ class MicoController(object):
             else:
                 print("No path found!")
         else:
-            step = 50 # number of waypoints
+            step = 10 # number of waypoints
             duration = 1 # time to finish
             start_joint_values = self.get_arm_joint_values()
             converted_start_joint_values = MicoMoveit.convert_range(start_joint_values)
             converted_goal_joint_values = MicoMoveit.convert_range(goal_joint_values)
             position_trajectory = np.linspace(converted_start_joint_values, converted_goal_joint_values, step)
             position_trajectory = MicoController.convert_position_trajectory(position_trajectory, start_joint_values)
-
-            for i in range(step):
-                p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL,
-                                            position_trajectory[i], forces=[200] * len(self.GROUP_INDEX['arm']))
-                time.sleep(float(duration) / float(step))
+            self.execute_arm_trajectory(position_trajectory)
+            # for i in range(step):
+            #     p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL,
+            #                                 position_trajectory[i], forces=[200] * len(self.GROUP_INDEX['arm']))
+            #     time.sleep(float(duration) / float(step))
 
     def reset_arm_joint_values(self, joint_values):
         joint_values = MicoMoveit.convert_range(joint_values)

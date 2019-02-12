@@ -194,7 +194,7 @@ if __name__ == "__main__":
     # /home/jxu/.local/lib/python2.7/site-packages/pybullet_data
     # /home/jxu/bullet3/examples/pybullet/examples
 
-    ONLY_TRACKING = False
+    ONLY_TRACKING = True
 
     p.setGravity(0, 0, -9.8)
     plane = p.loadURDF("plane.urdf")
@@ -285,8 +285,9 @@ if __name__ == "__main__":
             mc.execute_arm_trajectory(position_trajectory)
             time.sleep(0.2)
 
-        # TODO sometimes grasp planning takes longer with some errors after tracking for a long time, This results the previous
+        # TODO sometimes grasp planning takes LONGER with some errors after tracking for a long time, This results the previous
         # trajectory to have finished before we send another goal to move arm
+        # TODO add blocking to control
 
         if ONLY_TRACKING:
             pass
@@ -295,7 +296,7 @@ if __name__ == "__main__":
             eef_position = mc.get_arm_eef_pose()[0]
             dist = np.linalg.norm(np.array(target_position)-np.array(eef_position))
             rospy.loginfo("************ distance to target: {}".format(dist))
-            if dist < 0.06:
+            if dist < 0.055:
                 rospy.loginfo("start grasping")
                 g_pose = back_off(pre_g_pose, -0.05)
                 mc.move_arm_eef_pose(g_pose, plan=False)
