@@ -215,7 +215,7 @@ if __name__ == "__main__":
 
 
     ## starting pose
-    mc.move_arm_joint_values(mc.HOME)
+    mc.move_arm_joint_values(mc.HOME, plan=False)
     mc.open_gripper()
     mc.mico_moveit.clear_scene()
 
@@ -224,6 +224,11 @@ if __name__ == "__main__":
     mc.mico_moveit.add_box("floor", ((0, 0, -0.005), (0, 0, 0, 1)), size=(2, 2, 0.01))
 
     print("here")
+    # test_eef_pose = [[-0.002576703886924381, -0.2696029068425193, 0.41288797205298017],
+    #                  [0.6823486760628231, -0.2289190614409086, 0.6884473485808099, 0.08964706250836511]]
+    # j_v = mc.get_arm_ik(test_eef_pose)
+    # mc.move_arm_joint_values(j_v, plan=False)
+    # mc.move_arm_eef_pose(test_eef_pose, plan=False)
     pre_position_trajectory = None
     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
 
@@ -292,10 +297,8 @@ if __name__ == "__main__":
             rospy.loginfo("************ distance to target: {}".format(dist))
             if dist < 0.06:
                 rospy.loginfo("start grasping")
-                mc.mico_moveit.scene.remove_world_object("cube")
                 g_pose = back_off(pre_g_pose, -0.05)
-                mc.move_arm_eef_pose(g_pose)
-                time.sleep(1)
+                mc.move_arm_eef_pose(g_pose, plan=False)
                 mc.close_gripper()
                 mc.move_arm_joint_values(mc.HOME)
                 break

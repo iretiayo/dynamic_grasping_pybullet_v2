@@ -75,20 +75,40 @@ class MicoController(object):
         self.client.wait_for_server()
         self.goal_id = 0
         self.seq = None
+
     ### Control
-
-    def move_arm_eef_pose(self, pose):
+    def move_arm_eef_pose(self, pose, plan=True):
         """ Plan and then execute, using goal eff pose """
-        pose_joint_values = self.get_arm_ik(pose)
-        self.move_arm_joint_values(pose_joint_values)
+        pose_joint_values = self.get_arm_ik(pose, avoid_collisions=plan)
+        self.move_arm_joint_values(pose_joint_values, plan)
 
-    def move_arm_joint_values(self, goal_joint_values):
-        """ Plan and then execute, using goal joint values """
-        position_trajectory = self.plan_arm_joint_values(goal_joint_values)
-        if position_trajectory is not None:
-            self.execute_arm_trajectory(position_trajectory)
+    def move_arm_joint_values(self, goal_joint_values, plan=True):
+        """
+        Plan and then execute, using goal joint values.
+        :param goal_joint_values: goal arm joint values
+        :param plan: if True, use moveit as backend to plan a collision free path; otherwise
+            just linear interpolation in configuration space. plan = False should only be used for short
+            motion where we are confident that no cillision is on the way.
+        """
+        if plan:
+            position_trajectory = self.plan_arm_joint_values(goal_joint_values)
+            if position_trajectory is not None:
+                self.execute_arm_trajectory(position_trajectory)
+            else:
+                print("No path found!")
         else:
-            print("No path found!")
+            step = 50 # number of waypoints
+            duration = 1 # time to finish
+            start_joint_values = self.get_arm_joint_values()
+            converted_start_joint_values = MicoMoveit.convert_range(start_joint_values)
+            converted_goal_joint_values = MicoMoveit.convert_range(goal_joint_values)
+            position_trajectory = np.linspace(converted_start_joint_values, converted_goal_joint_values, step)
+            position_trajectory = MicoController.convert_position_trajectory(position_trajectory, start_joint_values)
+
+            for i in range(step):
+                p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL,
+                                            position_trajectory[i], forces=[200] * len(self.GROUP_INDEX['arm']))
+                time.sleep(float(duration) / float(step))
 
     def reset_arm_joint_values(self, joint_values):
         joint_values = MicoMoveit.convert_range(joint_values)
@@ -100,6 +120,7 @@ class MicoController(object):
         pass
 
     def move_gripper_joint_values(self, joint_values):
+        """ this method has nothing to do with moveit """
         start_joint_values = self.get_gripper_joint_values()
         goal_joint_values = joint_values
         step = 100
@@ -128,12 +149,10 @@ class MicoController(object):
 
     @staticmethod
     def convert_plan(plan, start_joint_values):
+        """ Convert plan returned by moveit to work with current start joint values """
         position_trajecotry, velocity_trajectory, time_trajectory = MicoMoveit.extract_plan(plan)
         ## convert position trajectory to work with current joint values
-        diff = np.array(start_joint_values) - position_trajecotry[0]
-        new_position_trajectory = np.zeros(position_trajecotry.shape)
-        for i in range(position_trajecotry.shape[0]):
-            new_position_trajectory[i] = position_trajecotry[i] + diff
+        new_position_trajectory = MicoController.convert_position_trajectory(position_trajecotry, start_joint_values)
 
         ## convert time to be time difference
         time_trajectory_delta = list()
@@ -141,6 +160,20 @@ class MicoController(object):
         for i in range(1, len(time_trajectory)):
             time_trajectory_delta.append(time_trajectory[i] - time_trajectory[i - 1])
         return new_position_trajectory, velocity_trajectory, time_trajectory_delta
+
+    @staticmethod
+    def convert_position_trajectory(position_trajectory, start_joint_values):
+        """
+        Convert a position trajectory to work with current joint values
+        :param position_trajectory: 2d np array
+        :param start_joint_values: a list of values, current arm joint values
+        """
+        ## convert position trajectory to work with current joint values
+        diff = np.array(start_joint_values) - position_trajectory[0]
+        new_position_trajectory = np.zeros(position_trajectory.shape)
+        for i in range(position_trajectory.shape[0]):
+            new_position_trajectory[i] = position_trajectory[i] + diff
+        return new_position_trajectory
 
     def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None):
         """

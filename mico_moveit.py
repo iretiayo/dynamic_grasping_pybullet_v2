@@ -75,6 +75,7 @@ class MicoMoveit(object):
 
     @staticmethod
     def extract_plan(plan):
+        """ Extract numpy arrays of position, velocity and time trajectories from moveit plan """
         points = plan.joint_trajectory.points
         header = plan.joint_trajectory.header
         joint_names = plan.joint_trajectory.joint_names
