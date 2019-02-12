@@ -275,12 +275,10 @@ if __name__ == "__main__":
         if position_trajectory is None:
             rospy.loginfo("No plans found!")
         else:
-            c = time.time()
             rospy.loginfo("start executing")
             pre_position_trajectory = position_trajectory # just another reference
             mc.execute_arm_trajectory(position_trajectory)
             time.sleep(0.2)
-        rospy.loginfo("execution takes {}".format(time.time() - c))
 
         # TODO sometimes grasp planning takes longer with some errors after tracking for a long time, This results the previous
         # trajectory to have finished before we send another goal to move arm
@@ -288,20 +286,20 @@ if __name__ == "__main__":
         if ONLY_TRACKING:
             pass
         else:
-            target_position = ut.get_body_pose(cube)
-
-
-
-    ## grasp
-    mc.move_arm_eef_pose(pre_g_pose)
-    mc.mico_moveit.scene.remove_world_object("cube")
-    g_pose = back_off(pre_g_pose, -0.05)
-    mc.move_arm_eef_pose(g_pose)
-    mc.close_gripper()
-    mc.move_arm_joint_values(mc.HOME)
+            target_position = ut.get_body_pose(cube)[0]
+            eef_position = mc.get_arm_eef_pose()[0]
+            dist = np.linalg.norm(np.array(target_position)-np.array(eef_position))
+            rospy.loginfo("************ distance to target: {}".format(dist))
+            if dist < 0.06:
+                rospy.loginfo("start grasping")
+                mc.mico_moveit.scene.remove_world_object("cube")
+                g_pose = back_off(pre_g_pose, -0.05)
+                mc.move_arm_eef_pose(g_pose)
+                time.sleep(1)
+                mc.close_gripper()
+                mc.move_arm_joint_values(mc.HOME)
+                break
 
     while 1:
         time.sleep(1)
     # p.disconnect()
-
-

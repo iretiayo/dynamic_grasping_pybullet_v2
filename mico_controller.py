@@ -117,6 +117,15 @@ class MicoController(object):
     def close_gripper(self):
         self.move_gripper_joint_values([2.0, 2.0])
 
+    def grasp(self, target):
+        """ move to grasp pose and close gripper """
+        pass
+        # self.mico_moveit.scene.remove_world_object("cube")
+        # g_pose = back_off(pre_g_pose, -0.05)
+        # mc.move_arm_eef_pose(g_pose)
+        # mc.close_gripper()
+        # mc.move_arm_joint_values(mc.HOME)
+
     @staticmethod
     def convert_plan(plan, start_joint_values):
         position_trajecotry, velocity_trajectory, time_trajectory = MicoMoveit.extract_plan(plan)
