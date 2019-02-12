@@ -194,6 +194,8 @@ if __name__ == "__main__":
     # /home/jxu/.local/lib/python2.7/site-packages/pybullet_data
     # /home/jxu/bullet3/examples/pybullet/examples
 
+    ONLY_TRACKING = False
+
     p.setGravity(0, 0, -9.8)
     plane = p.loadURDF("plane.urdf")
     cubeStartPos = [0, 0, 1]
@@ -266,7 +268,7 @@ if __name__ == "__main__":
         if pre_position_trajectory is None:
             position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values)
         else:
-            start_index = min(mc.seq+looking_ahead, len(pre_position_trajectory))
+            start_index = min(mc.seq+looking_ahead, len(pre_position_trajectory)-1)
             position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values, start_joint_values=pre_position_trajectory[start_index])
         rospy.loginfo("planning takes {}".format(time.time()-c))
 
@@ -282,6 +284,12 @@ if __name__ == "__main__":
 
         # TODO sometimes grasp planning takes longer with some errors after tracking for a long time, This results the previous
         # trajectory to have finished before we send another goal to move arm
+
+        if ONLY_TRACKING:
+            pass
+        else:
+            target_position = ut.get_body_pose(cube)
+
 
 
     ## grasp
