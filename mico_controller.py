@@ -127,7 +127,7 @@ class MicoController(object):
         a = np.linspace(start_joint_values[0], goal_joint_values[0], step)
         b = np.linspace(start_joint_values[1], goal_joint_values[1], step)
         position_trajectory = [[i, j] for (i, j) in zip(a, b)]
-        duration = 3
+        duration = 2
         for i in range(step):
             p.setJointMotorControlArray(self.id, self.GROUP_INDEX['gripper'], p.POSITION_CONTROL, position_trajectory[i], forces=[200]*2)
             time.sleep(float(duration)/float(step))
@@ -136,7 +136,7 @@ class MicoController(object):
         self.move_gripper_joint_values([0.0, 0.0])
 
     def close_gripper(self):
-        self.move_gripper_joint_values([2.0, 2.0])
+        self.move_gripper_joint_values([1.5, 1.5])
 
     def grasp(self, target):
         """ move to grasp pose and close gripper """

@@ -62,14 +62,15 @@ def generate_grasps(load_fnm=None, save_fnm=None, body="cube"):
 
 ## Question: does ik need the pose to be in base_link
 
-def get_world_grasps(grasps, objectID):
+def get_world_grasps(grasps, objectID, object_pose=None):
     """
 
     :param grasps: grasps.grasps returned by graspit
     :param objectID: object id
     :return: a list of tf tuples
     """
-    object_pose = p.getBasePositionAndOrientation(objectID)
+    if object_pose is None:
+        object_pose = p.getBasePositionAndOrientation(objectID)
     world_T_object = tf_conversions.toMatrix(tf_conversions.fromTf(object_pose))
     grasps_in_world = list()
     for g in grasps:
@@ -172,14 +173,28 @@ def back_off(pose_2d, offset):
     pose_2d_new = tf_conversions.toTf(tf_conversions.fromMatrix(world_T_new))
     return  pose_2d_new
 
-# TODO sometimes moveit plan a weird motion from pregrasp to grasp, maybe we just want a brute-force catesian controller for that?
-
 def step_simulate(t):
     """ using p.stepSimulation with p.setTimeStep a large time (like 1s) is unpredictable"""
     n = int(round(t*240))
     for i in range(n):
         p.stepSimulation()
         time.sleep(1.0/240.0)
+
+def predict(duration, body, old_target_x, new_target_x):
+    """
+    a prilimilary way to predict the future x of the block in duration. This is not always correct!
+    :param body: target body id
+    """
+    speed = 0.03
+    if new_target_x - old_target_x < 0:
+        print('-')
+        pose = ut.get_body_pose(body)
+        pose[0][0] = pose[0][0] - speed * duration
+    else:
+        print('+')
+        pose = ut.get_body_pose(body)
+        pose[0][0] = pose[0][0] + speed * duration
+    return pose
 
 
 if __name__ == "__main__":
@@ -195,6 +210,7 @@ if __name__ == "__main__":
     # /home/jxu/bullet3/examples/pybullet/examples
 
     ONLY_TRACKING = False
+    DYNAMIC = True
 
     p.setGravity(0, 0, -9.8)
     plane = p.loadURDF("plane.urdf")
@@ -224,13 +240,10 @@ if __name__ == "__main__":
     mc.mico_moveit.add_box("floor", ((0, 0, -0.005), (0, 0, 0, 1)), size=(2, 2, 0.01))
 
     print("here")
-    # test_eef_pose = [[-0.002576703886924381, -0.2696029068425193, 0.41288797205298017],
-    #                  [0.6823486760628231, -0.2289190614409086, 0.6884473485808099, 0.08964706250836511]]
-    # j_v = mc.get_arm_ik(test_eef_pose)
-    # mc.move_arm_joint_values(j_v, plan=False)
-    # mc.move_arm_eef_pose(test_eef_pose, plan=False)
     pre_position_trajectory = None
     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
+    old_target_x = None
+    new_target_x = None
 
     while True:
         #### grasp planning
@@ -245,6 +258,7 @@ if __name__ == "__main__":
         pre_g_pose = None
         g_pose = None
         pre_g_joint_values = None
+        g_index = None
         # TODO, now just check reachability of pregrasp with target
         for i, g in enumerate(pre_grasps_in_world):
             tt = time.time()
@@ -258,6 +272,7 @@ if __name__ == "__main__":
                 pre_g_pose = g
                 g_pose = grasps_in_world[i]
                 pre_g_joint_values = j
+                g_index = i
                 break
 
         # did not find a reachable pre-grasp
@@ -292,26 +307,41 @@ if __name__ == "__main__":
         # TODO sometimes grasp planning takes LONGER with some errors after tracking for a long time, This results the previous
         # trajectory to have finished before we send another goal to move arm
         # TODO add blocking to control
-        # TODO starting motion of picking up is jerky, bacause of potential downward motions
+        # TODO starting motion of picking up is jerky, bacause of potential downward motions *** really needs to fix this, causing a lot of fails
 
+        old_target_x = new_target_x
+        new_target_x = ut.get_body_pose(cube)[0][0]
+
+        #### grasp
         if ONLY_TRACKING:
             pass
         else:
             target_position = ut.get_body_pose(cube)[0]
             eef_position = mc.get_arm_eef_pose()[0]
             dist = np.linalg.norm(np.array(target_position)-np.array(eef_position))
-            rospy.loginfo("************ distance to target: {}".format(dist))
+            rospy.loginfo("distance to target: {}".format(dist))
             if dist < 0.055:
-                rospy.loginfo("start grasping")
-                g_pose = back_off(pre_g_pose, -0.05)
-                mc.move_arm_eef_pose(g_pose, plan=False) # sometimes this motion is werid? rarely
-                time.sleep(1) # give sometime to move before closing
-                mc.close_gripper()
-                # touch_links = mc.mico_moveit.robot.get_link_names('gripper')
-                # eef_link = mc.mico_moveit.arm_commander_group.get_end_effector_link()
-                # mc.mico_moveit.scene.attach_box(eef_link, 'cube', touch_links=touch_links)
-                mc.move_arm_joint_values(mc.HOME)
-                break
+                if DYNAMIC:
+                    rospy.loginfo("start grasping")
+                    predicted_pose = predict(2, cube, old_target_x, new_target_x)
+                    g_pose = get_world_grasps([grasps[g_index]], cube, predicted_pose)[0]
+                    mc.move_arm_eef_pose(g_pose, plan=False) # TODO sometimes this motion is werid? rarely
+                    # time.sleep(1) # give sometime to move before closing
+                    mc.close_gripper()
+                    mc.move_arm_joint_values(mc.HOME)
+                    break
+                else:
+                    rospy.loginfo("start grasping")
+                    g_pose = back_off(pre_g_pose, -0.05)
+                    mc.move_arm_eef_pose(g_pose, plan=False)  # sometimes this motion is werid? rarely
+                    time.sleep(1)  # give sometime to move before closing
+                    mc.close_gripper()
+                    # touch_links = mc.mico_moveit.robot.get_link_names('gripper')
+                    # eef_link = mc.mico_moveit.arm_commander_group.get_end_effector_link()
+                    # mc.mico_moveit.scene.attach_box(eef_link, 'cube', touch_links=touch_links)
+                    mc.move_arm_joint_values(mc.HOME)
+                    break
+
 
     while 1:
         time.sleep(1)
