@@ -160,19 +160,6 @@ def change_end_effector_link(graspit_grasp_msg_pose, old_link_to_new_link_transl
 
     return graspit_grasp_pose_for_new_link
 
-def back_off(pose_2d, offset):
-    """
-    Back up a grasp pose in world
-
-    :param pose_2d: world pose, [[x, y, z], [x, y, z, w]]
-    :param offset: the amount of distance to back off
-    """
-    world_T_old = tf_conversions.toMatrix(tf_conversions.fromTf(pose_2d))
-    old_T_new = tf_conversions.toMatrix(tf_conversions.fromTf(((0, 0, -offset), (0, 0, 0, 1))))
-    world_T_new = world_T_old.dot(old_T_new)
-    pose_2d_new = tf_conversions.toTf(tf_conversions.fromMatrix(world_T_new))
-    return  pose_2d_new
-
 def step_simulate(t):
     """ using p.stepSimulation with p.setTimeStep a large time (like 1s) is unpredictable"""
     n = int(round(t*240))
@@ -210,7 +197,7 @@ if __name__ == "__main__":
     # /home/jxu/bullet3/examples/pybullet/examples
 
     ONLY_TRACKING = False
-    DYNAMIC = True
+    DYNAMIC = False
 
     p.setGravity(0, 0, -9.8)
     plane = p.loadURDF("plane.urdf")
@@ -253,7 +240,7 @@ if __name__ == "__main__":
         print(len(grasps_in_world))
         pre_grasps_in_world = list()
         for g in grasps_in_world:
-            pre_grasps_in_world.append(back_off(g, 0.05))
+            pre_grasps_in_world.append(MicoController.back_off(g, 0.05))
 
         pre_g_pose = None
         g_pose = None
@@ -328,20 +315,12 @@ if __name__ == "__main__":
                     mc.move_arm_eef_pose(g_pose, plan=False) # TODO sometimes this motion is werid? rarely
                     # time.sleep(1) # give sometime to move before closing
                     mc.close_gripper()
+
                     mc.move_arm_joint_values(mc.HOME)
                     break
                 else:
-                    rospy.loginfo("start grasping")
-                    g_pose = back_off(pre_g_pose, -0.05)
-                    mc.move_arm_eef_pose(g_pose, plan=False)  # sometimes this motion is werid? rarely
-                    time.sleep(1)  # give sometime to move before closing
-                    mc.close_gripper()
-                    # touch_links = mc.mico_moveit.robot.get_link_names('gripper')
-                    # eef_link = mc.mico_moveit.arm_commander_group.get_end_effector_link()
-                    # mc.mico_moveit.scene.attach_box(eef_link, 'cube', touch_links=touch_links)
-                    mc.move_arm_joint_values(mc.HOME)
+                    mc.grasp(pre_g_pose, DYNAMIC)
                     break
-
 
     while 1:
         time.sleep(1)

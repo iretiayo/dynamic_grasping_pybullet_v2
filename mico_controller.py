@@ -4,14 +4,11 @@ from mico_moveit import MicoMoveit
 import time
 import numpy as np
 import utils as ut
-
-
-
 import rospy
+import tf_conversions
 
 # Brings in the SimpleActionClient
 import actionlib
-
 # Brings in the messages used by the trajectory_execution action, including the
 # goal message and the result message.
 import pybullet_trajectory_execution.msg
@@ -104,6 +101,7 @@ class MicoController(object):
             converted_goal_joint_values = MicoMoveit.convert_range(goal_joint_values)
             position_trajectory = np.linspace(converted_start_joint_values, converted_goal_joint_values, step)
             position_trajectory = MicoController.convert_position_trajectory(position_trajectory, start_joint_values)
+            print("non-plan trajectory {}".format(position_trajectory))
             self.execute_arm_trajectory(position_trajectory)
             # for i in range(step):
             #     p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL,
@@ -138,14 +136,57 @@ class MicoController(object):
     def close_gripper(self):
         self.move_gripper_joint_values([1.5, 1.5])
 
-    def grasp(self, target):
-        """ move to grasp pose and close gripper """
-        pass
-        # self.mico_moveit.scene.remove_world_object("cube")
-        # g_pose = back_off(pre_g_pose, -0.05)
-        # mc.move_arm_eef_pose(g_pose)
-        # mc.close_gripper()
-        # mc.move_arm_joint_values(mc.HOME)
+    def cartesian_control(self, x=0.0, y=0.0, z=0.0, frame="world"):
+        """
+        Only for small motion
+        :param frame: "eef" or "world"
+        """
+        if frame == "eef":
+            pose_2d = self.get_arm_eef_pose()
+            world_T_old = tf_conversions.toMatrix(tf_conversions.fromTf(pose_2d))
+            old_T_new = tf_conversions.toMatrix(tf_conversions.fromTf(((x, y, z), (0, 0, 0, 1))))
+            world_T_new = world_T_old.dot(old_T_new)
+            pose_2d_new = tf_conversions.toTf(tf_conversions.fromMatrix(world_T_new))
+            self.move_arm_eef_pose(pose_2d_new, plan=False)
+        elif frame == "world":
+            pose_2d_new = self.get_arm_eef_pose()
+            pose_2d_new[0][0] += x
+            pose_2d_new[0][1] += y
+            pose_2d_new[0][2] += z
+            self.move_arm_eef_pose(pose_2d_new, plan=False)
+        else:
+            raise TypeError("not supported frame: {}".format(frame))
+
+    def grasp(self, pre_g_pose, dynamic):
+        if not dynamic:
+            rospy.loginfo("start grasping")
+            g_pose = self.back_off(pre_g_pose, -0.05)
+            self.move_arm_eef_pose(g_pose, plan=False)  # sometimes this motion is werid? rarely
+            time.sleep(1)  # give sometime to move before closing
+            self.close_gripper()
+            self.cartesian_control(z=0.05)
+            time.sleep(1)
+            ## simply attach an object will not enable collision checking with it
+            # touch_links = mc.mico_moveit.robot.get_link_names('gripper')
+            # eef_link = mc.mico_moveit.arm_commander_group.get_end_effector_link()
+            # mc.mico_moveit.scene.attach_box(eef_link, 'cube', touch_links=touch_links)
+            self.move_arm_joint_values(self.HOME)
+        else:
+            pass
+
+    @staticmethod
+    def back_off(pose_2d, offset):
+        """
+        Back off a grasp pose in world; namely, calculate the new pose after moving the eef along its z axis.
+
+        :param pose_2d: world pose, [[x, y, z], [x, y, z, w]]
+        :param offset: the amount of distance to back off
+        """
+        world_T_old = tf_conversions.toMatrix(tf_conversions.fromTf(pose_2d))
+        old_T_new = tf_conversions.toMatrix(tf_conversions.fromTf(((0, 0, -offset), (0, 0, 0, 1))))
+        world_T_new = world_T_old.dot(old_T_new)
+        pose_2d_new = tf_conversions.toTf(tf_conversions.fromMatrix(world_T_new))
+        return pose_2d_new
 
     @staticmethod
     def convert_plan(plan, start_joint_values):
