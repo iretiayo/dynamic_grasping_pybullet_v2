@@ -197,7 +197,7 @@ if __name__ == "__main__":
     # /home/jxu/bullet3/examples/pybullet/examples
 
     ONLY_TRACKING = False
-    DYNAMIC = False
+    DYNAMIC = True
 
     p.setGravity(0, 0, -9.8)
     plane = p.loadURDF("plane.urdf")
@@ -294,7 +294,6 @@ if __name__ == "__main__":
         # TODO sometimes grasp planning takes LONGER with some errors after tracking for a long time, This results the previous
         # trajectory to have finished before we send another goal to move arm
         # TODO add blocking to control
-        # TODO starting motion of picking up is jerky, bacause of potential downward motions *** really needs to fix this, causing a lot of fails
 
         old_target_x = new_target_x
         new_target_x = ut.get_body_pose(cube)[0][0]
@@ -315,8 +314,9 @@ if __name__ == "__main__":
                     mc.move_arm_eef_pose(g_pose, plan=False) # TODO sometimes this motion is werid? rarely
                     # time.sleep(1) # give sometime to move before closing
                     mc.close_gripper()
-
-                    mc.move_arm_joint_values(mc.HOME)
+                    mc.cartesian_control(z=0.05)
+                    # NOTE: The trajectory returned by this will have a far away first waypoint to jump to because the initial position is not interpreted as valid by moveit
+                    # mc.move_arm_joint_values(mc.HOME)
                     break
                 else:
                     mc.grasp(pre_g_pose, DYNAMIC)

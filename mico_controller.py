@@ -170,7 +170,7 @@ class MicoController(object):
             # touch_links = mc.mico_moveit.robot.get_link_names('gripper')
             # eef_link = mc.mico_moveit.arm_commander_group.get_end_effector_link()
             # mc.mico_moveit.scene.attach_box(eef_link, 'cube', touch_links=touch_links)
-            self.move_arm_joint_values(self.HOME)
+            # self.move_arm_joint_values(self.HOME)
         else:
             pass
 
