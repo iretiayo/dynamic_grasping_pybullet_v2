@@ -315,7 +315,9 @@ if __name__ == "__main__":
                     # time.sleep(1) # give sometime to move before closing
                     mc.close_gripper()
                     mc.cartesian_control(z=0.05)
-                    # NOTE: The trajectory returned by this will have a far away first waypoint to jump to because the initial position is not interpreted as valid by moveit
+                    # NOTE: The trajectory returned by this will have a far away first waypoint to jump to
+                    # and I assume it is because the initial position is not interpreted as valid by moveit
+                    # or the good first waypoint is blocked by a instantly updated block scene
                     # mc.move_arm_joint_values(mc.HOME)
                     break
                 else:
