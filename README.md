@@ -15,6 +15,10 @@ pose very close to a target as collision (even though there is actually some roo
 to get a pre-grasp. Assuming there is no obstacles between grasp and pre-grasp, we then need to check two things:
 - the pre-grasp is reachable with the target
 - the grasp is reachable without the target
+
+## Modification on URDF
+- Modify joint limits
+- Disable collision model on `m1n6s200_end_effector`
  
 ## Useful Commands
 xacro

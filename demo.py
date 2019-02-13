@@ -194,7 +194,7 @@ if __name__ == "__main__":
     # /home/jxu/.local/lib/python2.7/site-packages/pybullet_data
     # /home/jxu/bullet3/examples/pybullet/examples
 
-    ONLY_TRACKING = True
+    ONLY_TRACKING = False
 
     p.setGravity(0, 0, -9.8)
     plane = p.loadURDF("plane.urdf")
@@ -236,6 +236,8 @@ if __name__ == "__main__":
         #### grasp planning
         c = time.time()
         grasps_in_world = get_world_grasps(grasps, cube)
+        print("getting world grasps takes {}".format(time.time()-c))
+        print(len(grasps_in_world))
         pre_grasps_in_world = list()
         for g in grasps_in_world:
             pre_grasps_in_world.append(back_off(g, 0.05))
@@ -245,7 +247,9 @@ if __name__ == "__main__":
         pre_g_joint_values = None
         # TODO, now just check reachability of pregrasp with target
         for i, g in enumerate(pre_grasps_in_world):
+            tt = time.time()
             j = mc.get_arm_ik(g)
+            print("get arm ik takes {}".format(time.time()-tt))
             if j is None:
                 pass
                 # print("no ik exists for the {}-th pre-grasp".format(i))
@@ -288,6 +292,7 @@ if __name__ == "__main__":
         # TODO sometimes grasp planning takes LONGER with some errors after tracking for a long time, This results the previous
         # trajectory to have finished before we send another goal to move arm
         # TODO add blocking to control
+        # TODO starting motion of picking up is jerky, bacause of potential downward motions
 
         if ONLY_TRACKING:
             pass
@@ -299,8 +304,12 @@ if __name__ == "__main__":
             if dist < 0.055:
                 rospy.loginfo("start grasping")
                 g_pose = back_off(pre_g_pose, -0.05)
-                mc.move_arm_eef_pose(g_pose, plan=False)
+                mc.move_arm_eef_pose(g_pose, plan=False) # sometimes this motion is werid? rarely
+                time.sleep(1) # give sometime to move before closing
                 mc.close_gripper()
+                # touch_links = mc.mico_moveit.robot.get_link_names('gripper')
+                # eef_link = mc.mico_moveit.arm_commander_group.get_end_effector_link()
+                # mc.mico_moveit.scene.attach_box(eef_link, 'cube', touch_links=touch_links)
                 mc.move_arm_joint_values(mc.HOME)
                 break
 

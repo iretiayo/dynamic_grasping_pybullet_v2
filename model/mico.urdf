@@ -364,11 +364,11 @@
         <box size="0.001 0.001 0.001"/>
       </geometry>
     </visual>
-    <collision>
-      <geometry>
-        <box size="0.001 0.001 0.001"/>
-      </geometry>
-    </collision>
+    <!--<collision>-->
+      <!--<geometry>-->
+        <!--<box size="0.001 0.001 0.001"/>-->
+      <!--</geometry>-->
+    <!--</collision>-->
   </link>
   <joint name="m1n6s200_joint_end_effector" type="fixed">
     <parent link="m1n6s200_link_6"/>
