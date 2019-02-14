@@ -122,11 +122,11 @@ class MicoController(object):
         """ this method has nothing to do with moveit """
         start_joint_values = self.get_gripper_joint_values()
         goal_joint_values = joint_values
-        step = 100
+        step = 10
         a = np.linspace(start_joint_values[0], goal_joint_values[0], step)
         b = np.linspace(start_joint_values[1], goal_joint_values[1], step)
         position_trajectory = [[i, j] for (i, j) in zip(a, b)]
-        duration = 2
+        duration = 1
         for i in range(step):
             p.setJointMotorControlArray(self.id, self.GROUP_INDEX['gripper'], p.POSITION_CONTROL, position_trajectory[i], forces=[200]*2)
             time.sleep(float(duration)/float(step))
@@ -135,7 +135,7 @@ class MicoController(object):
         self.move_gripper_joint_values([0.0, 0.0])
 
     def close_gripper(self):
-        self.move_gripper_joint_values([1.5, 1.5])
+        self.move_gripper_joint_values([1.3, 1.3])
 
     def cartesian_control(self, x=0.0, y=0.0, z=0.0, frame="world"):
         """
