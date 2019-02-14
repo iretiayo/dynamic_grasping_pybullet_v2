@@ -23,10 +23,12 @@ if __name__ == "__main__":
     cube = ut.get_body_id("cube_small_modified")
     conveyor = ut.get_body_id("conveyor")
 
+    speed = 0.03 # m/s
+
     # distance along x to travel
-    max_x = 0.3
-    min_x = -0.3
-    step = 0.003 # meters per 0.1 seconds
+    max_x = 0.5
+    min_x = -0.5
+    step = speed/10.0 # meters per 0.1 seconds
 
     pivot = ut.get_body_pose(conveyor)[0]
 

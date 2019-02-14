@@ -67,6 +67,7 @@ def get_world_grasps(grasps, objectID, object_pose=None):
 
     :param grasps: grasps.grasps returned by graspit
     :param objectID: object id
+    :param object_pose: the pose of the target; if None, use current pose
     :return: a list of tf tuples
     """
     if object_pose is None:
@@ -167,21 +168,35 @@ def step_simulate(t):
         p.stepSimulation()
         time.sleep(1.0/240.0)
 
-def predict(duration, body, old_target_x, new_target_x):
+def predict(duration, body):
     """
-    a prilimilary way to predict the future x of the block in duration. This is not always correct!
+    assume we know the direction and speed, predict linear motion
     :param body: target body id
     """
     speed = 0.03
-    if new_target_x - old_target_x < 0:
-        print('-')
-        pose = ut.get_body_pose(body)
-        pose[0][0] = pose[0][0] - speed * duration
-    else:
-        print('+')
-        pose = ut.get_body_pose(body)
-        pose[0][0] = pose[0][0] + speed * duration
+    direction = '+'
+    pose = ut.get_body_pose(body)
+    pose[0][0] = pose[0][0] + speed * duration
     return pose
+
+def can_grasp(g_position, d_gpos_threshold, d_target_threshold):
+    """
+
+    :param g_position: position of the grasp that we want to match
+    :param d_gpos_threshold: allowed position distance between eef and grasp position
+    :param d_target_threshold: allowed position distance between eef and target
+    :return:
+    """
+    # TODO shall I give constraint on quaternion as well?
+    target_position = ut.get_body_pose(cube)[0]
+    eef_position = mc.get_arm_eef_pose()[0]
+    dist1 = np.linalg.norm(np.array(target_position) - np.array(eef_position))
+    dist2 = np.linalg.norm(np.array(g_position) - np.array(eef_position))
+    rospy.loginfo("distance to target: {}".format(dist1))
+    rospy.loginfo("distance to g_position: {}".format(dist2))
+
+    return dist1 < d_target_threshold
+
 
 
 if __name__ == "__main__":
@@ -210,12 +225,8 @@ if __name__ == "__main__":
     mico = p.loadURDF(PATH+"model/mico.urdf", flags=p.URDF_USE_SELF_COLLISION)
     mc = MicoController(mico)
     mc.reset_arm_joint_values(mc.HOME)
-    cube = p.loadURDF(PATH+"model/cube_small_modified.urdf", [0, -0.5, 0.025 + 0.01])
-    conveyor = p.loadURDF(PATH+"model/conveyor.urdf", [0, -0.5, 0.01])
-
-
-
-
+    cube = p.loadURDF(PATH+"model/cube_small_modified.urdf", [-0.5, -0.5, 0.025 + 0.01])
+    conveyor = p.loadURDF(PATH+"model/conveyor.urdf", [-0.5, -0.5, 0.01])
 
     ## starting pose
     mc.move_arm_joint_values(mc.HOME, plan=False)
@@ -235,7 +246,7 @@ if __name__ == "__main__":
     while True:
         #### grasp planning
         c = time.time()
-        grasps_in_world = get_world_grasps(grasps, cube)
+        grasps_in_world = get_world_grasps(grasps, cube, predict(1, cube))
         print("getting world grasps takes {}".format(time.time()-c))
         print(len(grasps_in_world))
         pre_grasps_in_world = list()
@@ -302,14 +313,10 @@ if __name__ == "__main__":
         if ONLY_TRACKING:
             pass
         else:
-            target_position = ut.get_body_pose(cube)[0]
-            eef_position = mc.get_arm_eef_pose()[0]
-            dist = np.linalg.norm(np.array(target_position)-np.array(eef_position))
-            rospy.loginfo("distance to target: {}".format(dist))
-            if dist < 0.055:
+            if can_grasp(pre_g_pose[0], 0.1, 0.055):
                 if DYNAMIC:
                     rospy.loginfo("start grasping")
-                    predicted_pose = predict(2, cube, old_target_x, new_target_x)
+                    predicted_pose = predict(1, cube)
                     g_pose = get_world_grasps([grasps[g_index]], cube, predicted_pose)[0]
                     mc.move_arm_eef_pose(g_pose, plan=False) # TODO sometimes this motion is werid? rarely
                     # time.sleep(1) # give sometime to move before closing
