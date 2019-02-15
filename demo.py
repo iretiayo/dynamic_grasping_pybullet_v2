@@ -1,5 +1,4 @@
 import pybullet as p
-import time
 import pybullet_data
 from mico_controller import MicoController
 import rospy
@@ -18,6 +17,7 @@ from math import pi
 import tf.transformations as tft
 import utils as ut
 import time
+import motion_prediction.srv
 
 PATH = "/home/jxu/dynamic_grasping_pybullet/"
 
@@ -197,8 +197,6 @@ def can_grasp(g_position, d_gpos_threshold, d_target_threshold):
 
     return dist1 < d_target_threshold
 
-
-
 if __name__ == "__main__":
     rospy.init_node("demo")
 
@@ -243,10 +241,20 @@ if __name__ == "__main__":
     old_target_x = None
     new_target_x = None
 
+    # rospy.wait_for_service('motion_prediction')
+    # motion_predict_svr = rospy.ServiceProxy('motion_prediction', motion_prediction.srv.GetFuturePose)
+
     while True:
         #### grasp planning
         c = time.time()
-        grasps_in_world = get_world_grasps(grasps, cube, predict(1, cube))
+        current_pose = ut.get_body_pose(cube)
+        # future_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
+        future_pose_p = predict(1, cube)
+        grasps_in_world = get_world_grasps(grasps, cube, future_pose_p)
+
+        # print("kalman prediction: {}".format(future_pose))
+        # print("ground truth: {}".format(future_pose_p))
+
         print("getting world grasps takes {}".format(time.time()-c))
         print(len(grasps_in_world))
         pre_grasps_in_world = list()
