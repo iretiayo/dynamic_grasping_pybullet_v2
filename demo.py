@@ -17,9 +17,9 @@ from math import pi
 import tf.transformations as tft
 import utils as ut
 import time
+import rospkg
+import os
 import motion_prediction.srv
-
-PATH = "/home/jxu/dynamic_grasping_pybullet/"
 
 ## TODO uniform sampling grasps
 
@@ -220,11 +220,16 @@ if __name__ == "__main__":
     ## memory leaks happen sometimes without this but a breakpoint
     p.setRealTimeSimulation(1)
 
-    mico = p.loadURDF(PATH+"model/mico.urdf", flags=p.URDF_USE_SELF_COLLISION)
+    urdf_dir = os.path.join(rospkg.RosPack().get_path('kinova_description'), 'urdf')
+    urdf_filename = 'mico.urdf'
+    if not os.path.exists(os.path.join(urdf_dir, urdf_filename)):
+        os.system('cp model/mico.urdf {}'.format(os.path.join(urdf_dir, urdf_filename)))
+
+    mico = p.loadURDF(os.path.join(urdf_dir, urdf_filename), flags=p.URDF_USE_SELF_COLLISION)
     mc = MicoController(mico)
     mc.reset_arm_joint_values(mc.HOME)
-    cube = p.loadURDF(PATH+"model/cube_small_modified.urdf", [-0.5, -0.5, 0.025 + 0.01])
-    conveyor = p.loadURDF(PATH+"model/conveyor.urdf", [-0.5, -0.5, 0.01])
+    cube = p.loadURDF("model/cube_small_modified.urdf", [-0.5, -0.5, 0.025 + 0.01])
+    conveyor = p.loadURDF("model/conveyor.urdf", [-0.5, -0.5, 0.01])
 
     ## starting pose
     mc.move_arm_joint_values(mc.HOME, plan=False)
