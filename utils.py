@@ -1,5 +1,24 @@
 from collections import namedtuple
 import pybullet as p
+from geometry_msgs.msg import Pose, Point, Quaternion
+
+def pose_2_list(pose):
+    """
+
+    :param pose: geometry_msgs.msg.Pose
+    :return: pose_2d: [[x, y, z], [x, y, z, w]]
+    """
+    position = [pose.position.x, pose.position.y, pose.position.z]
+    orientation = [pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
+    return [position, orientation]
+
+def list_2_pose(pose_2d):
+    """
+
+    :param pose_2d: [[x, y, z], [x, y, z, w]]
+    :return: pose: geometry_msgs.msg.Pose
+    """
+    return Pose(Point(*pose_2d[0]), Quaternion(*pose_2d[1]))
 
 
 ### Constraints

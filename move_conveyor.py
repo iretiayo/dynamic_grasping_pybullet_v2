@@ -6,6 +6,8 @@ import rospy
 import pybullet as p
 import mico_moveit
 import utils as ut
+import rospy
+from geometry_msgs.msg import Pose
 
 p.connect(p.SHARED_MEMORY)
 mico_moveit = mico_moveit.MicoMoveit()
@@ -19,6 +21,7 @@ if __name__ == "__main__":
     mico_moveit.clear_scene()
     time.sleep(1) # need some time for clear scene to finish, otherwise floor does not show up
     mico_moveit.add_box("floor", ((0, 0, -0.005), (0, 0, 0, 1)), size=(2, 2, 0.01))
+    pub = rospy.Publisher('target_pose', Pose, queue_size=1)
 
     cube = ut.get_body_id("cube_small_modified")
     conveyor = ut.get_body_id("conveyor")
@@ -38,9 +41,11 @@ if __name__ == "__main__":
                                  parentFramePosition=[0, 0, 0], childFramePosition=pivot)
         direction = '+'
         try:
+            c = time.time()
+            print(c)
             while True:
-                print(direction)
-                print(pivot[0])
+                # print(direction)
+                # print(pivot[0])
                 if direction == "+":
                     pivot[0] = pivot[0] + step
                 else:
@@ -51,10 +56,19 @@ if __name__ == "__main__":
                     direction = "-"
                 elif pivot[0] < min_x:
                     direction = "+"
+
+                target_pose_2d = ut.get_body_pose(ut.get_body_id('cube_small_modified'))
+                if target_pose_2d[0][0] > 0.5:
+                    print(time.time()-c)
+                    print(pivot)
+                    print(target_pose_2d)
+                target_pose = ut.list_2_pose(target_pose_2d)
+                pub.publish(target_pose)
+
                 mico_moveit.add_box("cube", p.getBasePositionAndOrientation(cube), size=(0.05, 0.05, 0.05))
                 mico_moveit.add_box("conveyor", p.getBasePositionAndOrientation(conveyor), size=(.1, .1, .02))
                 time.sleep(.1)
-        except KeyboardInterrupt:
+        except KeyboardInterrupt: # not working
             print("interrupt")
             ut.remove_all_constraints()
     else:

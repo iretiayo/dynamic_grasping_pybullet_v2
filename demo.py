@@ -84,25 +84,6 @@ def get_world_grasps(grasps, objectID, object_pose=None):
         grasps_in_world.append(tf_conversions.toTf(tf_conversions.fromMsg(world_g_pose_new)))
     return grasps_in_world
 
-def pose_2_list(pose):
-    """
-
-    :param pose: geometry_msgs.msg.Pose
-    :return: pose_2d: [[x, y, z], [x, y, z, w]]
-    """
-    position = [pose.position.x, pose.position.y, pose.position.z]
-    orientation = [pose.quaternion.x, pose.quaternion.y, pose.quaternion.z, pose.quaternion.w]
-    return [position, orientation]
-
-def list_2_pose(pose_2d):
-    """
-
-    :param pose_2d: [[x, y, z], [x, y, z, w]]
-    :return: pose: geometry_msgs.msg.Pose
-    """
-    return Pose(Point(*pose_2d[0]), Quaternion(*pose_2d[1]))
-
-
 def display_grasp_pose_in_rviz(pose_2d_list, reference_frame):
     """
 
@@ -111,7 +92,7 @@ def display_grasp_pose_in_rviz(pose_2d_list, reference_frame):
     """
     my_tf_manager = tf_manager.TFManager()
     for i, pose_2d in enumerate(pose_2d_list):
-        pose = list_2_pose(pose_2d)
+        pose = ut.list_2_pose(pose_2d)
         ps = PoseStamped()
         ps.pose = pose
         ps.header.frame_id = reference_frame
@@ -240,25 +221,25 @@ if __name__ == "__main__":
     mc.mico_moveit.add_box("conveyor", p.getBasePositionAndOrientation(conveyor), size=(.1, .1, .02))
     mc.mico_moveit.add_box("floor", ((0, 0, -0.005), (0, 0, 0, 1)), size=(2, 2, 0.01))
 
+    # kalman filter service
+    rospy.wait_for_service('motion_prediction')
+    motion_predict_svr = rospy.ServiceProxy('motion_prediction', motion_prediction.srv.GetFuturePose)
+
     print("here")
     pre_position_trajectory = None
     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
-    old_target_x = None
-    new_target_x = None
-
-    # rospy.wait_for_service('motion_prediction')
-    # motion_predict_svr = rospy.ServiceProxy('motion_prediction', motion_prediction.srv.GetFuturePose)
 
     while True:
         #### grasp planning
         c = time.time()
         current_pose = ut.get_body_pose(cube)
-        # future_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
+        print("current pose: {}".format(current_pose))
+        future_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
         future_pose_p = predict(1, cube)
-        grasps_in_world = get_world_grasps(grasps, cube, future_pose_p)
+        grasps_in_world = get_world_grasps(grasps, cube, future_pose)
 
-        # print("kalman prediction: {}".format(future_pose))
-        # print("ground truth: {}".format(future_pose_p))
+        print("kalman prediction: {}".format(future_pose))
+        print("ground truth: {}".format(future_pose_p))
 
         print("getting world grasps takes {}".format(time.time()-c))
         print(len(grasps_in_world))
@@ -319,8 +300,6 @@ if __name__ == "__main__":
         # trajectory to have finished before we send another goal to move arm
         # TODO add blocking to control
 
-        old_target_x = new_target_x
-        new_target_x = ut.get_body_pose(cube)[0][0]
 
         #### grasp
         if ONLY_TRACKING:
@@ -329,7 +308,8 @@ if __name__ == "__main__":
             if can_grasp(pre_g_pose[0], 0.1, 0.055):
                 if DYNAMIC:
                     rospy.loginfo("start grasping")
-                    predicted_pose = predict(1, cube)
+                    # predicted_pose = predict(1, cube)
+                    predicted_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
                     g_pose = get_world_grasps([grasps[g_index]], cube, predicted_pose)[0]
                     mc.move_arm_eef_pose(g_pose, plan=False) # TODO sometimes this motion is werid? rarely
                     # time.sleep(1) # give sometime to move before closing
