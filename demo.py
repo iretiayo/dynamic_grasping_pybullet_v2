@@ -209,8 +209,8 @@ if __name__ == "__main__":
     mico = p.loadURDF(os.path.join(urdf_dir, urdf_filename), flags=p.URDF_USE_SELF_COLLISION)
     mc = MicoController(mico)
     mc.reset_arm_joint_values(mc.HOME)
-    cube = p.loadURDF("model/cube_small_modified.urdf", [-0.5, -0.5, 0.025 + 0.01])
-    conveyor = p.loadURDF("model/conveyor.urdf", [-0.5, -0.5, 0.01])
+    cube = p.loadURDF("model/cube_small_modified.urdf", [-0.8, -0.5, 0.025 + 0.01])
+    conveyor = p.loadURDF("model/conveyor.urdf", [-0.8, -0.5, 0.01])
 
     ## starting pose
     mc.move_arm_joint_values(mc.HOME, plan=False)

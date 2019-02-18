@@ -26,11 +26,11 @@ if __name__ == "__main__":
     cube = ut.get_body_id("cube_small_modified")
     conveyor = ut.get_body_id("conveyor")
 
-    speed = 0.03 # m/s
+    speed = 0.02 # m/s
 
     # distance along x to travel
-    max_x = 0.5
-    min_x = -0.5
+    max_x = 0.8
+    min_x = -0.8
     step = speed/10.0 # meters per 0.1 seconds
 
     pivot = ut.get_body_pose(conveyor)[0]
@@ -39,40 +39,39 @@ if __name__ == "__main__":
         cid = p.createConstraint(parentBodyUniqueId=conveyor, parentLinkIndex=-1, childBodyUniqueId=-1,
                                  childLinkIndex=-1, jointType=p.JOINT_FIXED, jointAxis=[0, 0, 0],
                                  parentFramePosition=[0, 0, 0], childFramePosition=pivot)
-        direction = '+'
-        try:
-            c = time.time()
-            print(c)
-            while True:
-                # print(direction)
-                # print(pivot[0])
-                if direction == "+":
-                    pivot[0] = pivot[0] + step
-                else:
-                    pivot[0] = pivot[0] - step
-                # p.changeConstraint(cid, pivot, jointChildFrameOrientation=orn, maxForce=50)
-                p.changeConstraint(cid, pivot, maxForce=5000)
-                if pivot[0] > max_x:
-                    direction = "-"
-                elif pivot[0] < min_x:
-                    direction = "+"
+        direction = '+' # for moving back and force
+        c = time.time()
+        print_speed = True  # print speed only once
+        while True:
+            # print(direction)
+            # print(pivot[0])
+            if direction == "+":
+                pivot[0] = pivot[0] + step
+            else:
+                pivot[0] = pivot[0] - step
+            # p.changeConstraint(cid, pivot, jointChildFrameOrientation=orn, maxForce=50)
+            p.changeConstraint(cid, pivot, maxForce=5000)
+            if pivot[0] > max_x and print_speed:
+                direction = "-"
+                time_spent = time.time() - c
+                speed = (max_x - min_x) / time_spent
+                rospy.loginfo("real speed: {} m/s".format(speed))
+                flag = False
+            elif pivot[0] < min_x:
+                direction = "+"
 
-                target_pose_2d = ut.get_body_pose(ut.get_body_id('cube_small_modified'))
-                if target_pose_2d[0][0] > 0.5:
-                    print(time.time()-c)
-                    print(pivot)
-                    print(target_pose_2d)
-                target_pose = ut.list_2_pose(target_pose_2d)
-                pub.publish(target_pose)
+            target_pose_2d = ut.get_body_pose(ut.get_body_id('cube_small_modified'))
+            target_pose = ut.list_2_pose(target_pose_2d)
+            pub.publish(target_pose)
 
-                mico_moveit.add_box("cube", p.getBasePositionAndOrientation(cube), size=(0.05, 0.05, 0.05))
-                mico_moveit.add_box("conveyor", p.getBasePositionAndOrientation(conveyor), size=(.1, .1, .02))
-                time.sleep(.1)
-        except KeyboardInterrupt: # not working
-            print("interrupt")
-            ut.remove_all_constraints()
+            mico_moveit.add_box("cube", p.getBasePositionAndOrientation(cube), size=(0.05, 0.05, 0.05))
+            mico_moveit.add_box("conveyor", p.getBasePositionAndOrientation(conveyor), size=(.1, .1, .02))
+            time.sleep(.1)
     else:
         while True:
+            target_pose_2d = ut.get_body_pose(ut.get_body_id('cube_small_modified'))
+            target_pose = ut.list_2_pose(target_pose_2d)
+            pub.publish(target_pose)
             mico_moveit.add_box("cube", p.getBasePositionAndOrientation(cube), size=(0.05, 0.05, 0.05))
             mico_moveit.add_box("conveyor", p.getBasePositionAndOrientation(conveyor), size=(.1, .1, .02))
             time.sleep(.1)
