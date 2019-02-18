@@ -233,16 +233,16 @@ if __name__ == "__main__":
         #### grasp planning
         c = time.time()
         current_pose = ut.get_body_pose(cube)
-        print("current pose: {}".format(current_pose))
+        # print("current pose: {}".format(current_pose))
         future_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
         future_pose_p = predict(1, cube)
         grasps_in_world = get_world_grasps(grasps, cube, future_pose)
 
-        print("kalman prediction: {}".format(future_pose))
-        print("ground truth: {}".format(future_pose_p))
-
-        print("getting world grasps takes {}".format(time.time()-c))
-        print(len(grasps_in_world))
+        # print("kalman prediction: {}".format(future_pose))
+        # print("ground truth: {}".format(future_pose_p))
+        #
+        # print("getting world grasps takes {}".format(time.time()-c))
+        # print(len(grasps_in_world))
         pre_grasps_in_world = list()
         for g in grasps_in_world:
             pre_grasps_in_world.append(MicoController.back_off(g, 0.05))
@@ -305,6 +305,9 @@ if __name__ == "__main__":
         if ONLY_TRACKING:
             pass
         else:
+            if current_pose[0][0] > 0.7:
+                # target moves outside workspace, break directly
+                break
             if can_grasp(pre_g_pose[0], 0.1, 0.055):
                 if DYNAMIC:
                     rospy.loginfo("start grasping")
@@ -323,6 +326,14 @@ if __name__ == "__main__":
                 else:
                     mc.grasp(pre_g_pose, DYNAMIC)
                     break
+
+    rospy.sleep(3)
+    # kill all other things
+    os.system("kill -9 $(pgrep -f move_conveyor)")
+    os.system("kill -9 $(pgrep -f trajectory_execution_server)")
+    os.system("kill -9 $(pgrep -f motion_prediction_server)")
+
+    # check success and then do something
 
     while 1:
         time.sleep(1)

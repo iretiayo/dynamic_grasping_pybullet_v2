@@ -29,7 +29,7 @@ if __name__ == "__main__":
     conveyor = ut.get_body_id("conveyor")
 
     speed = 0.03 # m/s
-    rate = 100
+    rate = 50
     r = rospy.Rate(rate)  # publishing frequency
 
     # distance along x to travel
