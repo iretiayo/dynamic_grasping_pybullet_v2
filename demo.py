@@ -229,6 +229,8 @@ if __name__ == "__main__":
     pre_position_trajectory = None
     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
 
+    start_time = time.time()
+    logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, "video/test.mp4")
     while True:
         #### grasp planning
         c = time.time()
@@ -327,7 +329,12 @@ if __name__ == "__main__":
                     mc.grasp(pre_g_pose, DYNAMIC)
                     break
 
-    rospy.sleep(3)
+    rospy.sleep(1) # give some time for lift to finish before get time
+    time_spent = time.time() - start_time
+    rospy.loginfo("time spent: {}".format(time_spent))
+    rospy.sleep(2)
+
+    p.stopStateLogging(logging)
     # kill all other things
     os.system("kill -9 $(pgrep -f move_conveyor)")
     os.system("kill -9 $(pgrep -f trajectory_execution_server)")

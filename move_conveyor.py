@@ -28,7 +28,7 @@ if __name__ == "__main__":
     target = ut.get_body_id("cube_small_modified")
     conveyor = ut.get_body_id("conveyor")
 
-    speed = 0.03 # m/s
+    speed = 0.05 # m/s
     rate = 50
     r = rospy.Rate(rate)  # publishing frequency
 
