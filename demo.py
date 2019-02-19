@@ -20,6 +20,7 @@ import time
 import rospkg
 import os
 import motion_prediction.srv
+import csv
 
 ## TODO uniform sampling grasps
 
@@ -178,6 +179,13 @@ def can_grasp(g_position, d_gpos_threshold, d_target_threshold):
 
     return dist1 < d_target_threshold
 
+def is_success():
+    target_pose_2d = ut.get_body_pose(cube)
+    if target_pose_2d[0][2] > 0.05:
+        return True
+    else:
+        return False
+
 if __name__ == "__main__":
     rospy.init_node("demo")
 
@@ -230,7 +238,8 @@ if __name__ == "__main__":
     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
 
     start_time = time.time()
-    logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, "video/test.mp4")
+    video_fname = '{}_{}.mp4'.format('test', time.strftime('%Y-%m-%d-%H-%M-%S'))
+    logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join("video",video_fname))
     while True:
         #### grasp planning
         c = time.time()
@@ -341,6 +350,29 @@ if __name__ == "__main__":
     os.system("kill -9 $(pgrep -f motion_prediction_server)")
 
     # check success and then do something
+    success = is_success()
+    rospy.loginfo(success)
+
+    # save result to file: object_name, success, time, velocity, conveyor_distance
+    result_dir = 'results'
+    object_name = 'cube'
+    result = {'object_name': object_name,
+              'success': success,
+              'time': time_spent,
+              'video_filename': video_fname,
+              'velocity': 0,
+              'conveyor_distance': 0}
+
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+    result_file_path = os.path.join(result_dir, '{}.csv'.format(object_name))
+    file_exists = os.path.exists(result_file_path)
+    with open(result_file_path, 'a') as csv_file:
+        writer = csv.DictWriter(csv_file, result.keys())
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(result)
+
 
     while 1:
         time.sleep(1)
