@@ -27,18 +27,31 @@ import argparse
 def get_args():
     parser = argparse.ArgumentParser(description='Run Dynamic Grasping Experiment')
 
-    parser.add_argument('--object_name', type=str,
-                        default= 'cube',
+    parser.add_argument('-o', '--object_name', type=str, default= 'cube',
                         help="Target object to be grasped. Ex: cube")
-    parser.add_argument('--conveyor_velocity', type=float,
-                        default=0.03,
+    parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.03,
                         help='Velocity of conveyor belt')
-    parser.add_argument('--conveyor_distance', type=float,
-                        default=0.5,
+    parser.add_argument('-d', '--conveyor_distance', type=float, default=0.5,
                         help="Distance of conveyor belt to robot base")
     args = parser.parse_args()
 
+    args.mesh_dir = os.path.abspath('meshes/meshes_obj')
+    args.object_mesh_filepath = os.path.join(args.mesh_dir , '{}.obj'.format(args.object_name))
+
+    # set ROS parameters
     rospy.set_param('conveyor_velocity', args.conveyor_velocity)
+    rospy.set_param('object_name', args.object_name)
+    rospy.set_param('object_mesh_filepath', args.object_mesh_filepath)
+
+    # set_up urdf
+    urdf_template_filepath = 'model/object_template.urdf'
+    urdf_target_object_filepath = 'model/target_object.urdf'
+    os.system('cp {} {}'.format(urdf_template_filepath, urdf_target_object_filepath))
+    sed_cmd = "sed -i 's|{}|{}|g' {}".format('object_name.obj', args.object_mesh_filepath, urdf_target_object_filepath)
+    os.system(sed_cmd)
+    sed_cmd = "sed -i 's|{}|{}|g' {}".format('object_name', args.object_name, urdf_target_object_filepath)
+    os.system(sed_cmd)
+    args.urdf_target_object_filepath = urdf_target_object_filepath
 
     return args
 
@@ -191,7 +204,7 @@ def can_grasp(g_position, d_gpos_threshold, d_target_threshold):
     :return:
     """
     # TODO shall I give constraint on quaternion as well?
-    target_position = ut.get_body_pose(cube)[0]
+    target_position = ut.get_body_pose(target_object)[0]
     eef_position = mc.get_arm_eef_pose()[0]
     dist1 = np.linalg.norm(np.array(target_position) - np.array(eef_position))
     dist2 = np.linalg.norm(np.array(g_position) - np.array(eef_position))
@@ -200,8 +213,8 @@ def can_grasp(g_position, d_gpos_threshold, d_target_threshold):
 
     return dist1 < d_target_threshold
 
-def is_success():
-    target_pose_2d = ut.get_body_pose(cube)
+def is_success(target_object):
+    target_pose_2d = ut.get_body_pose(target_object)
     if target_pose_2d[0][2] > 0.05:
         return True
     else:
@@ -226,17 +239,21 @@ if __name__ == "__main__":
 
     p.setGravity(0, 0, -9.8)
     plane = p.loadURDF("plane.urdf")
-    cube = p.loadURDF("model/cube_small_modified.urdf", [-0.8, -0.5, 0.025 + 0.01])
+    target_object = p.loadURDF(args.urdf_target_object_filepath, [-0.8, -0.5, 0.025 + 0.01])
     conveyor = p.loadURDF("model/conveyor.urdf", [-0.8, -0.5, 0.01])
+
+    ## draw lines
+    p.addUserDebugLine(lineFromXYZ=[-0.8-0.05, -0.5+0.05, 0], lineToXYZ=[0.8+0.05, -0.5+0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
+    p.addUserDebugLine(lineFromXYZ=[-0.8-0.05, -0.5-0.05, 0], lineToXYZ=[0.8+0.05, -0.5-0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
 
     ## memory leaks happen sometimes without this but a breakpoint
     p.setRealTimeSimulation(1)
 
+    ## load robot
     urdf_dir = os.path.join(rospkg.RosPack().get_path('kinova_description'), 'urdf')
     urdf_filename = 'mico.urdf'
     if not os.path.exists(os.path.join(urdf_dir, urdf_filename)):
         os.system('cp model/mico.urdf {}'.format(os.path.join(urdf_dir, urdf_filename)))
-
     mico = p.loadURDF(os.path.join(urdf_dir, urdf_filename), flags=p.URDF_USE_SELF_COLLISION)
     mc = MicoController(mico)
     mc.reset_arm_joint_values(mc.HOME)
@@ -246,7 +263,7 @@ if __name__ == "__main__":
     mc.open_gripper()
     mc.mico_moveit.clear_scene()
 
-    mc.mico_moveit.add_box("cube", p.getBasePositionAndOrientation(cube), size=(0.05, 0.05, 0.05))
+    mc.mico_moveit.add_mesh(args.object_name, p.getBasePositionAndOrientation(target_object), args.object_mesh_filepath)
     mc.mico_moveit.add_box("conveyor", p.getBasePositionAndOrientation(conveyor), size=(.1, .1, .02))
     mc.mico_moveit.add_box("floor", ((0, 0, -0.005), (0, 0, 0, 1)), size=(2, 2, 0.01))
 
@@ -264,11 +281,11 @@ if __name__ == "__main__":
     while True:
         #### grasp planning
         c = time.time()
-        current_pose = ut.get_body_pose(cube)
+        current_pose = ut.get_body_pose(target_object)
         # print("current pose: {}".format(current_pose))
         future_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
-        future_pose_p = predict(1, cube)
-        grasps_in_world = get_world_grasps(grasps, cube, future_pose)
+        future_pose_p = predict(1, target_object)
+        grasps_in_world = get_world_grasps(grasps, target_object, future_pose)
 
         # print("kalman prediction: {}".format(future_pose))
         # print("ground truth: {}".format(future_pose_p))
@@ -343,9 +360,9 @@ if __name__ == "__main__":
             if can_grasp(pre_g_pose[0], 0.1, 0.055):
                 if DYNAMIC:
                     rospy.loginfo("start grasping")
-                    # predicted_pose = predict(1, cube)
+                    # predicted_pose = predict(1, target_object)
                     predicted_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
-                    g_pose = get_world_grasps([grasps[g_index]], cube, predicted_pose)[0]
+                    g_pose = get_world_grasps([grasps[g_index]], target_object, predicted_pose)[0]
                     mc.move_arm_eef_pose(g_pose, plan=False) # TODO sometimes this motion is werid? rarely
                     # time.sleep(1) # give sometime to move before closing
                     mc.close_gripper()
@@ -371,7 +388,7 @@ if __name__ == "__main__":
     os.system("kill -9 $(pgrep -f motion_prediction_server)")
 
     # check success and then do something
-    success = is_success()
+    success = is_success(target_object)
     rospy.loginfo(success)
 
     # save result to file: object_name, success, time, velocity, conveyor_distance

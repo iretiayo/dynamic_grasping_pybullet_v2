@@ -183,6 +183,13 @@ class MicoMoveit(object):
         pose_stamped.header.frame_id = "/world"
         self.scene.add_box(name, pose_stamped, size)
 
+    def add_mesh(self, name, pose_2d, mesh_filepath, size=(1, 1, 1)):
+        pose_stamped = PoseStamped()
+        pose = Pose(Point(*pose_2d[0]), Quaternion(*pose_2d[1]))
+        pose_stamped.pose = pose
+        pose_stamped.header.frame_id = "/world"
+        self.scene.add_mesh(name, pose_stamped, mesh_filepath, size)
+
     def get_known_object_names(self):
         return self.scene.get_known_object_names()
 
