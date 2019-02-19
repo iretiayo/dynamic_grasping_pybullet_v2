@@ -203,8 +203,8 @@ if __name__ == "__main__":
 
     p.setGravity(0, 0, -9.8)
     plane = p.loadURDF("plane.urdf")
-    cubeStartPos = [0, 0, 1]
-    cubeStartOrientation = p.getQuaternionFromEuler([0, 0, 0])
+    cube = p.loadURDF("model/cube_small_modified.urdf", [-0.8, -0.5, 0.025 + 0.01])
+    conveyor = p.loadURDF("model/conveyor.urdf", [-0.8, -0.5, 0.01])
 
     ## memory leaks happen sometimes without this but a breakpoint
     p.setRealTimeSimulation(1)
@@ -217,8 +217,6 @@ if __name__ == "__main__":
     mico = p.loadURDF(os.path.join(urdf_dir, urdf_filename), flags=p.URDF_USE_SELF_COLLISION)
     mc = MicoController(mico)
     mc.reset_arm_joint_values(mc.HOME)
-    cube = p.loadURDF("model/cube_small_modified.urdf", [-0.8, -0.5, 0.025 + 0.01])
-    conveyor = p.loadURDF("model/conveyor.urdf", [-0.8, -0.5, 0.01])
 
     ## starting pose
     mc.move_arm_joint_values(mc.HOME, plan=False)
@@ -345,7 +343,7 @@ if __name__ == "__main__":
 
     p.stopStateLogging(logging)
     # kill all other things
-    os.system("kill -9 $(pgrep -f move_conveyor)")
+    # os.system("kill -9 $(pgrep -f move_conveyor)")
     os.system("kill -9 $(pgrep -f trajectory_execution_server)")
     os.system("kill -9 $(pgrep -f motion_prediction_server)")
 
