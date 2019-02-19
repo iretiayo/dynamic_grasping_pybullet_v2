@@ -21,6 +21,27 @@ import rospkg
 import os
 import motion_prediction.srv
 import csv
+import argparse
+
+
+def get_args():
+    parser = argparse.ArgumentParser(description='Run Dynamic Grasping Experiment')
+
+    parser.add_argument('--object_name', type=str,
+                        default= 'cube',
+                        help="Target object to be grasped. Ex: cube")
+    parser.add_argument('--conveyor_velocity', type=float,
+                        default=0.03,
+                        help='Velocity of conveyor belt')
+    parser.add_argument('--conveyor_distance', type=float,
+                        default=0.5,
+                        help="Distance of conveyor belt to robot base")
+    args = parser.parse_args()
+
+    rospy.set_param('conveyor_velocity', args.conveyor_velocity)
+
+    return args
+
 
 ## TODO uniform sampling grasps
 
@@ -187,6 +208,8 @@ def is_success():
         return False
 
 if __name__ == "__main__":
+    args = get_args()
+
     rospy.init_node("demo")
 
     physicsClient = p.connect(p.GUI_SERVER)
@@ -236,7 +259,7 @@ if __name__ == "__main__":
     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
 
     start_time = time.time()
-    video_fname = '{}_{}.mp4'.format('test', time.strftime('%Y-%m-%d-%H-%M-%S'))
+    video_fname = '{}_{}.mp4'.format(args.object_name, time.strftime('%Y-%m-%d-%H-%M-%S'))
     logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join("video",video_fname))
     while True:
         #### grasp planning
@@ -353,17 +376,16 @@ if __name__ == "__main__":
 
     # save result to file: object_name, success, time, velocity, conveyor_distance
     result_dir = 'results'
-    object_name = 'cube'
-    result = {'object_name': object_name,
+    result = {'object_name': args.object_name,
               'success': success,
               'time': time_spent,
               'video_filename': video_fname,
-              'velocity': 0,
-              'conveyor_distance': 0}
+              'conveyor_velocity': args.conveyor_velocity,
+              'conveyor_distance': args.conveyor_distance}
 
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
-    result_file_path = os.path.join(result_dir, '{}.csv'.format(object_name))
+    result_file_path = os.path.join(result_dir, '{}.csv'.format(args.object_name))
     file_exists = os.path.exists(result_file_path)
     with open(result_file_path, 'a') as csv_file:
         writer = csv.DictWriter(csv_file, result.keys())
