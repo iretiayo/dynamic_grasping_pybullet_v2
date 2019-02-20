@@ -76,12 +76,21 @@ def get_base_name(body):
 def get_body_name(body):
     return get_body_info(body).body_name.decode(encoding='UTF-8')
 
-def reset_camera(yaw=50.0, pitch=-35.0, dist=5.0, target=(0.0, 0.0, 0.0)):
-    p.resetDebugVisualizerCamera(cameraDistance=dist, cameraYaw=yaw, cameraPitch=pitch, cameraTargetPosition=target)
-
 def get_body_pose(body):
     """ return pose_2d """
     raw = p.getBasePositionAndOrientation(body)
     position = list(raw[0])
     orn = list(raw[1])
     return [position, orn]
+
+### Camera
+CameraInfo = namedtuple('CameraInfo', ['width', 'height',
+                                               'viewMatrix', 'projectionMatrix', 'cameraUp',
+                                               'cameraForward', 'horizontal', 'vertical',
+                                               'yaw', 'pitch', 'dist', 'target'])
+
+def reset_camera(yaw=50.0, pitch=-35.0, dist=5.0, target=(0.0, 0.0, 0.0)):
+    p.resetDebugVisualizerCamera(cameraDistance=dist, cameraYaw=yaw, cameraPitch=pitch, cameraTargetPosition=target)
+
+def get_camera():
+    return CameraInfo(*p.getDebugVisualizerCamera())

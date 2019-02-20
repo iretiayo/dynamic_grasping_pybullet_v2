@@ -268,8 +268,6 @@ def get_reachability_of_grasps_pose_2d(grasps_in_world, sdf_reachability_space):
     # is_reachable = [sdf_values[i] > 0 for i in range(len(sdf_values))]
     return sdf_values
 
-def choose_grasps(grasps):
-    pass
 
 if __name__ == "__main__":
     args = get_args()
@@ -279,7 +277,7 @@ if __name__ == "__main__":
 
     physicsClient = p.connect(p.GUI_SERVER)
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
-    ut.reset_camera(dist=1.5)
+    ut.reset_camera(yaw=-24.400014877319336, pitch=-47.000030517578125, dist=0.9, target=(-0.2, -0.30000001192092896, 0.0))
     ut.remove_all_bodies()
     # p.setAdditionalSearchPath("/home/jxu/bullet3/data") #optionally
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
@@ -289,19 +287,19 @@ if __name__ == "__main__":
     ONLY_TRACKING = False
     DYNAMIC = True
     KEEP_PREVIOUS_GRASP = True
-    RANK_BY_REACHABILITY = False
+    RANK_BY_REACHABILITY = True
+    LOAD_OBSTACLES = True
 
     p.setGravity(0, 0, -9.8)
+
+    ## load plane, conveyor
     plane = p.loadURDF("plane.urdf")
-    target_object = p.loadURDF(args.urdf_target_object_filepath, [-0.8, -0.5, 0.025 + 0.01])
-    conveyor = p.loadURDF("model/conveyor.urdf", [-0.8, -0.5, 0.01])
+    target_object = p.loadURDF(args.urdf_target_object_filepath, [-0.8, -args.conveyor_distance, 0.025 + 0.01])
+    conveyor = p.loadURDF("model/conveyor.urdf", [-0.8, -args.conveyor_distance, 0.01])
 
     ## draw lines
-    p.addUserDebugLine(lineFromXYZ=[-0.8-0.05, -0.5+0.05, 0], lineToXYZ=[0.8+0.05, -0.5+0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
-    p.addUserDebugLine(lineFromXYZ=[-0.8-0.05, -0.5-0.05, 0], lineToXYZ=[0.8+0.05, -0.5-0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
-
-    ## memory leaks happen sometimes without this but a breakpoint
-    p.setRealTimeSimulation(1)
+    p.addUserDebugLine(lineFromXYZ=[-0.8-0.05, -args.conveyor_distance+0.05, 0], lineToXYZ=[0.8+0.05, -args.conveyor_distance+0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
+    p.addUserDebugLine(lineFromXYZ=[-0.8-0.05, -args.conveyor_distance-0.05, 0], lineToXYZ=[0.8+0.05, -args.conveyor_distance-0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
 
     ## load robot
     urdf_dir = os.path.join(rospkg.RosPack().get_path('kinova_description'), 'urdf')
@@ -309,6 +307,17 @@ if __name__ == "__main__":
     if not os.path.exists(os.path.join(urdf_dir, urdf_filename)):
         os.system('cp model/mico.urdf {}'.format(os.path.join(urdf_dir, urdf_filename)))
     mico = p.loadURDF(os.path.join(urdf_dir, urdf_filename), flags=p.URDF_USE_SELF_COLLISION)
+
+    ## load obstacles
+    if LOAD_OBSTACLES:
+        all_bottle_obstacle = p.loadURDF("model/all_bottle_obstacle.urdf", [0.08998222825053534, -0.3499910643580809+0.5-args.conveyor_distance, 0.00023844586980673307], [-0.0216622233067531,-0.0056517363083496315,0.9252930239049401,0.3785916347081129])
+        trash_can_new_obstacle = p.loadURDF("model/trash_can_new_obstacle.urdf", [-0.30547354355304757, -0.30201510506407675+0.5-args.conveyor_distance, 0.06916064731741166],[0.014904781746875194,-0.039341362803788846,0.0011919812701876302,0.9991139493743795])
+        gillette_shaving_gel_obstacle = p.loadURDF("model/gillette_shaving_gel_obstacle.urdf",[-0.09985463045431538, -0.5998251882677045+0.5-args.conveyor_distance, 0.000567468746735579],[-0.035094655962893954,0.011424311280120345,-0.003006735972672182,0.9993141697051092])
+
+    ## memory leaks happen sometimes without this but a breakpoint
+    p.setRealTimeSimulation(1)
+
+    ## initializa controller
     mc = MicoController(mico)
     mc.reset_arm_joint_values(mc.HOME)
 
@@ -317,9 +326,13 @@ if __name__ == "__main__":
     mc.open_gripper()
     mc.mico_moveit.clear_scene()
 
-    mc.mico_moveit.add_mesh(args.object_name, p.getBasePositionAndOrientation(target_object), args.object_mesh_filepath)
-    mc.mico_moveit.add_box("conveyor", p.getBasePositionAndOrientation(conveyor), size=(.1, .1, .02))
+    mc.mico_moveit.add_mesh(args.object_name, ut.get_body_pose(target_object), args.object_mesh_filepath)
+    mc.mico_moveit.add_box("conveyor", ut.get_body_pose(conveyor), size=(.1, .1, .02))
     mc.mico_moveit.add_box("floor", ((0, 0, -0.005), (0, 0, 0, 1)), size=(2, 2, 0.01))
+    if LOAD_OBSTACLES:
+        mc.mico_moveit.add_mesh("all_bottle_obstacle", ut.get_body_pose(all_bottle_obstacle), 'meshes/meshes_obj/all_bottle.obj')
+        mc.mico_moveit.add_mesh("trash_can_new_obstacle", ut.get_body_pose(trash_can_new_obstacle), 'meshes/meshes_obj/trash_can_new.obj')
+        mc.mico_moveit.add_mesh("gillette_shaving_gel_obstacle", ut.get_body_pose(gillette_shaving_gel_obstacle), 'meshes/meshes_obj/gillette_shaving_gel.obj')
 
     # kalman filter service
     rospy.wait_for_service('motion_prediction')
