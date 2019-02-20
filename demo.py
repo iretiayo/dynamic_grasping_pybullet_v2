@@ -22,6 +22,8 @@ import os
 import motion_prediction.srv
 import csv
 import argparse
+from reachability_utils.process_reachability_data_from_csv import load_reachability_data_from_dir
+from reachability_utils.reachability_resolution_analysis import interpolate_pose_in_reachability_space_grid
 
 
 def get_args():
@@ -53,8 +55,18 @@ def get_args():
     os.system(sed_cmd)
     args.urdf_target_object_filepath = urdf_target_object_filepath
 
+    args.reachability_data_dir = os.path.join(rospkg.RosPack().get_path('mico_reachability_config'), 'data')
+    args.step_size, args.mins, args.dims = load_reachability_params(args.reachability_data_dir)
+
     return args
 
+
+def load_reachability_params(reachability_data_dir):
+    step_size = np.loadtxt(os.path.join(reachability_data_dir, 'reach_data.step'), delimiter=',')
+    mins = np.loadtxt(os.path.join(reachability_data_dir, 'reach_data.mins'), delimiter=',')
+    dims = np.loadtxt(os.path.join(reachability_data_dir, 'reach_data.dims'), delimiter=',', dtype=int)
+
+    return step_size, mins, dims
 
 ## TODO uniform sampling grasps
 
@@ -228,8 +240,40 @@ def is_success(target_object):
     else:
         return False
 
+def get_reachability_of_grasps_pose(grasps_in_world, sdf_reachability_space):
+    """ grasps_in_world is a list of geometry_msgs/Pose """
+    sdf_values = []
+    for g_pose in grasps_in_world:
+        trans, rot = tf_conversions.toTf(tf_conversions.fromMsg(g_pose))
+        rpy = tf_conversions.Rotation.Quaternion(*rot).GetRPY()
+        query_pose = np.concatenate((trans, rpy))
+        sdf_values.append(
+            interpolate_pose_in_reachability_space_grid(sdf_reachability_space,
+                                                        args.mins, args.step_size, args.dims, query_pose))
+
+    # is_reachable = [sdf_values[i] > 0 for i in range(len(sdf_values))]
+    return sdf_values
+
+def get_reachability_of_grasps_pose_2d(grasps_in_world, sdf_reachability_space):
+    """ grasps_in_world is a list of pose_2d """
+    sdf_values = []
+    for g_pose in grasps_in_world:
+        trans, rot = g_pose[0], g_pose[1]
+        rpy = tf_conversions.Rotation.Quaternion(*rot).GetRPY()
+        query_pose = np.concatenate((trans, rpy))
+        sdf_values.append(
+            interpolate_pose_in_reachability_space_grid(sdf_reachability_space,
+                                                        args.mins, args.step_size, args.dims, query_pose))
+
+    # is_reachable = [sdf_values[i] > 0 for i in range(len(sdf_values))]
+    return sdf_values
+
+def choose_grasps(grasps):
+    pass
+
 if __name__ == "__main__":
     args = get_args()
+    _, mins, step_size, dims, sdf_reachability_space = load_reachability_data_from_dir(args.reachability_data_dir)
 
     rospy.init_node("demo")
 
@@ -244,7 +288,8 @@ if __name__ == "__main__":
 
     ONLY_TRACKING = False
     DYNAMIC = True
-    KEEP_PREVIOUS_GRASP = False
+    KEEP_PREVIOUS_GRASP = True
+    RANK_BY_REACHABILITY = False
 
     p.setGravity(0, 0, -9.8)
     plane = p.loadURDF("plane.urdf")
@@ -293,7 +338,9 @@ if __name__ == "__main__":
         #### grasp planning
         c = time.time()
         current_pose = ut.get_body_pose(target_object)
-        # print("current pose: {}".format(current_pose))
+        if current_pose[0][0] > 0.79:
+            # target moves outside workspace, break directly
+            break
         future_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
         future_pose_p = predict(1, target_object)
         grasps_in_world = get_world_grasps(grasps, target_object, future_pose)
@@ -308,30 +355,53 @@ if __name__ == "__main__":
         g_index = None
 
         # TODO, now just check reachability of pregrasp with target
-        if KEEP_PREVIOUS_GRASP and pre_g_index is not None and mc.get_arm_ik(pre_grasps_in_world[pre_g_index]) is not None:
-            # always first check whether the previous grasp is still reachable
-            rospy.loginfo("the previous pre-grasp is reachable")
-            pre_g_pose = pre_grasps_in_world[pre_g_index]
-            g_pose = grasps_in_world[pre_g_index]
-            pre_g_joint_values = mc.get_arm_ik(pre_grasps_in_world[pre_g_index])
-            g_index = pre_g_index
-        else:
-            # go through the list ranked by stability
-            for i, g in enumerate(pre_grasps_in_world):
-                tt = time.time()
-                j = mc.get_arm_ik(g)
-                print("get arm ik takes {}".format(time.time()-tt))
-                if j is None:
-                    pass
-                    # print("no ik exists for the {}-th pre-grasp".format(i))
-                else:
-                    rospy.loginfo("the {}-th pre-grasp is reachable".format(i))
-                    pre_g_pose = g
-                    g_pose = grasps_in_world[i]
-                    pre_g_joint_values = j
-                    g_index = i
+        # pre_grasps_in_world is always updated with the current pose of the target object
+        if RANK_BY_REACHABILITY:
+            if KEEP_PREVIOUS_GRASP and pre_g_index is not None and \
+                    get_reachability_of_grasps_pose_2d([pre_grasps_in_world[pre_g_index]], sdf_reachability_space)[0] > 0:
+                rospy.loginfo("the previous pre-grasp is reachable")
+                pre_g_pose = pre_grasps_in_world[pre_g_index]
+                g_pose = grasps_in_world[pre_g_index]
+                pre_g_joint_values = mc.get_arm_ik(pre_grasps_in_world[pre_g_index])
+                g_index = pre_g_index
+                if pre_g_joint_values is None:
+                    rospy.logerr("the pre-grasp pose is actually not reachable")
+            else:
+                sdf_values = get_reachability_of_grasps_pose_2d(pre_grasps_in_world, sdf_reachability_space)
+                print(max(sdf_values))
+                if max(sdf_values) > 0:
+                    g_index = int(np.argmax(sdf_values))
+                    pre_g_pose = pre_grasps_in_world[g_index]
+                    g_pose = grasps_in_world[g_index]
+                    pre_g_joint_values = mc.get_arm_ik(pre_grasps_in_world[g_index])
                     pre_g_index = g_index
-                    break
+                    if pre_g_joint_values is None:
+                        rospy.logerr("the pre-grasp pose is actually not reachable")
+        else:
+            if KEEP_PREVIOUS_GRASP and pre_g_index is not None and mc.get_arm_ik(pre_grasps_in_world[pre_g_index]) is not None:
+                # always first check whether the previous grasp is still reachable
+                rospy.loginfo("the previous pre-grasp is reachable")
+                pre_g_pose = pre_grasps_in_world[pre_g_index]
+                g_pose = grasps_in_world[pre_g_index]
+                pre_g_joint_values = mc.get_arm_ik(pre_grasps_in_world[pre_g_index])
+                g_index = pre_g_index
+            else:
+                # go through the list ranked by stability
+                for i, g in enumerate(pre_grasps_in_world):
+                    tt = time.time()
+                    j = mc.get_arm_ik(g)
+                    print("get arm ik takes {}".format(time.time()-tt))
+                    if j is None:
+                        pass
+                        # print("no ik exists for the {}-th pre-grasp".format(i))
+                    else:
+                        rospy.loginfo("the {}-th pre-grasp is reachable".format(i))
+                        pre_g_pose = g
+                        g_pose = grasps_in_world[i]
+                        pre_g_joint_values = j
+                        g_index = i
+                        pre_g_index = g_index
+                        break
 
         # did not find a reachable pre-grasp
         if pre_g_pose is None:
@@ -368,9 +438,7 @@ if __name__ == "__main__":
         if ONLY_TRACKING:
             pass
         else:
-            if current_pose[0][0] > 0.7:
-                # target moves outside workspace, break directly
-                break
+            # if can_grasp(pre_g_pose[0], 0.05, None):
             if can_grasp(pre_g_pose[0], None, 0.055):
                 if DYNAMIC:
                     rospy.loginfo("start grasping")
