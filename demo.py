@@ -195,10 +195,10 @@ def predict(duration, body):
     pose[0][0] = pose[0][0] + speed * duration
     return pose
 
-def can_grasp(g_position, d_gpos_threshold, d_target_threshold):
+def can_grasp(g_position, d_gpos_threshold=None, d_target_threshold=None):
     """
 
-    :param g_position: position of the grasp that we want to match
+    :param g_position: position of the grasp that we want to match, normally just use pre-grasp
     :param d_gpos_threshold: allowed position distance between eef and grasp position
     :param d_target_threshold: allowed position distance between eef and target
     :return:
@@ -206,12 +206,20 @@ def can_grasp(g_position, d_gpos_threshold, d_target_threshold):
     # TODO shall I give constraint on quaternion as well?
     target_position = ut.get_body_pose(target_object)[0]
     eef_position = mc.get_arm_eef_pose()[0]
-    dist1 = np.linalg.norm(np.array(target_position) - np.array(eef_position))
-    dist2 = np.linalg.norm(np.array(g_position) - np.array(eef_position))
-    rospy.loginfo("distance to target: {}".format(dist1))
-    rospy.loginfo("distance to g_position: {}".format(dist2))
+    d_target = np.linalg.norm(np.array(target_position) - np.array(eef_position))
+    d_gpos = np.linalg.norm(np.array(g_position) - np.array(eef_position))
+    rospy.loginfo("distance to target: {}".format(d_target))
+    rospy.loginfo("distance to g_position: {}".format(d_gpos))
 
-    return dist1 < d_target_threshold
+    if d_gpos_threshold is not None and d_target_threshold is None:
+        can = d_gpos < d_gpos_threshold
+    elif d_gpos_threshold is None and d_target_threshold is not None:
+        can = d_target < d_target_threshold
+    elif d_gpos_threshold is not None and d_target_threshold is not None:
+        can = d_gpos < d_gpos_threshold and d_target < d_target_threshold
+    else:
+        raise ValueError("please specify a threshold!")
+    return can
 
 def is_success(target_object):
     target_pose_2d = ut.get_body_pose(target_object)
@@ -236,6 +244,7 @@ if __name__ == "__main__":
 
     ONLY_TRACKING = False
     DYNAMIC = True
+    KEEP_PREVIOUS_GRASP = False
 
     p.setGravity(0, 0, -9.8)
     plane = p.loadURDF("plane.urdf")
@@ -276,8 +285,10 @@ if __name__ == "__main__":
     grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
 
     start_time = time.time()
-    video_fname = '{}_{}.mp4'.format(args.object_name, time.strftime('%Y-%m-%d-%H-%M-%S'))
+    video_fname = '{}-{}.mp4'.format(args.object_name, time.strftime('%Y-%m-%d-%H-%M-%S'))
     logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join("video",video_fname))
+
+    pre_g_index = None
     while True:
         #### grasp planning
         c = time.time()
@@ -287,11 +298,6 @@ if __name__ == "__main__":
         future_pose_p = predict(1, target_object)
         grasps_in_world = get_world_grasps(grasps, target_object, future_pose)
 
-        # print("kalman prediction: {}".format(future_pose))
-        # print("ground truth: {}".format(future_pose_p))
-        #
-        # print("getting world grasps takes {}".format(time.time()-c))
-        # print(len(grasps_in_world))
         pre_grasps_in_world = list()
         for g in grasps_in_world:
             pre_grasps_in_world.append(MicoController.back_off(g, 0.05))
@@ -300,29 +306,38 @@ if __name__ == "__main__":
         g_pose = None
         pre_g_joint_values = None
         g_index = None
+
         # TODO, now just check reachability of pregrasp with target
-        for i, g in enumerate(pre_grasps_in_world):
-            tt = time.time()
-            j = mc.get_arm_ik(g)
-            print("get arm ik takes {}".format(time.time()-tt))
-            if j is None:
-                pass
-                # print("no ik exists for the {}-th pre-grasp".format(i))
-            else:
-                rospy.loginfo("the {}-th pre-grasp is reachable".format(i))
-                pre_g_pose = g
-                g_pose = grasps_in_world[i]
-                pre_g_joint_values = j
-                g_index = i
-                break
+        if KEEP_PREVIOUS_GRASP and pre_g_index is not None and mc.get_arm_ik(pre_grasps_in_world[pre_g_index]) is not None:
+            # always first check whether the previous grasp is still reachable
+            rospy.loginfo("the previous pre-grasp is reachable")
+            pre_g_pose = pre_grasps_in_world[pre_g_index]
+            g_pose = grasps_in_world[pre_g_index]
+            pre_g_joint_values = mc.get_arm_ik(pre_grasps_in_world[pre_g_index])
+            g_index = pre_g_index
+        else:
+            # go through the list ranked by stability
+            for i, g in enumerate(pre_grasps_in_world):
+                tt = time.time()
+                j = mc.get_arm_ik(g)
+                print("get arm ik takes {}".format(time.time()-tt))
+                if j is None:
+                    pass
+                    # print("no ik exists for the {}-th pre-grasp".format(i))
+                else:
+                    rospy.loginfo("the {}-th pre-grasp is reachable".format(i))
+                    pre_g_pose = g
+                    g_pose = grasps_in_world[i]
+                    pre_g_joint_values = j
+                    g_index = i
+                    pre_g_index = g_index
+                    break
 
         # did not find a reachable pre-grasp
         if pre_g_pose is None:
             rospy.loginfo("object out of range!")
             continue
         rospy.loginfo("grasp planning takes {}".format(time.time()-c))
-
-
 
         #### move to pre-grasp pose
         looking_ahead = 3
@@ -349,7 +364,6 @@ if __name__ == "__main__":
         # trajectory to have finished before we send another goal to move arm
         # TODO add blocking to control
 
-
         #### grasp
         if ONLY_TRACKING:
             pass
@@ -357,7 +371,7 @@ if __name__ == "__main__":
             if current_pose[0][0] > 0.7:
                 # target moves outside workspace, break directly
                 break
-            if can_grasp(pre_g_pose[0], 0.1, 0.055):
+            if can_grasp(pre_g_pose[0], None, 0.055):
                 if DYNAMIC:
                     rospy.loginfo("start grasping")
                     # predicted_pose = predict(1, target_object)
@@ -380,12 +394,6 @@ if __name__ == "__main__":
     time_spent = time.time() - start_time
     rospy.loginfo("time spent: {}".format(time_spent))
     rospy.sleep(2)
-
-    p.stopStateLogging(logging)
-    # kill all other things
-    # os.system("kill -9 $(pgrep -f move_conveyor)")
-    os.system("kill -9 $(pgrep -f trajectory_execution_server)")
-    os.system("kill -9 $(pgrep -f motion_prediction_server)")
 
     # check success and then do something
     success = is_success(target_object)
@@ -410,6 +418,12 @@ if __name__ == "__main__":
             writer.writeheader()
         writer.writerow(result)
 
+
+    p.stopStateLogging(logging)
+    # kill all other things
+    # os.system("kill -9 $(pgrep -f move_conveyor)")
+    os.system("kill -9 $(pgrep -f trajectory_execution_server)")
+    os.system("kill -9 $(pgrep -f motion_prediction_server)")
 
     while 1:
         time.sleep(1)
