@@ -31,4 +31,11 @@ Launch a virtual robot, MoveIt and RViz
 roslaunch m1n6s200_moveit_config m1n6s200_virtual_robot_demo.launch
 ```
 
+Launch GraspIt! with reachability plug-in
+```
+roslaunch mico_reachability_config reachability_energy_plugin.launch
+```
+We need two packages: `mico_reachability_config` and `reachability_energy_plugin`
+
+
 

@@ -72,6 +72,8 @@ def load_reachability_params(reachability_data_dir):
 
 def generate_grasps(load_fnm=None, save_fnm=None, body="cube"):
     """
+    This method assumes the target object to be at world origin.
+
     :param load_fnm: load file name
     :param save_fnm: save file name
     :param body: the name of the graspable object to load in graspit
@@ -107,7 +109,45 @@ def generate_grasps(load_fnm=None, save_fnm=None, body="cube"):
             pickle.dump(grasps, open(save_fnm, "wb"))
         return grasps.grasps
 
-## Question: does ik need the pose to be in base_link
+def plan_reachable_grasps(load_fnm=None, save_fnm=None, object_name="cube", object_pose_2d=None, seed_grasp=None, max_steps=35000):
+    """ return world grasps in pose_2d """
+    if load_fnm:
+        grasps = pickle.load(open(load_fnm, "rb"))
+        return grasps
+    else:
+        gc = graspit_commander.GraspitCommander()
+        gc.clearWorld()
+
+    gc.importRobot('MicoGripper')
+    gc.setRobotPose(Pose(Point(0, 0, 1), Quaternion(0, 0, 0, 1)))
+    gc.importGraspableBody(object_name, ut.list_2_pose(object_pose_2d))
+    # hard-code floor constraint
+    gc.importObstacle('floor', Pose(Point(object_pose_2d[0][0]-2, object_pose_2d[0][1]-2, 0), Quaternion(0, 0, 0, 1)))
+    # TODO not considering conveyor?
+
+    # simulated annealling
+    grasps = gc.planGrasps(max_steps=max_steps+35000, search_energy='REACHABLE_FIRST_HYBRID_GRASP_ENERGY',
+                           use_seed_grasp=seed_grasp is not None, seed_grasp=seed_grasp)
+    grasps = grasps.grasps
+
+    # keep only good grasps
+    # TODO is this really required?
+    good_grasps = [g for g in grasps if g.volume_quality > 0]
+
+    # for g in good_grasps:
+    #     gc.setRobotPose(g.pose)
+    #     time.sleep(3)
+
+    # change end effector link
+    grasps_in_world = list()
+    for g in good_grasps:
+        old_ee_to_new_ee_translation_rotation = get_transfrom("m1n6s200_link_6", "m1n6s200_end_effector")
+        g_pose_new = change_end_effector_link(g.pose, old_ee_to_new_ee_translation_rotation)
+        grasps_in_world.append(tf_conversions.toTf(tf_conversions.fromMsg(g_pose_new)))
+
+    if save_fnm:
+        pickle.dump(grasps_in_world, open(save_fnm, "wb"))
+    return grasps_in_world
 
 def get_world_grasps(grasps, objectID, object_pose=None):
     """
@@ -288,7 +328,8 @@ if __name__ == "__main__":
     DYNAMIC = True
     KEEP_PREVIOUS_GRASP = True
     RANK_BY_REACHABILITY = True
-    LOAD_OBSTACLES = True
+    LOAD_OBSTACLES = False
+    ONLINE_PLANNING = True
 
     p.setGravity(0, 0, -9.8)
 
@@ -317,7 +358,7 @@ if __name__ == "__main__":
     ## memory leaks happen sometimes without this but a breakpoint
     p.setRealTimeSimulation(1)
 
-    ## initializa controller
+    ## initialize controller
     mc = MicoController(mico)
     mc.reset_arm_joint_values(mc.HOME)
 
@@ -340,7 +381,13 @@ if __name__ == "__main__":
 
     print("here")
     pre_position_trajectory = None
-    grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
+    if ONLINE_PLANNING:
+        object_pose_2d = ut.get_body_pose(target_object)
+        # grasps_in_world = plan_reachable_grasps(save_fnm='grasps_online.pk', object_name='cube',
+        #                                         object_pose_2d=object_pose_2d, max_steps=10000)
+        grasps_in_world = plan_reachable_grasps(load_fnm='grasps_online.pk')
+    else:
+        grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
 
     start_time = time.time()
     video_fname = '{}-{}.mp4'.format(args.object_name, time.strftime('%Y-%m-%d-%H-%M-%S'))
