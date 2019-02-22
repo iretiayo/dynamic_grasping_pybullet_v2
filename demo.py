@@ -308,6 +308,27 @@ def get_reachability_of_grasps_pose_2d(grasps_in_world, sdf_reachability_space):
     # is_reachable = [sdf_values[i] > 0 for i in range(len(sdf_values))]
     return sdf_values
 
+def convert_grasps(grasps, old_pose, new_pose):
+    """
+    Given a set of grasps (in world frame) generated when target object is at old_pose (in world frame),
+    compute the switched grasps (in world frame) when target object has moved to new_pose (in world frame)
+
+    MATH: w_T_gnew = w_T_n * o_T_w * w_T_gold
+    o: old object frame, n: new object frame, w: world frame
+
+    :param grasps: list of pose_2d grasps
+    :param old_pose: pose_2d
+    :param new_pose: pose_2d
+    :return: list of pose_2d grasps
+    """
+    grasps_new = list()
+    for g in grasps:
+        w_T_gold = tf_conversions.toMatrix(tf_conversions.fromTf(g))
+        o_T_w =  tf.transformations.inverse_matrix(tf_conversions.toMatrix(tf_conversions.fromTf(old_pose)))
+        w_T_n = tf_conversions.toMatrix(tf_conversions.fromTf(new_pose))
+        w_T_gnew = (w_T_n.dot(o_T_w)).dot(w_T_gold)
+        grasps_new.append(tf_conversions.toTf(tf_conversions.fromMatrix(w_T_gnew)))
+    return grasps_new
 
 if __name__ == "__main__":
     args = get_args()
@@ -382,7 +403,7 @@ if __name__ == "__main__":
     print("here")
     pre_position_trajectory = None
     if ONLINE_PLANNING:
-        object_pose_2d = ut.get_body_pose(target_object)
+        pose_init = ut.get_body_pose(target_object)
         # grasps_in_world = plan_reachable_grasps(save_fnm='grasps_online.pk', object_name='cube',
         #                                         object_pose_2d=object_pose_2d, max_steps=10000)
         grasps_in_world = plan_reachable_grasps(load_fnm='grasps_online.pk')
@@ -393,130 +414,166 @@ if __name__ == "__main__":
     video_fname = '{}-{}.mp4'.format(args.object_name, time.strftime('%Y-%m-%d-%H-%M-%S'))
     logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join("video",video_fname))
 
-    pre_g_index = None
-    while True:
-        #### grasp planning
-        c = time.time()
-        current_pose = ut.get_body_pose(target_object)
-        if current_pose[0][0] > 0.79:
-            # target moves outside workspace, break directly
-            break
-        future_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
-        future_pose_p = predict(1, target_object)
-        grasps_in_world = get_world_grasps(grasps, target_object, future_pose)
+    #############################################################################################
+    if ONLINE_PLANNING:
+        grasp_current = grasps_in_world[0]
+        grasp_pre = grasp_current
 
-        pre_grasps_in_world = list()
-        for g in grasps_in_world:
-            pre_grasps_in_world.append(MicoController.back_off(g, 0.05))
-
-        pre_g_pose = None
-        g_pose = None
-        pre_g_joint_values = None
-        g_index = None
-
-        # TODO, now just check reachability of pregrasp with target
-        # pre_grasps_in_world is always updated with the current pose of the target object
-        if RANK_BY_REACHABILITY:
-            if KEEP_PREVIOUS_GRASP and pre_g_index is not None and \
-                    get_reachability_of_grasps_pose_2d([pre_grasps_in_world[pre_g_index]], sdf_reachability_space)[0] > 0:
-                rospy.loginfo("the previous pre-grasp is reachable")
-                pre_g_pose = pre_grasps_in_world[pre_g_index]
-                g_pose = grasps_in_world[pre_g_index]
-                pre_g_joint_values = mc.get_arm_ik(pre_grasps_in_world[pre_g_index])
-                g_index = pre_g_index
-                if pre_g_joint_values is None:
-                    rospy.logerr("the pre-grasp pose is actually not reachable")
+        while True:
+            pose_current = ut.get_body_pose(target_object)
+            pose_predicted = [list(motion_predict_svr(duration=1).prediction), pose_current[1]]
+            grasp_pre = convert_grasps([grasp_pre], pose_init, pose_predicted)[0]
+            pre_grasp = MicoController.back_off(grasp_pre, 0.05)
+            j = mc.get_arm_ik(pre_grasp)
+            if j is not None:
+                grasp_current = grasp_pre
             else:
-                sdf_values = get_reachability_of_grasps_pose_2d(pre_grasps_in_world, sdf_reachability_space)
-                print(max(sdf_values))
-                if max(sdf_values) > 0:
-                    g_index = int(np.argmax(sdf_values))
-                    pre_g_pose = pre_grasps_in_world[g_index]
-                    g_pose = grasps_in_world[g_index]
-                    pre_g_joint_values = mc.get_arm_ik(pre_grasps_in_world[g_index])
-                    pre_g_index = g_index
+                from graspit_interface.msg import Grasp
+                seed_grasp = Grasp()
+                seed_grasp.pose = ut.list_2_pose(grasp_pre)
+                grasp_current = plan_reachable_grasps(object_name='cube', object_pose_2d=pose_predicted, seed_grasp=seed_grasp, max_steps=10)
+                j = mc.get_arm_ik(pre_grasp)
+                if j is None:
+                    continue
+            mc.move_arm_joint_values(j)
+            if can_grasp(grasp_current[0], 0.05, None):
+                rospy.loginfo("start grasping")
+                pose_current_prime = ut.get_body_pose(target_object)
+                pose_predicted_prime = [list(motion_predict_svr(duration=1).prediction), pose_current_prime[1]]
+                grasp_current = convert_grasps(grasp_current, pose_predicted)[0]
+                mc.move_arm_eef_pose(grasp_current, plan=False)  # TODO sometimes this motion is werid? rarely
+                # time.sleep(1) # give sometime to move before closing
+                mc.close_gripper()
+                mc.cartesian_control(z=0.05)
+                break
+
+    #############################################################################################
+    else:
+
+        pre_g_index = None
+        while True:
+            #### grasp planning
+            c = time.time()
+            current_pose = ut.get_body_pose(target_object)
+            if current_pose[0][0] > 0.79:
+                # target moves outside workspace, break directly
+                break
+            future_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
+            future_pose_p = predict(1, target_object)
+            grasps_in_world = get_world_grasps(grasps, target_object, future_pose)
+
+            pre_grasps_in_world = list()
+            for g in grasps_in_world:
+                pre_grasps_in_world.append(MicoController.back_off(g, 0.05))
+
+            pre_g_pose = None
+            g_pose = None
+            pre_g_joint_values = None
+            g_index = None
+
+            # TODO, now just check reachability of pregrasp with target
+            # pre_grasps_in_world is always updated with the current pose of the target object
+            if RANK_BY_REACHABILITY:
+                if KEEP_PREVIOUS_GRASP and pre_g_index is not None and \
+                        get_reachability_of_grasps_pose_2d([pre_grasps_in_world[pre_g_index]], sdf_reachability_space)[0] > 0:
+                    rospy.loginfo("the previous pre-grasp is reachable")
+                    pre_g_pose = pre_grasps_in_world[pre_g_index]
+                    g_pose = grasps_in_world[pre_g_index]
+                    pre_g_joint_values = mc.get_arm_ik(pre_grasps_in_world[pre_g_index])
+                    g_index = pre_g_index
                     if pre_g_joint_values is None:
                         rospy.logerr("the pre-grasp pose is actually not reachable")
-        else:
-            if KEEP_PREVIOUS_GRASP and pre_g_index is not None and mc.get_arm_ik(pre_grasps_in_world[pre_g_index]) is not None:
-                # always first check whether the previous grasp is still reachable
-                rospy.loginfo("the previous pre-grasp is reachable")
-                pre_g_pose = pre_grasps_in_world[pre_g_index]
-                g_pose = grasps_in_world[pre_g_index]
-                pre_g_joint_values = mc.get_arm_ik(pre_grasps_in_world[pre_g_index])
-                g_index = pre_g_index
-            else:
-                # go through the list ranked by stability
-                for i, g in enumerate(pre_grasps_in_world):
-                    tt = time.time()
-                    j = mc.get_arm_ik(g)
-                    print("get arm ik takes {}".format(time.time()-tt))
-                    if j is None:
-                        pass
-                        # print("no ik exists for the {}-th pre-grasp".format(i))
-                    else:
-                        rospy.loginfo("the {}-th pre-grasp is reachable".format(i))
-                        pre_g_pose = g
-                        g_pose = grasps_in_world[i]
-                        pre_g_joint_values = j
-                        g_index = i
-                        pre_g_index = g_index
-                        break
-
-        # did not find a reachable pre-grasp
-        if pre_g_pose is None:
-            rospy.loginfo("object out of range!")
-            continue
-        rospy.loginfo("grasp planning takes {}".format(time.time()-c))
-
-        #### move to pre-grasp pose
-        looking_ahead = 3
-        rospy.loginfo("trying to reach pre-grasp pose {}".format(pre_g_pose))
-        c = time.time()
-        rospy.loginfo("previous trajectory is reaching: {}".format(mc.seq))
-
-        if pre_position_trajectory is None:
-            position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values)
-        else:
-            start_index = min(mc.seq+looking_ahead, len(pre_position_trajectory)-1)
-            position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values, start_joint_values=pre_position_trajectory[start_index])
-        rospy.loginfo("planning takes {}".format(time.time()-c))
-
-        if position_trajectory is None:
-            rospy.loginfo("No plans found!")
-        else:
-            rospy.loginfo("start executing")
-            pre_position_trajectory = position_trajectory # just another reference
-            mc.execute_arm_trajectory(position_trajectory)
-            time.sleep(0.2)
-
-        # TODO sometimes grasp planning takes LONGER with some errors after tracking for a long time, This results the previous
-        # trajectory to have finished before we send another goal to move arm
-        # TODO add blocking to control
-
-        #### grasp
-        if ONLY_TRACKING:
-            pass
-        else:
-            # if can_grasp(pre_g_pose[0], 0.05, None):
-            if can_grasp(pre_g_pose[0], None, 0.055):
-                if DYNAMIC:
-                    rospy.loginfo("start grasping")
-                    # predicted_pose = predict(1, target_object)
-                    predicted_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
-                    g_pose = get_world_grasps([grasps[g_index]], target_object, predicted_pose)[0]
-                    mc.move_arm_eef_pose(g_pose, plan=False) # TODO sometimes this motion is werid? rarely
-                    # time.sleep(1) # give sometime to move before closing
-                    mc.close_gripper()
-                    mc.cartesian_control(z=0.05)
-                    # NOTE: The trajectory returned by this will have a far away first waypoint to jump to
-                    # and I assume it is because the initial position is not interpreted as valid by moveit
-                    # or the good first waypoint is blocked by a instantly updated block scene
-                    # mc.move_arm_joint_values(mc.HOME)
-                    break
                 else:
-                    mc.grasp(pre_g_pose, DYNAMIC)
-                    break
+                    sdf_values = get_reachability_of_grasps_pose_2d(pre_grasps_in_world, sdf_reachability_space)
+                    print(max(sdf_values))
+                    if max(sdf_values) > 0:
+                        g_index = int(np.argmax(sdf_values))
+                        pre_g_pose = pre_grasps_in_world[g_index]
+                        g_pose = grasps_in_world[g_index]
+                        pre_g_joint_values = mc.get_arm_ik(pre_grasps_in_world[g_index])
+                        pre_g_index = g_index
+                        if pre_g_joint_values is None:
+                            rospy.logerr("the pre-grasp pose is actually not reachable")
+            else:
+                if KEEP_PREVIOUS_GRASP and pre_g_index is not None and mc.get_arm_ik(pre_grasps_in_world[pre_g_index]) is not None:
+                    # always first check whether the previous grasp is still reachable
+                    rospy.loginfo("the previous pre-grasp is reachable")
+                    pre_g_pose = pre_grasps_in_world[pre_g_index]
+                    g_pose = grasps_in_world[pre_g_index]
+                    pre_g_joint_values = mc.get_arm_ik(pre_grasps_in_world[pre_g_index])
+                    g_index = pre_g_index
+                else:
+                    # go through the list ranked by stability
+                    for i, g in enumerate(pre_grasps_in_world):
+                        tt = time.time()
+                        j = mc.get_arm_ik(g)
+                        print("get arm ik takes {}".format(time.time()-tt))
+                        if j is None:
+                            pass
+                            # print("no ik exists for the {}-th pre-grasp".format(i))
+                        else:
+                            rospy.loginfo("the {}-th pre-grasp is reachable".format(i))
+                            pre_g_pose = g
+                            g_pose = grasps_in_world[i]
+                            pre_g_joint_values = j
+                            g_index = i
+                            pre_g_index = g_index
+                            break
+
+            # did not find a reachable pre-grasp
+            if pre_g_pose is None:
+                rospy.loginfo("object out of range!")
+                continue
+            rospy.loginfo("grasp planning takes {}".format(time.time()-c))
+
+            #### move to pre-grasp pose
+            looking_ahead = 3
+            rospy.loginfo("trying to reach pre-grasp pose {}".format(pre_g_pose))
+            c = time.time()
+            rospy.loginfo("previous trajectory is reaching: {}".format(mc.seq))
+
+            if pre_position_trajectory is None:
+                position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values)
+            else:
+                start_index = min(mc.seq+looking_ahead, len(pre_position_trajectory)-1)
+                position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values, start_joint_values=pre_position_trajectory[start_index])
+            rospy.loginfo("planning takes {}".format(time.time()-c))
+
+            if position_trajectory is None:
+                rospy.loginfo("No plans found!")
+            else:
+                rospy.loginfo("start executing")
+                pre_position_trajectory = position_trajectory # just another reference
+                mc.execute_arm_trajectory(position_trajectory)
+                time.sleep(0.2)
+
+            # TODO sometimes grasp planning takes LONGER with some errors after tracking for a long time, This results the previous
+            # trajectory to have finished before we send another goal to move arm
+            # TODO add blocking to control
+
+            #### grasp
+            if ONLY_TRACKING:
+                pass
+            else:
+                # if can_grasp(pre_g_pose[0], 0.05, None):
+                if can_grasp(pre_g_pose[0], None, 0.055):
+                    if DYNAMIC:
+                        rospy.loginfo("start grasping")
+                        # predicted_pose = predict(1, target_object)
+                        predicted_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
+                        g_pose = get_world_grasps([grasps[g_index]], target_object, predicted_pose)[0]
+                        mc.move_arm_eef_pose(g_pose, plan=False) # TODO sometimes this motion is werid? rarely
+                        # time.sleep(1) # give sometime to move before closing
+                        mc.close_gripper()
+                        mc.cartesian_control(z=0.05)
+                        # NOTE: The trajectory returned by this will have a far away first waypoint to jump to
+                        # and I assume it is because the initial position is not interpreted as valid by moveit
+                        # or the good first waypoint is blocked by a instantly updated block scene
+                        # mc.move_arm_joint_values(mc.HOME)
+                        break
+                    else:
+                        mc.grasp(pre_g_pose, DYNAMIC)
+                        break
 
     rospy.sleep(1) # give some time for lift to finish before get time
     time_spent = time.time() - start_time
