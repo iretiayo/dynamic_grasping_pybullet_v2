@@ -101,8 +101,8 @@ class MicoController(object):
             converted_goal_joint_values = MicoMoveit.convert_range(goal_joint_values)
             position_trajectory = np.linspace(converted_start_joint_values, converted_goal_joint_values, step)
             position_trajectory = MicoController.convert_position_trajectory(position_trajectory, start_joint_values)
-            print("start_joint_values: {}".format(start_joint_values))
-            print("non-plan trajectory {}".format(position_trajectory))
+            # print("start_joint_values: {}".format(start_joint_values))
+            # print("non-plan trajectory {}".format(position_trajectory))
             self.execute_arm_trajectory(position_trajectory)
             # for i in range(step):
             #     p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL,
