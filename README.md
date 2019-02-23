@@ -38,4 +38,16 @@ roslaunch mico_reachability_config reachability_energy_plugin.launch
 We need two packages: `mico_reachability_config` and `reachability_energy_plugin`
 
 
-
+## On Real Robot
+To access the arm via usb copy the udev rule file
+```
+sudo cp kinova_driver/udev/10-kinova-arm.rules /etc/udev/rules.d/
+```
+Launch the essential drivers and configurations for kinova robots
+```
+roslaunch kinova_bringup kinova_robot.launch kinova_robotType:=m1n6s200
+```
+Launch MoveIt! and RViz
+```
+roslaunch m1n6s200_moveit_config m1n6s200_demo.launch
+```
