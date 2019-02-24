@@ -10,7 +10,7 @@ do
 	echo "$log_file_name"
 	gnome-terminal -e "bash -ci '\
 	    cd ~/dynamic_grasping_pybullet && \
-	    python demo.py -v 0.05 > $log_file_name;'"
+	    python demo.py -v 0.01 > $log_file_name;'"
 
 	sleep 3
 

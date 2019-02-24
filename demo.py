@@ -31,7 +31,7 @@ def get_args():
 
     parser.add_argument('-o', '--object_name', type=str, default= 'cube',
                         help="Target object to be grasped. Ex: cube")
-    parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.03,
+    parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.01,
                         help='Velocity of conveyor belt')
     parser.add_argument('-d', '--conveyor_distance', type=float, default=0.5,
                         help="Distance of conveyor belt to robot base")
@@ -409,12 +409,18 @@ if __name__ == "__main__":
 
     ## load plane, conveyor and target
     plane = p.loadURDF("plane.urdf")
-    target_object = p.loadURDF(args.urdf_target_object_filepath, [-0.8, -args.conveyor_distance, 0.025 + 0.01])
-    conveyor = p.loadURDF("model/conveyor.urdf", [-0.8, -args.conveyor_distance, 0.01])
+    if args.conveyor_velocity == 0.01:
+        min_x = -0.6
+        max_x = 0.6
+    else:
+        min_x = -0.8
+        max_x = 0.8
+    target_object = p.loadURDF(args.urdf_target_object_filepath, [min_x, -args.conveyor_distance, 0.025 + 0.01])
+    conveyor = p.loadURDF("model/conveyor.urdf", [min_x, -args.conveyor_distance, 0.01])
 
     ## draw lines
-    p.addUserDebugLine(lineFromXYZ=[-0.8-0.05, -args.conveyor_distance+0.05, 0], lineToXYZ=[0.8+0.05, -args.conveyor_distance+0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
-    p.addUserDebugLine(lineFromXYZ=[-0.8-0.05, -args.conveyor_distance-0.05, 0], lineToXYZ=[0.8+0.05, -args.conveyor_distance-0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
+    p.addUserDebugLine(lineFromXYZ=[min_x-0.05, -args.conveyor_distance+0.05, 0], lineToXYZ=[max_x+0.05, -args.conveyor_distance+0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
+    p.addUserDebugLine(lineFromXYZ=[min_x-0.05, -args.conveyor_distance-0.05, 0], lineToXYZ=[max_x+0.05, -args.conveyor_distance-0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
 
     ## load robot
     urdf_dir = os.path.join(rospkg.RosPack().get_path('kinova_description'), 'urdf')
@@ -516,7 +522,7 @@ if __name__ == "__main__":
                 # enter workspace
                 start_time = time.time()
                 start_time_setted = True
-            if current_pose[0][0] > 0.79:
+            if current_pose[0][0] > max_x-0.01:
                 # target moves outside workspace, break directly
                 break
             future_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
@@ -564,13 +570,32 @@ if __name__ == "__main__":
                         rospy.logerr("the pre-grasp pose is actually not reachable")
                         continue
             else:
-                if KEEP_PREVIOUS_GRASP and pre_g_index is not None and mc.get_arm_ik(pre_grasps_in_world[pre_g_index]) is not None:
+                if KEEP_PREVIOUS_GRASP and pre_g_index is not None:
+                    j = mc.get_arm_ik(pre_grasps_in_world[pre_g_index])
+                    if j is not None:
                     # always first check whether the previous grasp is still reachable
-                    rospy.loginfo("the previous pre-grasp is reachable")
-                    pre_g_pose = pre_grasps_in_world[pre_g_index]
-                    g_pose = grasps_in_world[pre_g_index]
-                    pre_g_joint_values = mc.get_arm_ik(pre_grasps_in_world[pre_g_index])
-                    g_index = pre_g_index
+                        rospy.loginfo("the previous pre-grasp is reachable")
+                        pre_g_pose = pre_grasps_in_world[pre_g_index]
+                        g_pose = grasps_in_world[pre_g_index]
+                        pre_g_joint_values = j
+                        g_index = pre_g_index
+                    else:
+                        # go through the list ranked by stability
+                        for i, g in enumerate(pre_grasps_in_world):
+                            # tt = time.time()
+                            j = mc.get_arm_ik(g)
+                            # print("get arm ik takes {}".format(time.time()-tt))
+                            if j is None:
+                                pass
+                                # print("no ik exists for the {}-th pre-grasp".format(i))
+                            else:
+                                rospy.loginfo("the {}-th pre-grasp is reachable".format(i))
+                                pre_g_pose = g
+                                g_pose = grasps_in_world[i]
+                                pre_g_joint_values = j
+                                g_index = i
+                                pre_g_index = g_index
+                                break
                 else:
                     # go through the list ranked by stability
                     for i, g in enumerate(pre_grasps_in_world):
@@ -629,7 +654,7 @@ if __name__ == "__main__":
                 elif args.conveyor_velocity == 0.05:
                     start_grasp = can_grasp(pre_g_pose[0], 0.06, None)
                 elif args.conveyor_velocity == 0.01:
-                    start_grasp = can_grasp(pre_g_pose[0], 0.04, None)
+                    start_grasp = can_grasp(pre_g_pose[0], 0.03, None)
                 else:
                     start_grasp = can_grasp(pre_g_pose[0], 0.07, None)
                 if start_grasp:
