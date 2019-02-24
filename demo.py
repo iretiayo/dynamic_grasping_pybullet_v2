@@ -72,10 +72,10 @@ def load_reachability_params(reachability_data_dir):
 
 def generate_grasps(load_fnm=None, save_fnm=None, body="cube"):
     """
-    This method assumes the target object to be at world origin.
+    This method assumes the target object to be at world origin. Filter out bad grasps by volume quality.
 
     :param load_fnm: load file name
-    :param save_fnm: save file name
+    :param save_fnm: save file name. save as graspit grasps.grasps
     :param body: the name of the graspable object to load in graspit
     :return: graspit grasps.grasps
     """
@@ -402,7 +402,7 @@ if __name__ == "__main__":
     DYNAMIC = True
     KEEP_PREVIOUS_GRASP = True
     RANK_BY_REACHABILITY = False
-    LOAD_OBSTACLES = False
+    LOAD_OBSTACLES = True
     ONLINE_PLANNING = False
 
     p.setGravity(0, 0, -9.8)
@@ -448,6 +448,7 @@ if __name__ == "__main__":
         mc.mico_moveit.add_mesh("all_bottle_obstacle", ut.get_body_pose(all_bottle_obstacle), 'meshes/meshes_obj/all_bottle.obj')
         mc.mico_moveit.add_mesh("trash_can_new_obstacle", ut.get_body_pose(trash_can_new_obstacle), 'meshes/meshes_obj/trash_can_new.obj')
         mc.mico_moveit.add_mesh("gillette_shaving_gel_obstacle", ut.get_body_pose(gillette_shaving_gel_obstacle), 'meshes/meshes_obj/gillette_shaving_gel.obj')
+        time.sleep(1)
 
     # kalman filter service
     rospy.wait_for_service('motion_prediction')
@@ -464,7 +465,8 @@ if __name__ == "__main__":
         # grasps = generate_grasps(save_fnm="grasps.pk", body="cube")
         grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
 
-    start_time = time.time()
+    start_time = None
+    start_time_setted = False
     video_fname = '{}-{}.mp4'.format(args.object_name, time.strftime('%Y-%m-%d-%H-%M-%S'))
     logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join("video",video_fname))
 
@@ -510,6 +512,10 @@ if __name__ == "__main__":
             #### grasp planning
             c = time.time()
             current_pose = ut.get_body_pose(target_object)
+            if current_pose[0][0] > -0.5 and not start_time_setted:
+                # enter workspace
+                start_time = time.time()
+                start_time_setted = True
             if current_pose[0][0] > 0.79:
                 # target moves outside workspace, break directly
                 break
@@ -568,9 +574,9 @@ if __name__ == "__main__":
                 else:
                     # go through the list ranked by stability
                     for i, g in enumerate(pre_grasps_in_world):
-                        tt = time.time()
+                        # tt = time.time()
                         j = mc.get_arm_ik(g)
-                        print("get arm ik takes {}".format(time.time()-tt))
+                        # print("get arm ik takes {}".format(time.time()-tt))
                         if j is None:
                             pass
                             # print("no ik exists for the {}-th pre-grasp".format(i))
@@ -618,8 +624,15 @@ if __name__ == "__main__":
             if ONLY_TRACKING:
                 pass
             else:
-                if can_grasp(pre_g_pose[0], 0.03, None):
-                # if can_grasp(pre_g_pose[0], None, 0.055):
+                if args.conveyor_velocity == 0.03:
+                    start_grasp = can_grasp(pre_g_pose[0], 0.04, None)
+                elif args.conveyor_velocity == 0.05:
+                    start_grasp = can_grasp(pre_g_pose[0], 0.06, None)
+                elif args.conveyor_velocity == 0.01:
+                    start_grasp = can_grasp(pre_g_pose[0], 0.04, None)
+                else:
+                    start_grasp = can_grasp(pre_g_pose[0], 0.07, None)
+                if start_grasp:
                     if DYNAMIC:
                         rospy.loginfo("start grasping")
                         # predicted_pose = predict(1, target_object)
@@ -637,7 +650,7 @@ if __name__ == "__main__":
                     else:
                         mc.grasp(pre_g_pose, DYNAMIC)
                         break
-
+        print()
     rospy.sleep(1) # give some time for lift to finish before get time
     time_spent = time.time() - start_time
     rospy.loginfo("time spent: {}".format(time_spent))
@@ -645,7 +658,7 @@ if __name__ == "__main__":
 
     # check success and then do something
     success = is_success(target_object)
-    rospy.loginfo(success)
+    rospy.loginfo("success: {}".format(success))
 
     # save result to file: object_name, success, time, velocity, conveyor_distance
     result_dir = 'results'
