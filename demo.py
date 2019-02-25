@@ -33,7 +33,7 @@ def get_args():
                         help="Target object to be grasped. Ex: cube")
     parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.01,
                         help='Velocity of conveyor belt')
-    parser.add_argument('-d', '--conveyor_distance', type=float, default=0.5,
+    parser.add_argument('-d', '--conveyor_distance', type=float, default=0.6,
                         help="Distance of conveyor belt to robot base")
     args = parser.parse_args()
 
@@ -663,6 +663,12 @@ if __name__ == "__main__":
                         # predicted_pose = predict(1, target_object)
                         predicted_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
                         g_pose = get_world_grasps([grasps[g_index]], target_object, predicted_pose)[0]
+                        j = mc.get_arm_ik(g_pose, avoid_collisions=False)
+                        if j is None:
+                            # do not check g_pose is reachable or not during grasp planning, but check predicted g_pose directly
+                            # wanna drive the arm to a pre-grasp pose as soon as possible
+                            rospy.loginfo("the predicted g_pose is actually not reachable, will continue")
+                            continue
                         mc.move_arm_eef_pose(g_pose, plan=False) # TODO sometimes this motion is werid? rarely
                         time.sleep(0.5) # NOTE give sometime to move before closing - this is IMPORTANT, increase success rate!
                         mc.close_gripper()

@@ -3,11 +3,11 @@ import rospy
 from math import pi
 from threading import Lock
 import numpy as np
+import os
 
 from moveit_msgs.msg import RobotState
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Header
-import rospy
 
 
 import rospy
@@ -50,7 +50,11 @@ class MicoMoveit(object):
         except RuntimeError as e:
             print("exception caught")
             print("exception: {}".format(e))
+            os.system("kill - 9 $(pgrep - f trajectory_execution_server.py)")
+            os.system("kill - 9 $(pgrep - f motion_prediction_server.py)")
+            os.system("kill - 9 $(pgrep - f demo.py)")
             exit(0)
+
         # self.arm_commander_group.set_goal_joint_tolerance(0.5)
         # self.arm_commander_group.set_goal_orientation_tolerance(0.5)
         # self.arm_commander_group.set_goal_position_tolerance(0.5)
