@@ -45,7 +45,12 @@ class MicoMoveit(object):
         self.arm_ik_svr = rospy.ServiceProxy('compute_ik', GetPositionIK)
         self.arm_fk_svr = rospy.ServiceProxy('compyte_fk', GetPositionFK)
 
-        self.arm_commander_group = mc.MoveGroupCommander('arm')
+        try:
+            self.arm_commander_group = mc.MoveGroupCommander('arm')
+        except RuntimeError as e:
+            print("exception caught")
+            print("exception: {}".format(e))
+            exit(0)
         # self.arm_commander_group.set_goal_joint_tolerance(0.5)
         # self.arm_commander_group.set_goal_orientation_tolerance(0.5)
         # self.arm_commander_group.set_goal_position_tolerance(0.5)
