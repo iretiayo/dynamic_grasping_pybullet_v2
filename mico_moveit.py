@@ -50,9 +50,9 @@ class MicoMoveit(object):
         except RuntimeError as e:
             print("exception caught")
             print("exception: {}".format(e))
-            os.system("kill - 9 $(pgrep - f trajectory_execution_server.py)")
-            os.system("kill - 9 $(pgrep - f motion_prediction_server.py)")
-            os.system("kill - 9 $(pgrep - f demo.py)")
+            os.system("kill -9 $(pgrep -f trajectory_execution_server.py)")
+            os.system("kill -9 $(pgrep -f motion_prediction_server.py)")
+            os.system("kill -9 $(pgrep -f demo.py)")
             exit(0)
 
         # self.arm_commander_group.set_goal_joint_tolerance(0.5)
