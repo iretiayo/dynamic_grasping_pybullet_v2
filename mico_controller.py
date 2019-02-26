@@ -96,13 +96,26 @@ class MicoController(object):
         else:
             step = 10 # number of waypoints
             duration = 1 # time to finish
+            ttt= time.time()
             start_joint_values = self.get_arm_joint_values()
+            print("start_joint_values: {}".format(start_joint_values))
+            print("goal_joint_values: {}".format(goal_joint_values))
             converted_start_joint_values = MicoMoveit.convert_range(start_joint_values)
+            print("converted start_joint_values: {}".format(converted_start_joint_values))
             converted_goal_joint_values = MicoMoveit.convert_range(goal_joint_values)
+            # check which way to go for continuous/circular joints - e.g. from -3.1 to 3.1 should be from -3.1 to -3.18
+            from math import pi
+            for i in [0, 3, 4, 5]:
+                if abs(converted_goal_joint_values[i] - converted_start_joint_values[i]) > pi:
+                    if converted_goal_joint_values[i] < converted_start_joint_values[i]:
+                        converted_goal_joint_values[i] += 2*pi
+                    else:
+                        converted_goal_joint_values[i] -= 2*pi
+            print("converted goal_joint_values: {}".format(converted_goal_joint_values))
             position_trajectory = np.linspace(converted_start_joint_values, converted_goal_joint_values, step)
+            print("raw non-plan trajectory\n {}".format(position_trajectory))
             position_trajectory = MicoController.convert_position_trajectory(position_trajectory, start_joint_values)
-            # print("start_joint_values: {}".format(start_joint_values))
-            # print("non-plan trajectory {}".format(position_trajectory))
+            print("adapted plan trajectory\n {}".format(position_trajectory))
             self.execute_arm_trajectory(position_trajectory)
             # for i in range(step):
             #     p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL,

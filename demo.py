@@ -33,7 +33,7 @@ def get_args():
                         help="Target object to be grasped. Ex: cube")
     parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.01,
                         help='Velocity of conveyor belt')
-    parser.add_argument('-d', '--conveyor_distance', type=float, default=0.6,
+    parser.add_argument('-d', '--conveyor_distance', type=float, default=0.4,
                         help="Distance of conveyor belt to robot base")
     args = parser.parse_args()
 
@@ -473,6 +473,7 @@ if __name__ == "__main__":
 
     start_time = None
     start_time_setted = False
+    starting_line = -0.5
     video_fname = '{}-{}.mp4'.format(args.object_name, time.strftime('%Y-%m-%d-%H-%M-%S'))
     logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join("video",video_fname))
 
@@ -515,13 +516,17 @@ if __name__ == "__main__":
 
         pre_g_index = None # previous grasp pose index
         while True:
+            current_pose = ut.get_body_pose(target_object)
+            if not start_time_setted:
+                # enter workspace
+                if current_pose[0][0] > starting_line:
+                    start_time = time.time()
+                    start_time_setted = True
+                else: continue
+
+
             #### grasp planning
             c = time.time()
-            current_pose = ut.get_body_pose(target_object)
-            if current_pose[0][0] > -0.5 and not start_time_setted:
-                # enter workspace
-                start_time = time.time()
-                start_time_setted = True
             if current_pose[0][0] > max_x-0.01:
                 # target moves outside workspace, break directly
                 break
@@ -629,8 +634,13 @@ if __name__ == "__main__":
             if pre_position_trajectory is None:
                 position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values)
             else:
-                start_index = min(mc.seq+looking_ahead, len(pre_position_trajectory)-1)
-                position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values, start_joint_values=pre_position_trajectory[start_index])
+                if np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])) > 0.5:
+                    print(np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])))
+                    rospy.loginfo("eef position is still far from target position; do not replan; keep executing previous plan")
+                    continue
+                else:
+                    start_index = min(mc.seq+looking_ahead, len(pre_position_trajectory)-1)
+                    position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values, start_joint_values=pre_position_trajectory[start_index])
             rospy.loginfo("planning takes {}".format(time.time()-c))
 
             if position_trajectory is None:
@@ -655,8 +665,6 @@ if __name__ == "__main__":
                     start_grasp = can_grasp(pre_g_pose[0], 0.06, None)
                 elif args.conveyor_velocity == 0.01:
                     start_grasp = can_grasp(pre_g_pose[0], 0.03, None)
-                else:
-                    start_grasp = can_grasp(pre_g_pose[0], 0.07, None)
                 if start_grasp:
                     if DYNAMIC:
                         rospy.loginfo("start grasping")
@@ -669,8 +677,11 @@ if __name__ == "__main__":
                             # wanna drive the arm to a pre-grasp pose as soon as possible
                             rospy.loginfo("the predicted g_pose is actually not reachable, will continue")
                             continue
-                        mc.move_arm_eef_pose(g_pose, plan=False) # TODO sometimes this motion is werid? rarely
-                        time.sleep(0.5) # NOTE give sometime to move before closing - this is IMPORTANT, increase success rate!
+                        mc.move_arm_joint_values(j, plan=False) # TODO sometimes this motion is werid? rarely
+                        if args.conveyor_velocity == 0.01:
+                            time.sleep(1)
+                        else:
+                            time.sleep(0.5) # NOTE give sometime to move before closing - this is IMPORTANT, increase success rate!
                         mc.close_gripper()
                         mc.cartesian_control(z=0.05)
                         # NOTE: The trajectory returned by this will have a far away first waypoint to jump to
@@ -681,7 +692,8 @@ if __name__ == "__main__":
                     else:
                         mc.grasp(pre_g_pose, DYNAMIC)
                         break
-        print()
+            print("\n")
+
     rospy.sleep(1) # give some time for lift to finish before get time
     time_spent = time.time() - start_time
     rospy.loginfo("time spent: {}".format(time_spent))
@@ -719,4 +731,3 @@ if __name__ == "__main__":
 
     # while 1:
     #     time.sleep(1)
-    # p.disconnect()
