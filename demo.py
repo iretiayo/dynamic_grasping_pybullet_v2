@@ -24,6 +24,8 @@ import csv
 import argparse
 from reachability_utils.process_reachability_data_from_csv import load_reachability_data_from_dir
 from reachability_utils.reachability_resolution_analysis import interpolate_pose_in_reachability_space_grid
+import plyfile
+import skfmm
 
 
 def get_args():
@@ -31,9 +33,9 @@ def get_args():
 
     parser.add_argument('-o', '--object_name', type=str, default= 'cube',
                         help="Target object to be grasped. Ex: cube")
-    parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.01,
+    parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.05,
                         help='Velocity of conveyor belt')
-    parser.add_argument('-d', '--conveyor_distance', type=float, default=0.4,
+    parser.add_argument('-d', '--conveyor_distance', type=float, default=0.6,
                         help="Distance of conveyor belt to robot base")
     args = parser.parse_args()
 
@@ -153,27 +155,28 @@ def plan_reachable_grasps(load_fnm=None, save_fnm=None, object_name="cube", obje
         pickle.dump(grasps_in_world, open(save_fnm, "wb"))
     return grasps_in_world
 
-def get_world_grasps(grasps, objectID, object_pose=None):
+def get_world_grasps(grasps, objectID, old_ee_to_new_ee_translation_rotation, object_pose=None):
     """
-
+    Also change eef link.
     :param grasps: grasps.grasps returned by graspit
     :param objectID: object id
-    :param object_pose: the pose of the target; if None, use current pose
+    :param object_pose: the pose of the target; if None, use current pose. pose_2d
     :return: a list of tf tuples
     """
     if object_pose is None:
         object_pose = p.getBasePositionAndOrientation(objectID)
     world_T_object = tf_conversions.toMatrix(tf_conversions.fromTf(object_pose))
     grasps_in_world = list()
+    grasps_in_world_before_eef_trans = list()
     for g in grasps:
         object_g = tf_conversions.toMatrix(tf_conversions.fromMsg(g.pose))
         world_g = world_T_object.dot(object_g)
         world_g_pose = tf_conversions.toMsg(tf_conversions.fromMatrix(world_g))
+        grasps_in_world_before_eef_trans.append(tf_conversions.toTf(tf_conversions.fromMsg(world_g_pose)))
         # change end effector link
-        old_ee_to_new_ee_translation_rotation = get_transfrom("m1n6s200_link_6", "m1n6s200_end_effector")
         world_g_pose_new = change_end_effector_link(world_g_pose, old_ee_to_new_ee_translation_rotation)
         grasps_in_world.append(tf_conversions.toTf(tf_conversions.fromMsg(world_g_pose_new)))
-    return grasps_in_world
+    return grasps_in_world, grasps_in_world_before_eef_trans
 
 def display_grasp_pose_in_rviz(pose_2d_list, reference_frame):
     """
@@ -334,58 +337,65 @@ def convert_grasps(grasps, old_pose, new_pose):
         grasps_new.append(tf_conversions.toTf(tf_conversions.fromMatrix(w_T_gnew)))
     return grasps_new
 
-# def deteact_pose(body):
-#     return ut.get_body_pose(body)
-#
-# def pick_reachable_grasp(grasps, sdf_reachability_space, controller):
-#     sdf_values = get_reachability_of_grasps_pose_2d(grasps, sdf_reachability_space)
-#     g_index = int(np.argmax(sdf_values))
-#     grasp_picked = grasps[g_index]
-#     pre_grasp_picked = controller.back_off(grasp_picked, 0.05)
-#     j = controller.get_arm_ik(pre_grasp_picked)
-#     if j is None:
-#         return None, None
-#     else:
-#         return grasp_picked, pre_grasp_picked
-#
-# def dynamic_grasping_gs(target_object, controller, sdf_reachability_space):
-#     grasps_init = generate_grasps(load_fnm="grasps.pk", body="cube") # a list of graspit grasps.grasps
-#     grasp_pre = None
-#     while True:
-#         pose_current = deteact_pose(target_object)
-#         pose_future = [list(motion_predict_svr(duration=1).prediction), pose_current[1]]
-#         if grasp_pre is not None:
-#             pre_grasp_pre = controller.back_off(0.05)
-#             j = controller.get_arm_ik(pre_grasp_pre)
-#             if j is None:
-#                 continue
-#             else:
-#                 print("check pre")
-#                 grasp_current = grasp_pre
-#         else:
-#             grasps_world = get_world_grasps(grasps, target_object, pose_future) # a list of pose 2d
-#             grasp_current, pre_grasp_current = pick_reachable_grasp(grasps_world, sdf_reachability_space, controller)
-#             print("check current")
-#             if grasp_current is None:
-#                 continue
-#             else:
-#                 grasp_pre = grasp_current
-#         controller.move_arm_eef_pose(grasp_current)
-#         if can_grasp(grasp_current[0], 0.05, None):
-#             rospy.loginfo("start grasping")
-#             pose_current_prime = ut.get_body_pose(target_object)
-#             pose_predicted_prime = [list(motion_predict_svr(duration=1).prediction), pose_current_prime[1]]
-#             grasp_current = convert_grasps(grasp_current, pose_predicted, pose_predicted_prime)[0]
-#             controller.move_arm_eef_pose(grasp_current, plan=False)  # TODO sometimes this motion is werid? rarely
-#             # time.sleep(1) # give sometime to move before closing
-#             controller.close_gripper()
-#             controller.cartesian_control(z=0.05)
-#             break
+def read_vertex_points_from_ply_filepath(ply_filepath):
+    ply = plyfile.PlyData.read(ply_filepath)
 
+    mesh_vertices = np.ones((ply['vertex']['x'].shape[0], 3))
+    mesh_vertices[:, 0] = ply['vertex']['x']
+    mesh_vertices[:, 1] = ply['vertex']['y']
+    mesh_vertices[:, 2] = ply['vertex']['z']
+    return mesh_vertices
+
+def transform_points(vertices, transform):
+    vertices_hom = np.ones((vertices.shape[0], 4))
+    vertices_hom[:, :-1] = vertices
+
+    # Create new 4xN transformed array
+    transformed_vertices_hom = np.dot(transform, vertices_hom.T).T
+
+    transformed_vertices = transformed_vertices_hom[:, :-1]
+
+    return transformed_vertices
+
+
+def add_obstacles_to_reachability_space_full(points, mins, step_size, dims):
+    voxel_grid = np.zeros(shape=dims)
+
+    bbox_min = np.min(points, axis=0)
+    bbox_max = np.max(points, axis=0)
+
+    grid_points_min = np.round((bbox_min - np.array(mins)) / step_size).astype(int)
+    grid_points_max = np.round((bbox_max - np.array(mins)) / step_size).astype(int)
+
+    grid_points_min = np.clip(grid_points_min, 0, dims - 1)
+    grid_points_max = np.clip(grid_points_max, 0, dims - 1)
+
+    voxel_grid[grid_points_min[0]:grid_points_max[0]+1, grid_points_min[1]:grid_points_max[1]+1,
+        grid_points_min[2]:grid_points_max[2]+1] = 1
+
+    return voxel_grid
+
+
+def create_occupancy_grid_from_obstacles(obstacle_mesh_filepaths, obstacle_poses, mins_xyz, step_size_xyz, dims_xyz):
+    voxel_grid = np.zeros(shape=dims_xyz)
+
+    for filepath, pose in zip(obstacle_mesh_filepaths, obstacle_poses):
+        vertices = read_vertex_points_from_ply_filepath(filepath)
+        # if obstacle.type == 'box':
+        #     sample_points = np.meshgrid(*[np.linspace(-sz / 2., sz / 2., 4) for sz in obstacle.box_size])
+        #     vertices = np.array(sample_points).reshape(len(sample_points), -1).T
+        frame = tf_conversions.fromMsg(pose)
+        transform = tf_conversions.toMatrix(frame)
+        vertices_transformed = transform_points(vertices, transform)
+
+        voxel_grid += add_obstacles_to_reachability_space_full(vertices_transformed, mins_xyz, step_size_xyz,
+                                                                   dims_xyz)
+    voxel_grid[np.where(voxel_grid > 0)] = 1
+    return voxel_grid
 
 if __name__ == "__main__":
+    rospy.set_param("reachability_space_created", False)
     args = get_args()
-    _, mins, step_size, dims, sdf_reachability_space = load_reachability_data_from_dir(args.reachability_data_dir)
 
     rospy.init_node("demo")
 
@@ -401,7 +411,7 @@ if __name__ == "__main__":
     ONLY_TRACKING = False
     DYNAMIC = True
     KEEP_PREVIOUS_GRASP = True
-    RANK_BY_REACHABILITY = False
+    RANK_BY_REACHABILITY = True
     LOAD_OBSTACLES = True
     ONLINE_PLANNING = False
 
@@ -437,6 +447,7 @@ if __name__ == "__main__":
 
     ## memory leaks happen sometimes without this but a breakpoint
     p.setRealTimeSimulation(1)
+    rospy.sleep(2) # time for objects to stabelize
 
     ## initialize controller
     mc = MicoController(mico)
@@ -456,6 +467,36 @@ if __name__ == "__main__":
         mc.mico_moveit.add_mesh("gillette_shaving_gel_obstacle", ut.get_body_pose(gillette_shaving_gel_obstacle), 'meshes/meshes_obj/gillette_shaving_gel.obj')
         time.sleep(1)
 
+    # create sdf reachability space
+    if RANK_BY_REACHABILITY:
+        rospy.loginfo("start creating sdf reachability space...")
+        c = time.time()
+        if LOAD_OBSTACLES:
+            obstacle_mesh_filepaths = ["meshes/meshes_ply/all_bottle.ply", "meshes/meshes_ply/trash_can_new.ply", "meshes/meshes_ply/gillette_shaving_gel.ply"]
+            obstacle_poses = [ut.list_2_pose(ut.get_body_pose(all_bottle_obstacle)), ut.list_2_pose(ut.get_body_pose(trash_can_new_obstacle)), ut.list_2_pose(ut.get_body_pose(gillette_shaving_gel_obstacle))]
+
+            # create reachability space from obstacles
+            obstacles_mask_3d = create_occupancy_grid_from_obstacles(obstacle_mesh_filepaths=obstacle_mesh_filepaths,
+                                                                     obstacle_poses=obstacle_poses,
+                                                                     mins_xyz=args.mins[:3],
+                                                                     step_size_xyz=args.step_size[:3],
+                                                                     dims_xyz=args.dims[:3])
+            binary_reachability_space, mins, step_size, dims, _ = load_reachability_data_from_dir(
+                args.reachability_data_dir)
+            # embed obstacles into reachability space
+            binary_reachability_space[obstacles_mask_3d > 0] = 0
+
+            # Generate sdf
+            binary_reachability_space -= 0.5
+            sdf_reachability_space = skfmm.distance(binary_reachability_space, periodic=[False, False, False, True, True, True])
+            binary_reachability_space += 0.5  # undo previous operation
+        else:
+            _, mins, step_size, dims, sdf_reachability_space = load_reachability_data_from_dir(args.reachability_data_dir)
+        rospy.set_param("reachability_space_created", True)
+        rospy.loginfo("sdf reachability space created, which takes {}".format(time.time()-c))
+    else:
+        rospy.set_param("reachability_space_created", True)
+
     # kalman filter service
     rospy.wait_for_service('motion_prediction')
     motion_predict_svr = rospy.ServiceProxy('motion_prediction', motion_prediction.srv.GetFuturePose)
@@ -470,21 +511,23 @@ if __name__ == "__main__":
     else:
         # grasps = generate_grasps(save_fnm="grasps.pk", body="cube")
         grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
+        grasp_poses_2d_before_eef_transformation = [ut.pose_2_list(g.pose) for g in grasps]
 
     start_time = None
     start_time_setted = False
-    starting_line = -0.5
+    starting_line = -0.6
     video_fname = '{}-{}.mp4'.format(args.object_name, time.strftime('%Y-%m-%d-%H-%M-%S'))
     logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join("video",video_fname))
 
     #############################################################################################
+    ################################## online grasp planning ####################################
     if ONLINE_PLANNING:
         grasp_current = grasps_in_world[0]
         grasp_pre = grasp_current
 
         while True:
             pose_current = ut.get_body_pose(target_object)
-            pose_predicted = [list(motion_predict_svr(duration=1).prediction), pose_current[1]]
+            pose_predicted = [list(motion_predict_svr(duration=1.0).prediction), pose_current[1]]
             grasp_pre = convert_grasps([grasp_pre], pose_init, pose_predicted)[0]
             pre_grasp = MicoController.back_off(grasp_pre, 0.05)
             j = mc.get_arm_ik(pre_grasp)
@@ -513,31 +556,37 @@ if __name__ == "__main__":
 
     #############################################################################################
     else:
-
-        pre_g_index = None # previous grasp pose index
+        previous_g_index = None # previous grasp pose index
+        old_ee_to_new_ee_translation_rotation = get_transfrom("m1n6s200_link_6", "m1n6s200_end_effector")
         while True:
             current_pose = ut.get_body_pose(target_object)
+            current_conveyor_pose = ut.get_body_pose(conveyor)
             if not start_time_setted:
                 # enter workspace
                 if current_pose[0][0] > starting_line:
+                    print(current_pose[0][0])
                     start_time = time.time()
                     start_time_setted = True
                 else: continue
 
 
-            #### grasp planning
-            c = time.time()
-            if current_pose[0][0] > max_x-0.01:
+            if current_conveyor_pose[0][0] > max_x-0.05:
                 # target moves outside workspace, break directly
                 break
-            future_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
-            future_pose_p = predict(1, target_object)
-            grasps_in_world = get_world_grasps(grasps, target_object, future_pose)
 
+            #### grasp planning
+            c = time.time()
+            future_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
+
+            grasps_in_world, grasps_in_world_before_eef_trans = get_world_grasps(grasps, target_object, old_ee_to_new_ee_translation_rotation, future_pose)
             pre_grasps_in_world = list()
+            pre_grasps_in_world_before_eef_trans = list()
             for g in grasps_in_world:
                 pre_grasps_in_world.append(MicoController.back_off(g, 0.05))
+            for g in grasps_in_world_before_eef_trans:
+                pre_grasps_in_world_before_eef_trans.append(MicoController.back_off(g, 0.05))
 
+            # information about the current grasp
             pre_g_pose = None
             g_pose = None
             pre_g_joint_values = None
@@ -550,40 +599,59 @@ if __name__ == "__main__":
             # mc.cartesian_control(z=0.05)
 
 
-            # TODO, now just check reachability of pregrasp with target
-            # pre_grasps_in_world is always updated with the current pose of the target object
+            #################################################################################################
+            ####################### grasp switching with reachability space #################################
             if RANK_BY_REACHABILITY:
-                if KEEP_PREVIOUS_GRASP and pre_g_index is not None and mc.get_arm_ik(pre_grasps_in_world[pre_g_index]) is not None:
-                    rospy.loginfo("the previous pre-grasp is reachable")
-                    pre_g_pose = pre_grasps_in_world[pre_g_index]
-                    g_pose = grasps_in_world[pre_g_index]
-                    pre_g_joint_values = mc.get_arm_ik(pre_grasps_in_world[pre_g_index])
-                    g_index = pre_g_index
-                    print(g_index)
-                    if pre_g_joint_values is None:
-                        rospy.logerr("impossible!")
-                        continue
+                if KEEP_PREVIOUS_GRASP and previous_g_index is not None:
+                    j = mc.get_arm_ik(pre_grasps_in_world[previous_g_index])
+                    if j is not None:
+                        rospy.loginfo("the previous pre-grasp is reachable")
+                        pre_g_pose = pre_grasps_in_world[previous_g_index]
+                        g_pose = grasps_in_world[previous_g_index]
+                        pre_g_joint_values = j
+                        g_index = previous_g_index
+                    else:
+                        pre_grasp_poses_before_eef_transformation = [ut.list_2_pose(g) for g in
+                                                                     pre_grasps_in_world_before_eef_trans]
+                        sdf_values = get_reachability_of_grasps_pose(pre_grasp_poses_before_eef_transformation,
+                                                                     sdf_reachability_space)
+                        g_index = int(np.argmax(sdf_values))
+                        pre_g_pose = pre_grasps_in_world[g_index]
+                        g_pose = grasps_in_world[g_index]
+                        pre_g_joint_values = mc.get_arm_ik(pre_grasps_in_world[g_index])
+                        previous_g_index = g_index
+                        print(g_index)
+                        print(sdf_values)
+                        if pre_g_joint_values is None:
+                            rospy.logerr("the pre-grasp pose is actually not reachable")
+                            continue
                 else:
-                    sdf_values = get_reachability_of_grasps_pose_2d(pre_grasps_in_world, sdf_reachability_space)
+                    pre_grasp_poses_before_eef_transformation = [ut.list_2_pose(g) for g in
+                                                                 pre_grasps_in_world_before_eef_trans]
+                    sdf_values = get_reachability_of_grasps_pose(pre_grasp_poses_before_eef_transformation,
+                                                                 sdf_reachability_space)
                     g_index = int(np.argmax(sdf_values))
                     pre_g_pose = pre_grasps_in_world[g_index]
                     g_pose = grasps_in_world[g_index]
                     pre_g_joint_values = mc.get_arm_ik(pre_grasps_in_world[g_index])
-                    pre_g_index = g_index
+                    previous_g_index = g_index
                     print(g_index)
+                    print(sdf_values)
                     if pre_g_joint_values is None:
                         rospy.logerr("the pre-grasp pose is actually not reachable")
                         continue
+            #################################################################################################
+            ####################### grasp switching without reachability space ##############################
             else:
-                if KEEP_PREVIOUS_GRASP and pre_g_index is not None:
-                    j = mc.get_arm_ik(pre_grasps_in_world[pre_g_index])
+                if KEEP_PREVIOUS_GRASP and previous_g_index is not None:
+                    j = mc.get_arm_ik(pre_grasps_in_world[previous_g_index])
                     if j is not None:
                     # always first check whether the previous grasp is still reachable
                         rospy.loginfo("the previous pre-grasp is reachable")
-                        pre_g_pose = pre_grasps_in_world[pre_g_index]
-                        g_pose = grasps_in_world[pre_g_index]
+                        pre_g_pose = pre_grasps_in_world[previous_g_index]
+                        g_pose = grasps_in_world[previous_g_index]
                         pre_g_joint_values = j
-                        g_index = pre_g_index
+                        g_index = previous_g_index
                     else:
                         # go through the list ranked by stability
                         for i, g in enumerate(pre_grasps_in_world):
@@ -599,7 +667,7 @@ if __name__ == "__main__":
                                 g_pose = grasps_in_world[i]
                                 pre_g_joint_values = j
                                 g_index = i
-                                pre_g_index = g_index
+                                previous_g_index = g_index
                                 break
                 else:
                     # go through the list ranked by stability
@@ -616,8 +684,9 @@ if __name__ == "__main__":
                             g_pose = grasps_in_world[i]
                             pre_g_joint_values = j
                             g_index = i
-                            pre_g_index = g_index
+                            previous_g_index = g_index
                             break
+            #################################################################################################
 
             # did not find a reachable pre-grasp
             if pre_g_pose is None:
@@ -634,7 +703,8 @@ if __name__ == "__main__":
             if pre_position_trajectory is None:
                 position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values)
             else:
-                if np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])) > 0.5:
+                # lazy replan
+                if np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])) > 0.7:
                     print(np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])))
                     rospy.loginfo("eef position is still far from target position; do not replan; keep executing previous plan")
                     continue
@@ -670,7 +740,7 @@ if __name__ == "__main__":
                         rospy.loginfo("start grasping")
                         # predicted_pose = predict(1, target_object)
                         predicted_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
-                        g_pose = get_world_grasps([grasps[g_index]], target_object, predicted_pose)[0]
+                        g_pose = get_world_grasps([grasps[g_index]], target_object, old_ee_to_new_ee_translation_rotation, predicted_pose)[0][0]
                         j = mc.get_arm_ik(g_pose, avoid_collisions=False)
                         if j is None:
                             # do not check g_pose is reachable or not during grasp planning, but check predicted g_pose directly
