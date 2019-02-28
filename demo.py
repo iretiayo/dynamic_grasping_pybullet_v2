@@ -41,6 +41,10 @@ def get_args():
                         help="Distance of conveyor belt to robot base")
     args = parser.parse_args()
 
+    args.video_dir = 'video'
+    if not os.path.exists(args.video_dir):
+        os.makedirs(args.video_dir)
+
     args.mesh_dir = os.path.abspath('model')
     args.object_mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(args.object_name),
                                              '{}.obj'.format(args.object_name))
@@ -533,9 +537,9 @@ if __name__ == "__main__":
     pre_position_trajectory = None
     start_time = None
     start_time_setted = False
-    
+
     video_fname = '{}-{}.mp4'.format(args.object_name, time.strftime('%Y-%m-%d-%H-%M-%S'))
-    logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join("video",video_fname))
+    logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir,video_fname))
 
 
     #############################################################################################
