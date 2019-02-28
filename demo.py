@@ -1,3 +1,4 @@
+from __future__ import division
 import pybullet as p
 import pybullet_data
 from mico_controller import MicoController
@@ -26,12 +27,13 @@ from reachability_utils.process_reachability_data_from_csv import load_reachabil
 from reachability_utils.reachability_resolution_analysis import interpolate_pose_in_reachability_space_grid
 import plyfile
 import skfmm
+import trimesh
 
 
 def get_args():
     parser = argparse.ArgumentParser(description='Run Dynamic Grasping Experiment')
 
-    parser.add_argument('-o', '--object_name', type=str, default= 'cube',
+    parser.add_argument('-o', '--object_name', type=str, default= 'tomato_soup_can',
                         help="Target object to be grasped. Ex: cube")
     parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.03,
                         help='Velocity of conveyor belt')
@@ -39,13 +41,20 @@ def get_args():
                         help="Distance of conveyor belt to robot base")
     args = parser.parse_args()
 
-    args.mesh_dir = os.path.abspath('meshes/meshes_obj')
-    args.object_mesh_filepath = os.path.join(args.mesh_dir , '{}.obj'.format(args.object_name))
+    args.mesh_dir = os.path.abspath('model')
+    args.object_mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(args.object_name),
+                                             '{}.obj'.format(args.object_name))
+    args.object_mesh_filepath_ply = os.path.join(args.mesh_dir, '{}'.format(args.object_name),
+                                             '{}.ply'.format(args.object_name))
+
+    target_mesh = trimesh.load_mesh(args.object_mesh_filepath)
+    args.target_extents = target_mesh.bounding_box.extents.tolist()
 
     # set ROS parameters
     rospy.set_param('conveyor_velocity', args.conveyor_velocity)
     rospy.set_param('object_name', args.object_name)
     rospy.set_param('object_mesh_filepath', args.object_mesh_filepath)
+    rospy.set_param('target_extents', args.target_extents)
 
     # set_up urdf
     urdf_template_filepath = 'model/object_template.urdf'
@@ -72,13 +81,14 @@ def load_reachability_params(reachability_data_dir):
 
 ## TODO uniform sampling grasps
 
-def generate_grasps(load_fnm=None, save_fnm=None, body="cube"):
+def generate_grasps(load_fnm=None, save_fnm=None, body="cube", body_extents=(0.05, 0.05, 0.05)):
     """
     This method assumes the target object to be at world origin. Filter out bad grasps by volume quality.
 
     :param load_fnm: load file name
     :param save_fnm: save file name. save as graspit grasps.grasps
-    :param body: the name of the graspable object to load in graspit
+    :param body: the name of the graspable object to load in graspit, or the mesh file path
+    :param body_extents: the extents of the bounding box
     :return: graspit grasps.grasps
     """
     ## NOTE, now use sim-ann anf then switch
@@ -91,17 +101,9 @@ def generate_grasps(load_fnm=None, save_fnm=None, body="cube"):
         gc.clearWorld()
 
         ## creat scene in graspit
-        if body=="cube":
-            floor_offset = -0.025  # half of the block size
-            floor_pose = Pose(Point(-1, -1, floor_offset), Quaternion(0, 0, 0, 1))
-            body_pose = Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1))
-        elif body=="longBox":
-            floor_offset = -0.09
-            q = tft.quaternion_from_euler(0, 0.5*pi, 0)
-            floor_pose = Pose(Point(-1, -1, floor_offset), Quaternion(0, 0, 0, 1))
-            body_pose = Pose(Point(0, 0, 0), Quaternion(*q))
-        else:
-            raise ValueError("Invalid graspable body!")
+        floor_offset = -body_extents[2]/2 - 0.01  # half of the block size + half of the conveyor
+        floor_pose = Pose(Point(-1, -1, floor_offset), Quaternion(0, 0, 0, 1))
+        body_pose = Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1))
 
         gc.importRobot('MicoGripper')
         gc.importGraspableBody(body, body_pose)
@@ -285,9 +287,9 @@ def can_grasp(g_position, d_gpos_threshold=None, d_target_threshold=None):
         raise ValueError("please specify a threshold!")
     return can
 
-def is_success(target_object):
+def is_success(target_object, original_height):
     target_pose_2d = ut.get_body_pose(target_object)
-    if target_pose_2d[0][2] > 0.05:
+    if target_pose_2d[0][2] > original_height + 0.02:
         return True
     else:
         return False
@@ -418,7 +420,7 @@ if __name__ == "__main__":
     KEEP_PREVIOUS_GRASP = True
     RANK_BY_REACHABILITY = True
     LOAD_OBSTACLES = True
-    ONLINE_PLANNING = True
+    ONLINE_PLANNING = False
 
     p.setGravity(0, 0, -9.8)
 
@@ -430,7 +432,9 @@ if __name__ == "__main__":
     else:
         min_x = -0.8
         max_x = 0.8
-    target_object = p.loadURDF(args.urdf_target_object_filepath, [min_x, -args.conveyor_distance, 0.025 + 0.01])
+
+
+    target_object = p.loadURDF(args.urdf_target_object_filepath, [min_x, -args.conveyor_distance, args.target_extents[2]/2 + 0.01])
     conveyor = p.loadURDF("model/conveyor.urdf", [min_x, -args.conveyor_distance, 0.01])
 
     ## draw lines
@@ -472,6 +476,23 @@ if __name__ == "__main__":
         mc.mico_moveit.add_mesh("gillette_shaving_gel_obstacle", ut.get_body_pose(gillette_shaving_gel_obstacle), 'meshes/meshes_obj/gillette_shaving_gel.obj')
         time.sleep(1)
 
+    ### load grasps
+    starting_line = -0.6
+    if ONLINE_PLANNING:
+        # need to make sure seed grasp is good!
+        grasp_fnm = "grasps_online_"+str(args.conveyor_distance)+'.pk'
+        pose_init = [[starting_line, args.conveyor_distance, ut.get_body_pose(target_object)[0][2]], [0, 0, 0, 1]]
+        # grasps_in_world = plan_reachable_grasps(save_fnm=grasp_fnm, object_name='cube',
+        #                                         object_pose_2d=pose_init, max_steps=10000)
+        grasps_in_world = plan_reachable_grasps(load_fnm=grasp_fnm)
+    else:
+        grasp_filepath = os.path.join(args.mesh_dir, args.object_name, "grasps_"+str(args.object_name)+'.pk')
+        if os.path.exists(grasp_filepath):
+            grasps = generate_grasps(load_fnm=grasp_filepath, body=args.object_mesh_filepath_ply, body_extents=args.target_extents)
+        else:
+            grasps = generate_grasps(save_fnm=grasp_filepath, body=args.object_mesh_filepath_ply, body_extents=args.target_extents)
+        grasp_poses_2d_before_eef_transformation = [ut.pose_2_list(g.pose) for g in grasps]
+
     # create sdf reachability space
     if RANK_BY_REACHABILITY:
         rospy.loginfo("start creating sdf reachability space...")
@@ -496,7 +517,7 @@ if __name__ == "__main__":
             sdf_reachability_space = skfmm.distance(binary_reachability_space, periodic=[False, False, False, True, True, True])
             binary_reachability_space += 0.5  # undo previous operation
             # sdf_reachability_space
-            sdf_reachability_space.tofile(open(os.path.join(args.reachability_data_dir, 'reach_data') + '.sdf', 'w'))
+            # sdf_reachability_space.tofile(open(os.path.join(args.reachability_data_dir, 'reach_data') + '.sdf', 'w'))
         else:
             _, mins, step_size, dims, sdf_reachability_space = load_reachability_data_from_dir(args.reachability_data_dir)
         rospy.set_param("reachability_space_created", True)
@@ -510,19 +531,6 @@ if __name__ == "__main__":
 
     print("here")
     pre_position_trajectory = None
-    starting_line = -0.6
-    if ONLINE_PLANNING:
-        # need to make sure seed grasp is good!
-        grasp_fnm = "grasps_online_"+str(args.conveyor_distance)+'.pk'
-        pose_init = [[starting_line, args.conveyor_distance, ut.get_body_pose(target_object)[0][2]], [0, 0, 0, 1]]
-        # grasps_in_world = plan_reachable_grasps(save_fnm=grasp_fnm, object_name='cube',
-        #                                         object_pose_2d=pose_init, max_steps=10000)
-        grasps_in_world = plan_reachable_grasps(load_fnm=grasp_fnm)
-    else:
-        # grasps = generate_grasps(save_fnm="grasps.pk", body="cube")
-        grasps = generate_grasps(load_fnm="grasps.pk", body="cube")
-        grasp_poses_2d_before_eef_transformation = [ut.pose_2_list(g.pose) for g in grasps]
-
     start_time = None
     start_time_setted = False
     
@@ -532,6 +540,7 @@ if __name__ == "__main__":
 
     #############################################################################################
     previous_g_index = None # previous grasp pose index
+    original_height = ut.get_body_pose(target_object)[0][2]
     old_ee_to_new_ee_translation_rotation = get_transfrom("m1n6s200_link_6", "m1n6s200_end_effector")
     new_ee_to_old_ee_translation_rotation = get_transfrom("m1n6s200_end_effector", "m1n6s200_link_6")
 
@@ -556,8 +565,7 @@ if __name__ == "__main__":
 
         #### grasp planning
         c = time.time()
-        # TODO changed duration for online grasping
-        future_pose = [list(motion_predict_svr(duration=1.5).prediction), current_pose[1]]
+        future_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
 
         # information about the current grasp
         pre_g_pose = None
@@ -761,7 +769,7 @@ if __name__ == "__main__":
                     if args.conveyor_velocity == 0.01:
                         time.sleep(1)
                     else:
-                        time.sleep(0.5) # NOTE give sometime to move before closing - this is IMPORTANT, increase success rate!
+                        time.sleep(0.8) # NOTE give sometime to move before closing - this is IMPORTANT, increase success rate!
                     mc.close_gripper()
                     mc.cartesian_control(z=0.05)
                     # NOTE: The trajectory returned by this will have a far away first waypoint to jump to
@@ -781,7 +789,7 @@ if __name__ == "__main__":
     rospy.sleep(2)
 
     # check success and then do something
-    success = is_success(target_object)
+    success = is_success(target_object, original_height)
     rospy.loginfo("success: {}".format(success))
 
     # save result to file: object_name, success, time, velocity, conveyor_distance
