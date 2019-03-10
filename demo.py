@@ -59,6 +59,12 @@ def get_args():
     rospy.set_param('object_name', args.object_name)
     rospy.set_param('object_mesh_filepath', args.object_mesh_filepath)
     rospy.set_param('target_extents', args.target_extents)
+    if args.conveyor_velocity == 0.01:
+        conveyor_extent = [-0.6, 0.6]
+    else:
+        conveyor_extent = [-0.8, 0.8]
+    rospy.set_param('conveyor_extent', conveyor_extent)
+    args.min_x, args.max_x = conveyor_extent
 
     # set_up urdf
     urdf_template_filepath = 'model/object_template.urdf'
@@ -426,13 +432,6 @@ def create_scence(args):
 
     # load plane, conveyor and target
     p.loadURDF("plane.urdf")
-    if args.conveyor_velocity == 0.01:
-        args.min_x = -0.6
-        args.max_x = 0.6
-    else:
-        args.min_x = -0.8
-        args.max_x = 0.8
-
     target_object_id = p.loadURDF(args.urdf_target_object_filepath, [args.min_x, -args.conveyor_distance, args.target_extents[2]/2 + 0.01])
     conveyor_id = p.loadURDF("model/conveyor.urdf", [args.min_x, -args.conveyor_distance, 0.01])
 
@@ -460,6 +459,8 @@ def create_scence(args):
     rospy.sleep(2)  # time for objects to stabilize
 
     args.mico_id, args.conveyor_id, args.target_object_id = mico_id, conveyor_id, target_object_id
+    rospy.set_param('target_object_id', args.target_object_id)
+    rospy.set_param('conveyor_id', args.conveyor_id)
 
 
 def create_scence_moveit(args, mc):
@@ -476,7 +477,7 @@ def create_scence_moveit(args, mc):
 
 
 if __name__ == "__main__":
-    rospy.set_param("reachability_space_created", False)
+    rospy.set_param("start_moving", False)
     args = get_args()
     create_scence(args)
     target_object_id = args.target_object_id
@@ -539,10 +540,10 @@ if __name__ == "__main__":
             # sdf_reachability_space.tofile(open(os.path.join(args.reachability_data_dir, 'reach_data') + '.sdf', 'w'))
         else:
             _, mins, step_size, dims, sdf_reachability_space = load_reachability_data_from_dir(args.reachability_data_dir)
-        rospy.set_param("reachability_space_created", True)
+        rospy.set_param("start_moving", True)
         rospy.loginfo("sdf reachability space created, which takes {}".format(time.time()-c))
     else:
-        rospy.set_param("reachability_space_created", True)
+        rospy.set_param("start_moving", True)
 
     # kalman filter service
     rospy.wait_for_service('motion_prediction')
@@ -584,7 +585,7 @@ if __name__ == "__main__":
 
         #### grasp planning
         c = time.time()
-        future_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
+        future_pose = tf_conversions.toTf(tf_conversions.fromMsg(motion_predict_svr(duration=1).prediction.pose))
 
         # information about the current grasp
         pre_g_pose = None
@@ -773,7 +774,7 @@ if __name__ == "__main__":
                 if args.DYNAMIC:
                     rospy.loginfo("start grasping")
                     # predicted_pose = predict(1, target_object)
-                    predicted_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
+                    predicted_pose = tf_conversions.toTf(tf_conversions.fromMsg(motion_predict_svr(duration=1).prediction.pose))
                     if args.ONLINE_PLANNING:
                         g_pose = convert_grasps([g_pose], pose_old, predicted_pose)[0]
                     else:
