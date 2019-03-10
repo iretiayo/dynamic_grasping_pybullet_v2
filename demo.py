@@ -14,7 +14,6 @@ import tf2_kdl
 import numpy as np
 np.set_printoptions(precision=6)
 np.set_printoptions(suppress=True)
-from math import pi
 import tf.transformations as tft
 import utils as ut
 import time
@@ -28,12 +27,13 @@ from reachability_utils.reachability_resolution_analysis import interpolate_pose
 import plyfile
 import skfmm
 import trimesh
+import yaml
 
 
 def get_args():
     parser = argparse.ArgumentParser(description='Run Dynamic Grasping Experiment')
 
-    parser.add_argument('-o', '--object_name', type=str, default= 'tomato_soup_can',
+    parser.add_argument('-o', '--object_name', type=str, default= 'cube',
                         help="Target object to be grasped. Ex: cube")
     parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.03,
                         help='Velocity of conveyor belt')
@@ -41,7 +41,7 @@ def get_args():
                         help="Distance of conveyor belt to robot base")
     args = parser.parse_args()
 
-    args.video_dir = 'video'
+    args.video_dir = 'videos'
     if not os.path.exists(args.video_dir):
         os.makedirs(args.video_dir)
 
@@ -72,6 +72,16 @@ def get_args():
 
     args.reachability_data_dir = os.path.join(rospkg.RosPack().get_path('mico_reachability_config'), 'data')
     args.step_size, args.mins, args.dims = load_reachability_params(args.reachability_data_dir)
+
+    args.ONLY_TRACKING = False
+    args.DYNAMIC = True
+    args.KEEP_PREVIOUS_GRASP = True
+    args.RANK_BY_REACHABILITY = True
+    args.LOAD_OBSTACLES = True
+    args.ONLINE_PLANNING = False
+
+    config = yaml.load(open('scene.yaml'))
+    args.__dict__['scene_config'] = config
 
     return args
 
@@ -404,88 +414,91 @@ def create_occupancy_grid_from_obstacles(obstacle_mesh_filepaths, obstacle_poses
     voxel_grid[np.where(voxel_grid > 0)] = 1
     return voxel_grid
 
-if __name__ == "__main__":
-    rospy.set_param("reachability_space_created", False)
-    args = get_args()
 
-    rospy.init_node("demo")
+def create_scence(args):
 
-    physicsClient = p.connect(p.GUI_SERVER)
+    p.connect(p.GUI_SERVER)
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
-    ut.reset_camera(yaw=-24.400014877319336, pitch=-47.000030517578125, dist=0.9, target=(-0.2, -0.30000001192092896, 0.0))
-    ut.remove_all_bodies()
-    # p.setAdditionalSearchPath("/home/jxu/bullet3/data") #optionally
+    p.resetSimulation()
+    p.resetDebugVisualizerCamera(cameraDistance=0.9, cameraYaw=-24.4, cameraPitch=-47.0, cameraTargetPosition=(-0.2, -0.30, 0.0))
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
-    # /home/jxu/.local/lib/python2.7/site-packages/pybullet_data
-    # /home/jxu/bullet3/examples/pybullet/examples
-
-    ONLY_TRACKING = False
-    DYNAMIC = True
-    KEEP_PREVIOUS_GRASP = True
-    RANK_BY_REACHABILITY = True
-    LOAD_OBSTACLES = True
-    ONLINE_PLANNING = False
-
     p.setGravity(0, 0, -9.8)
 
-    ## load plane, conveyor and target
-    plane = p.loadURDF("plane.urdf")
+    # load plane, conveyor and target
+    p.loadURDF("plane.urdf")
     if args.conveyor_velocity == 0.01:
-        min_x = -0.6
-        max_x = 0.6
+        args.min_x = -0.6
+        args.max_x = 0.6
     else:
-        min_x = -0.8
-        max_x = 0.8
+        args.min_x = -0.8
+        args.max_x = 0.8
 
+    target_object_id = p.loadURDF(args.urdf_target_object_filepath, [args.min_x, -args.conveyor_distance, args.target_extents[2]/2 + 0.01])
+    conveyor_id = p.loadURDF("model/conveyor.urdf", [args.min_x, -args.conveyor_distance, 0.01])
 
-    target_object = p.loadURDF(args.urdf_target_object_filepath, [min_x, -args.conveyor_distance, args.target_extents[2]/2 + 0.01])
-    conveyor = p.loadURDF("model/conveyor.urdf", [min_x, -args.conveyor_distance, 0.01])
+    # draw lines
+    p.addUserDebugLine(lineFromXYZ=[args.min_x-0.05, -args.conveyor_distance+0.05, 0], lineToXYZ=[args.max_x+0.05, -args.conveyor_distance+0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
+    p.addUserDebugLine(lineFromXYZ=[args.min_x-0.05, -args.conveyor_distance-0.05, 0], lineToXYZ=[args.max_x+0.05, -args.conveyor_distance-0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
 
-    ## draw lines
-    p.addUserDebugLine(lineFromXYZ=[min_x-0.05, -args.conveyor_distance+0.05, 0], lineToXYZ=[max_x+0.05, -args.conveyor_distance+0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
-    p.addUserDebugLine(lineFromXYZ=[min_x-0.05, -args.conveyor_distance-0.05, 0], lineToXYZ=[max_x+0.05, -args.conveyor_distance-0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
-
-    ## load robot
+    # load robot
     urdf_dir = os.path.join(rospkg.RosPack().get_path('kinova_description'), 'urdf')
     urdf_filename = 'mico.urdf'
     if not os.path.exists(os.path.join(urdf_dir, urdf_filename)):
         os.system('cp model/mico.urdf {}'.format(os.path.join(urdf_dir, urdf_filename)))
-    mico = p.loadURDF(os.path.join(urdf_dir, urdf_filename), flags=p.URDF_USE_SELF_COLLISION)
+    mico_id = p.loadURDF(os.path.join(urdf_dir, urdf_filename), flags=p.URDF_USE_SELF_COLLISION)
 
-    ## load obstacles
-    if LOAD_OBSTACLES:
-        all_bottle_obstacle = p.loadURDF("model/all_bottle_obstacle.urdf", [0.08998222825053534, -0.3499910643580809+0.5-args.conveyor_distance, 0.00023844586980673307], [-0.0216622233067531,-0.0056517363083496315,0.9252930239049401,0.3785916347081129])
-        trash_can_new_obstacle = p.loadURDF("model/trash_can_new_obstacle.urdf", [-0.30547354355304757, -0.30201510506407675+0.5-args.conveyor_distance, 0.06916064731741166],[0.014904781746875194,-0.039341362803788846,0.0011919812701876302,0.9991139493743795])
-        gillette_shaving_gel_obstacle = p.loadURDF("model/gillette_shaving_gel_obstacle.urdf",[-0.09985463045431538, -0.5998251882677045+0.5-args.conveyor_distance, 0.000567468746735579],[-0.035094655962893954,0.011424311280120345,-0.003006735972672182,0.9993141697051092])
+    # load obstacles
+    if args.LOAD_OBSTACLES:
+        for obstacle in args.scene_config['obstacles']:
+            obs_pos = obstacle['position']
+            obs_pos[1] += 0.5-args.conveyor_distance
+            obs_id = p.loadURDF(obstacle['urdf_filepath'], obs_pos, obstacle['orientation'])
+            obstacle['body_id'] = obs_id
 
-    ## memory leaks happen sometimes without this but a breakpoint
+    # memory leaks happen sometimes without this but a breakpoint
     p.setRealTimeSimulation(1)
-    rospy.sleep(2) # time for objects to stabelize
+    rospy.sleep(2)  # time for objects to stabilize
 
-    ## initialize controller
-    mc = MicoController(mico)
-    mc.reset_arm_joint_values(mc.HOME)
+    args.mico_id, args.conveyor_id, args.target_object_id = mico_id, conveyor_id, target_object_id
 
-    ## starting pose
-    mc.move_arm_joint_values(mc.HOME, plan=False)
-    mc.open_gripper()
+
+def create_scence_moveit(args, mc):
     mc.mico_moveit.clear_scene()
 
-    mc.mico_moveit.add_mesh(args.object_name, ut.get_body_pose(target_object), args.object_mesh_filepath)
-    mc.mico_moveit.add_box("conveyor", ut.get_body_pose(conveyor), size=(.1, .1, .02))
+    mc.mico_moveit.add_mesh(args.object_name, ut.get_body_pose(args.target_object_id), args.object_mesh_filepath)
+    mc.mico_moveit.add_box("conveyor", ut.get_body_pose(args.conveyor_id), size=(.1, .1, .02))
     mc.mico_moveit.add_box("floor", ((0, 0, -0.005), (0, 0, 0, 1)), size=(2, 2, 0.01))
-    if LOAD_OBSTACLES:
-        mc.mico_moveit.add_mesh("all_bottle_obstacle", ut.get_body_pose(all_bottle_obstacle), 'meshes/meshes_obj/all_bottle.obj')
-        mc.mico_moveit.add_mesh("trash_can_new_obstacle", ut.get_body_pose(trash_can_new_obstacle), 'meshes/meshes_obj/trash_can_new.obj')
-        mc.mico_moveit.add_mesh("gillette_shaving_gel_obstacle", ut.get_body_pose(gillette_shaving_gel_obstacle), 'meshes/meshes_obj/gillette_shaving_gel.obj')
+
+    if args.LOAD_OBSTACLES:
+        for obstacle in args.scene_config['obstacles']:
+            mc.mico_moveit.add_mesh(obstacle['object_name'], ut.get_body_pose(obstacle['body_id']), obstacle['obj_filepath'])
         time.sleep(1)
 
-    ### load grasps
+
+if __name__ == "__main__":
+    rospy.set_param("reachability_space_created", False)
+    args = get_args()
+    create_scence(args)
+    target_object_id = args.target_object_id
+
+    rospy.init_node("demo")
+
+    # initialize controller
+    mc = MicoController(args.mico_id)
+    mc.reset_arm_joint_values(mc.HOME)
+
+    # starting pose
+    mc.move_arm_joint_values(mc.HOME, plan=False)
+    mc.open_gripper()
+
+    create_scence_moveit(args, mc)
+
+    # load grasps
     starting_line = -0.6
-    if ONLINE_PLANNING:
+    if args.ONLINE_PLANNING:
         # need to make sure seed grasp is good!
         grasp_fnm = "grasps_online_"+str(args.conveyor_distance)+'.pk'
-        pose_init = [[starting_line, args.conveyor_distance, ut.get_body_pose(target_object)[0][2]], [0, 0, 0, 1]]
+        pose_init = [[starting_line, args.conveyor_distance, ut.get_body_pose(target_object_id)[0][2]], [0, 0, 0, 1]]
         # grasps_in_world = plan_reachable_grasps(save_fnm=grasp_fnm, object_name='cube',
         #                                         object_pose_2d=pose_init, max_steps=10000)
         grasps_in_world = plan_reachable_grasps(load_fnm=grasp_fnm)
@@ -498,12 +511,14 @@ if __name__ == "__main__":
         grasp_poses_2d_before_eef_transformation = [ut.pose_2_list(g.pose) for g in grasps]
 
     # create sdf reachability space
-    if RANK_BY_REACHABILITY:
+    if args.RANK_BY_REACHABILITY:
         rospy.loginfo("start creating sdf reachability space...")
         c = time.time()
-        if LOAD_OBSTACLES:
-            obstacle_mesh_filepaths = ["meshes/meshes_ply/all_bottle.ply", "meshes/meshes_ply/trash_can_new.ply", "meshes/meshes_ply/gillette_shaving_gel.ply"]
-            obstacle_poses = [ut.list_2_pose(ut.get_body_pose(all_bottle_obstacle)), ut.list_2_pose(ut.get_body_pose(trash_can_new_obstacle)), ut.list_2_pose(ut.get_body_pose(gillette_shaving_gel_obstacle))]
+        if args.LOAD_OBSTACLES:
+            obstacle_mesh_filepaths, obstacle_poses = [], []
+            for obstacle in args.scene_config['obstacles']:
+                obstacle_mesh_filepaths.append(obstacle['ply_filepath'])
+                obstacle_poses.append(ut.list_2_pose(ut.get_body_pose(obstacle['body_id'])))
 
             # create reachability space from obstacles
             obstacles_mask_3d = create_occupancy_grid_from_obstacles(obstacle_mesh_filepaths=obstacle_mesh_filepaths,
@@ -544,17 +559,17 @@ if __name__ == "__main__":
 
     #############################################################################################
     previous_g_index = None # previous grasp pose index
-    original_height = ut.get_body_pose(target_object)[0][2]
+    original_height = ut.get_body_pose(target_object_id)[0][2]
     old_ee_to_new_ee_translation_rotation = get_transfrom("m1n6s200_link_6", "m1n6s200_end_effector")
     new_ee_to_old_ee_translation_rotation = get_transfrom("m1n6s200_end_effector", "m1n6s200_link_6")
 
-    if ONLINE_PLANNING:
+    if args.ONLINE_PLANNING:
         grasp_old = grasps_in_world[0]
         pose_old = pose_init
 
     while True:
-        current_pose = ut.get_body_pose(target_object)
-        current_conveyor_pose = ut.get_body_pose(conveyor)
+        current_pose = ut.get_body_pose(target_object_id)
+        current_conveyor_pose = ut.get_body_pose(args.conveyor_id)
         if not start_time_setted:
             # enter workspace
             if current_pose[0][0] > starting_line:
@@ -563,7 +578,7 @@ if __name__ == "__main__":
                 start_time_setted = True
             else: continue
 
-        if current_conveyor_pose[0][0] > max_x-0.05:
+        if current_conveyor_pose[0][0] > args.max_x-0.05:
             # target moves outside workspace, break directly
             break
 
@@ -577,7 +592,7 @@ if __name__ == "__main__":
         pre_g_joint_values = None
         g_index = None
 
-        if ONLINE_PLANNING:
+        if args.ONLINE_PLANNING:
             grasp_old = convert_grasps([grasp_old], pose_old, future_pose)[0]
             pose_old = future_pose
             pre_g_pose = MicoController.back_off(grasp_old, 0.05)
@@ -609,7 +624,7 @@ if __name__ == "__main__":
 
 
         else:
-            grasps_in_world, grasps_in_world_before_eef_trans = get_world_grasps(grasps, target_object, old_ee_to_new_ee_translation_rotation, future_pose)
+            grasps_in_world, grasps_in_world_before_eef_trans = get_world_grasps(grasps, target_object_id, old_ee_to_new_ee_translation_rotation, future_pose)
             pre_grasps_in_world = list()
             pre_grasps_in_world_before_eef_trans = list()
             for g in grasps_in_world:
@@ -619,8 +634,8 @@ if __name__ == "__main__":
 
             #################################################################################################
             ####################### grasp switching with reachability space #################################
-            if RANK_BY_REACHABILITY:
-                if KEEP_PREVIOUS_GRASP and previous_g_index is not None:
+            if args.RANK_BY_REACHABILITY:
+                if args.KEEP_PREVIOUS_GRASP and previous_g_index is not None:
                     j = mc.get_arm_ik(pre_grasps_in_world[previous_g_index])
                     if j is not None:
                         rospy.loginfo("the previous pre-grasp is reachable")
@@ -662,7 +677,7 @@ if __name__ == "__main__":
             #################################################################################################
             ####################### grasp switching without reachability space ##############################
             else:
-                if KEEP_PREVIOUS_GRASP and previous_g_index is not None:
+                if args.KEEP_PREVIOUS_GRASP and previous_g_index is not None:
                     j = mc.get_arm_ik(pre_grasps_in_world[previous_g_index])
                     if j is not None:
                     # always first check whether the previous grasp is still reachable
@@ -745,7 +760,7 @@ if __name__ == "__main__":
         # TODO add blocking to control
 
         #### grasp
-        if ONLY_TRACKING:
+        if args.ONLY_TRACKING:
             pass
         else:
             if args.conveyor_velocity == 0.03:
@@ -755,14 +770,14 @@ if __name__ == "__main__":
             elif args.conveyor_velocity == 0.01:
                 start_grasp = can_grasp(pre_g_pose[0], 0.03, None)
             if start_grasp:
-                if DYNAMIC:
+                if args.DYNAMIC:
                     rospy.loginfo("start grasping")
                     # predicted_pose = predict(1, target_object)
                     predicted_pose = [list(motion_predict_svr(duration=1).prediction), current_pose[1]]
-                    if ONLINE_PLANNING:
+                    if args.ONLINE_PLANNING:
                         g_pose = convert_grasps([g_pose], pose_old, predicted_pose)[0]
                     else:
-                        g_pose = get_world_grasps([grasps[g_index]], target_object, old_ee_to_new_ee_translation_rotation, predicted_pose)[0][0]
+                        g_pose = get_world_grasps([grasps[g_index]], target_object_id, old_ee_to_new_ee_translation_rotation, predicted_pose)[0][0]
                     j = mc.get_arm_ik(g_pose, avoid_collisions=False)
                     if j is None:
                         # do not check g_pose is reachable or not during grasp planning, but check predicted g_pose directly
@@ -782,7 +797,7 @@ if __name__ == "__main__":
                     # mc.move_arm_joint_values(mc.HOME)
                     break
                 else:
-                    mc.grasp(pre_g_pose, DYNAMIC)
+                    mc.grasp(pre_g_pose, args.DYNAMIC)
                     break
         print("\n")
 
@@ -793,7 +808,7 @@ if __name__ == "__main__":
     rospy.sleep(2)
 
     # check success and then do something
-    success = is_success(target_object, original_height)
+    success = is_success(target_object_id, original_height)
     rospy.loginfo("success: {}".format(success))
 
     # save result to file: object_name, success, time, velocity, conveyor_distance

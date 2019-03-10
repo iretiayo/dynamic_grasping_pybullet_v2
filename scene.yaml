@@ -1,0 +1,22 @@
+
+obstacles:
+- urdf_filepath: model/all_bottle_obstacle.urdf
+  obj_filepath: meshes/meshes_obj/all_bottle.obj
+  ply_filepath: meshes/meshes_ply/all_bottle.ply
+  position: [0.09, -0.35, 0.00]
+  orientation: [-0.02166, -0.00565, 0.925, 0.3786]
+  object_name: all_bottle_obstacle
+
+- urdf_filepath: model/trash_can_new_obstacle.urdf
+  obj_filepath: meshes/meshes_obj/trash_can_new.obj
+  ply_filepath: meshes/meshes_ply/trash_can_new.ply
+  position: [-0.305, -0.302, 0.069]
+  orientation: [0.0149, -0.039, 0.0012, 0.999]
+  object_name: trash_can_new_obstacle
+
+- urdf_filepath: model/gillette_shaving_gel_obstacle.urdf
+  obj_filepath: meshes/meshes_obj/gillette_shaving_gel.obj
+  ply_filepath: meshes/meshes_ply/gillette_shaving_gel.ply
+  position: [-0.0998, -0.5998, 0.000567]
+  orientation: [-0.0351,0.0114,-0.003,0.999]
+  object_name: gillette_shaving_gel_obstacle

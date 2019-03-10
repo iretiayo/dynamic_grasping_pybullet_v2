@@ -119,4 +119,7 @@ src/
 
 # video
 video
+videos
 results
+target_object.urdf
+grasps_*.pk

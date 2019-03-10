@@ -16,7 +16,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="/home/jxu/dynamic_grasping_pybullet/meshes/meshes_obj/gillette_shaving_gel.obj"/>
+        <mesh filename="../meshes/meshes_obj/gillette_shaving_gel.obj"/>
       </geometry>
        <material name="white">
         <color rgba="1 1 1 1"/>
@@ -25,7 +25,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="/home/jxu/dynamic_grasping_pybullet/meshes/meshes_obj/gillette_shaving_gel.obj"/>
+        <mesh filename="../meshes/meshes_obj/gillette_shaving_gel.obj"/>
       </geometry>
     </collision>
   </link>
