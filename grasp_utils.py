@@ -7,12 +7,15 @@ import os
 import pickle
 import numpy as np
 
+import graspit_commander
+from geometry_msgs.msg import Pose, Point, Quaternion
+
 from reachability_utils.reachability_resolution_analysis import interpolate_pose_in_reachability_space_grid
 import plyfile
 
 
 # https://www.youtube.com/watch?v=aaDUIZVNCDM
-def get_transfrom(reference_frame, target_frame):
+def get_transform(reference_frame, target_frame):
     listener = tf.TransformListener()
     try:
         listener.waitForTransform(reference_frame, target_frame,
@@ -27,10 +30,16 @@ def get_transfrom(reference_frame, target_frame):
                                                            rospy.Time(0), timeout=rospy.Duration(1))
             translation_rotation = tf_conversions.toTf(tf2_kdl.transform_to_kdl(transform_stamped))
         except Exception as e2:
-            rospy.logerr("get_transfrom::\n " +
+            rospy.logerr("get_transform::\n " +
                          "Failed to find transform from %s to %s" % (
                              reference_frame, target_frame,))
     return translation_rotation
+
+
+def back_off(grasp_pose, offset=-.05):
+    pre_grasp_pose = tf_conversions.toMsg(
+        tf_conversions.fromMsg(grasp_pose) * tf_conversions.fromTf(((0, 0, offset), (0, 0, 0, 1))))
+    return pre_grasp_pose
 
 
 def change_end_effector_link(graspit_grasp_msg_pose, old_link_to_new_link_translation_rotation):
@@ -57,7 +66,72 @@ def change_end_effector_link(graspit_grasp_msg_pose, old_link_to_new_link_transl
 
 ## TODO uniform sampling grasps
 
-def generate_grasps(load_fnm=None, save_fnm=None, body="cube", body_extents=(0.05, 0.05, 0.05)):
+
+def get_grasps(robot_name='MicoGripper', object_mesh='cube', object_pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
+               floor_offset=0, max_steps=35000, search_energy='GUIDED_POTENTIAL_QUALITY_ENERGY', seed_grasp=None):
+    gc = graspit_commander.GraspitCommander()
+    gc.clearWorld()
+
+    gc.importRobot(robot_name)
+    gc.setRobotPose(Pose(Point(0, 0, 1), Quaternion(0, 0, 0, 1)))
+    gc.importGraspableBody(object_mesh, object_pose)
+    if floor_offset:
+        gc.importObstacle('floor', Pose(Point(-1, -1, floor_offset + object_pose.position.z), Quaternion(0, 0, 0, 1)))
+
+    # simulated annealling
+    grasps = gc.planGrasps(max_steps=max_steps, search_energy=search_energy,
+                           use_seed_grasp=seed_grasp is not None, seed_grasp=seed_grasp)
+    grasps = grasps.grasps
+
+    # keep only good grasps
+    good_grasps = [g for g in grasps if g.volume_quality > 0]
+
+    # for g in good_grasps:
+    #     gc.setRobotPose(g.pose)
+    #     time.sleep(3)
+
+    # return grasp_poses_in_world and grasp_poses_in_object
+    grasp_poses_in_world, grasp_poses_in_object = extract_grasp_poses_from_graspit_grasps(graspit_grasps=good_grasps,
+                                                                                          object_pose=object_pose)
+    return good_grasps, grasp_poses_in_world, grasp_poses_in_object
+
+
+def extract_grasp_poses_from_graspit_grasps(graspit_grasps, object_pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1))):
+
+    grasp_poses_in_world = [g.pose for g in graspit_grasps]
+    world_in_object_transform = tf_conversions.fromMsg(object_pose).Inverse()
+    grasp_poses_in_object = [tf_conversions.toMsg(world_in_object_transform * tf_conversions.fromMsg(g)) for g in
+                             grasp_poses_in_world]
+    return grasp_poses_in_world, grasp_poses_in_object
+
+
+def generate_grasps(load_fnm=None, save_fnm=None, object_mesh="cube", object_pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
+                    floor_offset=0, max_steps=35000, search_energy='GUIDED_POTENTIAL_QUALITY_ENERGY', seed_grasp=None):
+    if load_fnm and os.path.exists(load_fnm):
+        grasps = pickle.load(open(load_fnm, "rb"))
+        grasp_poses_in_world, grasp_poses_in_object = extract_grasp_poses_from_graspit_grasps(graspit_grasps=grasps,
+                                                                                              object_pose=object_pose)
+    else:
+        grasp_results = get_grasps(object_mesh=object_mesh, object_pose=object_pose, floor_offset=floor_offset,
+                                   max_steps=max_steps, search_energy=search_energy, seed_grasp=seed_grasp)
+        grasps, grasp_poses_in_world, grasp_poses_in_object = grasp_results
+        if save_fnm:
+            pickle.dump(grasps, open(save_fnm, "wb"))
+
+    return grasps, grasp_poses_in_world, grasp_poses_in_object
+
+
+def convert_graspit_pose_in_object_to_moveit_grasp_pose(graspit_grasp_pose_in_object, object_pose,
+                                                        old_ee_to_new_ee_translation_rotation, pre_grasp_offset=-0.05):
+    ee_in_world = tf_conversions.toMsg(tf_conversions.fromMsg(object_pose) *
+                                       tf_conversions.fromMsg(graspit_grasp_pose_in_object) *
+                                       tf_conversions.fromTf(old_ee_to_new_ee_translation_rotation))
+
+    pre_grasp = back_off(ee_in_world, pre_grasp_offset)
+    return ee_in_world, pre_grasp
+
+
+def generate_grasps_old(load_fnm=None, save_fnm=None, body="cube", body_extents=(0.05, 0.05, 0.05)):
     """
     This method assumes the target object to be at world origin. Filter out bad grasps by volume quality.
 
@@ -69,7 +143,7 @@ def generate_grasps(load_fnm=None, save_fnm=None, body="cube", body_extents=(0.0
     """
     ## NOTE, now use sim-ann anf then switch
 
-    if load_fnm:
+    if load_fnm and os.path.exists(load_fnm):
         grasps = pickle.load(open(load_fnm, "rb"))
         return grasps
     else:
@@ -91,79 +165,6 @@ def generate_grasps(load_fnm=None, save_fnm=None, body="cube", body_extents=(0.0
         if save_fnm:
             pickle.dump(grasps, open(save_fnm, "wb"))
         return grasps
-
-
-def plan_reachable_grasps(load_fnm=None, save_fnm=None, object_name="cube", object_pose_2d=None, seed_grasp=None,
-                          max_steps=35000):
-    """ return world grasps in pose_2d """
-    if load_fnm:
-        grasps = pickle.load(open(load_fnm, "rb"))
-        return grasps
-    else:
-        gc = graspit_commander.GraspitCommander()
-        gc.clearWorld()
-
-    gc.importRobot('MicoGripper')
-    gc.setRobotPose(Pose(Point(0, 0, 1), Quaternion(0, 0, 0, 1)))
-    gc.importGraspableBody(object_name, ut.list_2_pose(object_pose_2d))
-    # hard-code floor constraint
-    gc.importObstacle('floor',
-                      Pose(Point(object_pose_2d[0][0] - 2, object_pose_2d[0][1] - 2, 0), Quaternion(0, 0, 0, 1)))
-    # TODO not considering conveyor?
-
-    # simulated annealling
-    # import ipdb; ipdb.set_trace()
-    # grasps = gc.planGrasps(max_steps=max_steps+30000, search_energy='REACHABLE_FIRST_HYBRID_GRASP_ENERGY',
-    #                        use_seed_grasp=seed_grasp is not None, seed_grasp=seed_grasp)
-    grasps = gc.planGrasps(max_steps=max_steps + 30000,
-                           use_seed_grasp=seed_grasp is not None, seed_grasp=seed_grasp)
-    if grasps is None:
-        print("here")
-    grasps = grasps.grasps
-
-    # keep only good grasps
-    # TODO is this really required?
-    # good_grasps = [g for g in grasps if g.volume_quality > 0]
-    good_grasps = grasps
-
-    # for g in good_grasps:
-    #     gc.setRobotPose(g.pose)
-    #     time.sleep(3)
-
-    # change end effector link
-    grasps_in_world = list()
-    for g in good_grasps:
-        old_ee_to_new_ee_translation_rotation = get_transfrom("m1n6s200_link_6", "m1n6s200_end_effector")
-        g_pose_new = change_end_effector_link(g.pose, old_ee_to_new_ee_translation_rotation)
-        grasps_in_world.append(tf_conversions.toTf(tf_conversions.fromMsg(g_pose_new)))
-
-    if save_fnm:
-        pickle.dump(grasps_in_world, open(save_fnm, "wb"))
-    return grasps_in_world
-
-
-def get_world_grasps(grasps, objectID, old_ee_to_new_ee_translation_rotation, object_pose=None):
-    """
-    Also change eef link.
-    :param grasps: grasps.grasps returned by graspit
-    :param objectID: object id
-    :param object_pose: the pose of the target; if None, use current pose. pose_2d
-    :return: a list of tf tuples
-    """
-    if object_pose is None:
-        object_pose = p.getBasePositionAndOrientation(objectID)
-    world_T_object = tf_conversions.toMatrix(tf_conversions.fromTf(object_pose))
-    grasps_in_world = list()
-    grasps_in_world_before_eef_trans = list()
-    for g in grasps:
-        object_g = tf_conversions.toMatrix(tf_conversions.fromMsg(g.pose))
-        world_g = world_T_object.dot(object_g)
-        world_g_pose = tf_conversions.toMsg(tf_conversions.fromMatrix(world_g))
-        grasps_in_world_before_eef_trans.append(tf_conversions.toTf(tf_conversions.fromMsg(world_g_pose)))
-        # change end effector link
-        world_g_pose_new = change_end_effector_link(world_g_pose, old_ee_to_new_ee_translation_rotation)
-        grasps_in_world.append(tf_conversions.toTf(tf_conversions.fromMsg(world_g_pose_new)))
-    return grasps_in_world, grasps_in_world_before_eef_trans
 
 
 def display_grasp_pose_in_rviz(pose_2d_list, reference_frame):
@@ -218,29 +219,6 @@ def get_reachability_of_grasps_pose_2d(grasps_in_world, sdf_reachability_space, 
 
     # is_reachable = [sdf_values[i] > 0 for i in range(len(sdf_values))]
     return sdf_values
-
-
-def convert_grasps(grasps, old_pose, new_pose):
-    """
-    Given a set of grasps (in world frame) generated when target object is at old_pose (in world frame),
-    compute the switched grasps (in world frame) when target object has moved to new_pose (in world frame)
-
-    MATH: w_T_gnew = w_T_n * o_T_w * w_T_gold
-    o: old object frame, n: new object frame, w: world frame
-
-    :param grasps: list of pose_2d grasps
-    :param old_pose: pose_2d
-    :param new_pose: pose_2d
-    :return: list of pose_2d grasps
-    """
-    grasps_new = list()
-    for g in grasps:
-        w_T_gold = tf_conversions.toMatrix(tf_conversions.fromTf(g))
-        o_T_w = tf.transformations.inverse_matrix(tf_conversions.toMatrix(tf_conversions.fromTf(old_pose)))
-        w_T_n = tf_conversions.toMatrix(tf_conversions.fromTf(new_pose))
-        w_T_gnew = (w_T_n.dot(o_T_w)).dot(w_T_gold)
-        grasps_new.append(tf_conversions.toTf(tf_conversions.fromMatrix(w_T_gnew)))
-    return grasps_new
 
 
 def read_vertex_points_from_ply_filepath(ply_filepath):
