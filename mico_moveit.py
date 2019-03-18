@@ -12,7 +12,6 @@ from std_msgs.msg import Header
 
 import rospy
 import moveit_commander as mc
-import moveit_python
 from moveit_msgs.msg import MoveItErrorCodes, DisplayTrajectory,PositionIKRequest
 from moveit_msgs.srv import GetPositionIK, GetPositionFK
 
