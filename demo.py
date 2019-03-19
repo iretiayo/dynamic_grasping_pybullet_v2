@@ -253,14 +253,16 @@ if __name__ == "__main__":
             Point(starting_x, args.conveyor_distance, ut.get_body_pose(args.target_object_id)[0][2]),
             Quaternion(0, 0, 0, 1))
         search_energy = 'REACHABLE_FIRST_HYBRID_GRASP_ENERGY'
+        max_steps = 35000
     else:
         grasp_filepath = os.path.join(args.mesh_dir, args.object_name, "grasps_" + str(args.object_name) + '.pk')
         object_pose_init = Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1))
         search_energy = 'GUIDED_POTENTIAL_QUALITY_ENERGY'
+        max_steps = 70000
     grasp_results = generate_grasps(load_fnm=grasp_filepath, save_fnm=grasp_filepath,
                                     object_mesh=args.object_mesh_filepath_ply,
                                     object_pose=object_pose_init, floor_offset=args.target_mesh_bounds.min(0)[2],
-                                    max_steps=35000, search_energy=search_energy, seed_grasp=None)
+                                    max_steps=max_steps, search_energy=search_energy, seed_grasp=None)
     graspit_grasps, graspit_grasp_poses_in_world, graspit_grasp_poses_in_object = grasp_results
 
     # create sdf reachability space
@@ -304,7 +306,7 @@ if __name__ == "__main__":
         future_pose = motion_predict_svr(duration=1).prediction.pose
 
         # information about the current grasp
-        pre_g_pose, g_pose, pre_g_joint_values, g_index = None, None, None, None
+        pre_g_pose, g_pose, pre_g_joint_values, current_grasp_idx = None, None, None, None
 
         if args.ONLINE_PLANNING:
             ee_in_world, pre_g_pose = convert_graspit_pose_in_object_to_moveit_grasp_pose(graspit_grasp_poses_in_object[0],
@@ -362,7 +364,7 @@ if __name__ == "__main__":
 
         #### move to pre-grasp pose
         looking_ahead = 3
-        rospy.loginfo("trying to reach {}-th pre-grasp pose".format(g_index))
+        rospy.loginfo("trying to reach {}-th pre-grasp pose".format(current_grasp_idx))
         motion_start = time.time()
         rospy.loginfo("previous trajectory is reaching: {}".format(mc.seq))
 
@@ -392,7 +394,8 @@ if __name__ == "__main__":
         # TODO add blocking to control
 
         #### grasp
-        eef_pose = tf_conversions.toMsg(tf_conversions.fromTf(get_transform(mc.mico_moveit.BASE_LINK, mc.mico_moveit.TIP_LINK)))
+        eef_pose = tf_conversions.toMsg(tf_conversions.fromTf(mc.get_arm_eef_pose()))
+        # eef_pose = tf_conversions.toMsg(tf_conversions.fromTf(get_transform(mc.mico_moveit.BASE_LINK, mc.mico_moveit.TIP_LINK)))
         object_pose = tf_conversions.toMsg(tf_conversions.fromTf(p.getBasePositionAndOrientation(args.target_object_id)))
         if not args.ONLY_TRACKING:
             if args.conveyor_velocity == 0.01:
@@ -414,7 +417,7 @@ if __name__ == "__main__":
                         ee_idx = current_grasp_idx
                     ee_in_world, pre_g_pose = convert_graspit_pose_in_object_to_moveit_grasp_pose(graspit_grasp_poses_in_object[ee_idx], predicted_pose,
                                                                                                   old_ee_to_new_ee_translation_rotation)
-                    j = mc.get_arm_ik(ee_in_world, avoid_collisions=False)
+                    j = mc.get_arm_ik(tf_conversions.toTf(tf_conversions.fromMsg(ee_in_world)), avoid_collisions=False)
                     if j is None:
                         # do not check g_pose is reachable or not during grasp planning, but check predicted g_pose directly
                         # wanna drive the arm to a pre-grasp pose as soon as possible
