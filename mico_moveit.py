@@ -66,6 +66,18 @@ class MicoMoveit(object):
         plan = self.arm_commander_group.plan()
         return plan
 
+    def plan_ee_pose(self, start_joint_values, goal_ee_pose):
+        # setup moveit_start_state
+        start_robot_state = self.robot.get_current_state()
+        start_robot_state.joint_state.name = self.ARM_JOINT_NAMES
+        start_robot_state.joint_state.position = start_joint_values
+
+        self.arm_commander_group.set_start_state(start_robot_state)
+        self.arm_commander_group.set_pose_target(goal_ee_pose)
+
+        plan = self.arm_commander_group.plan()
+        return plan
+
     @staticmethod
     def convert_range(joint_values):
         """ Convert continuous joint to range [-pi, pi] """

@@ -370,6 +370,7 @@ if __name__ == "__main__":
 
         if pre_position_trajectory is None:
             position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values)
+            # position_trajectory, motion_plan = mc.plan_arm_eef_pose(ee_pose=pre_g_pose)
         else:
             # lazy replan
             if np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])) > 0.7:
@@ -377,8 +378,13 @@ if __name__ == "__main__":
                 rospy.loginfo("eef position is still far from target position; do not replan; keep executing previous plan")
                 continue
             else:
-                start_index = min(mc.seq+looking_ahead, len(pre_position_trajectory)-1)
-                position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values, start_joint_values=pre_position_trajectory[start_index])
+                start_index = min(mc.seq + looking_ahead, len(pre_position_trajectory) - 1)
+                start_joint_values = pre_position_trajectory[start_index]
+                # start_joint_values = mc.get_arm_joint_values()
+                position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values,
+                                                                            start_joint_values=start_joint_values)
+                # position_trajectory, motion_plan = mc.plan_arm_eef_pose(ee_pose=pre_g_pose,
+                #                                                         start_joint_values=start_joint_values)
         rospy.loginfo("planning takes {}".format(time.time()-motion_start))
 
         if position_trajectory is None:

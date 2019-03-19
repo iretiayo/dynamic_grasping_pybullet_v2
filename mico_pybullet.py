@@ -212,6 +212,15 @@ class MicoController(object):
         new_position_trajectory = position_trajectory + diff
         return new_position_trajectory
 
+    @staticmethod
+    def process_plan(plan, start_joint_values):
+        # convert position trajectory to work with current joint values
+        diff = np.array(start_joint_values) - np.array(plan.joint_trajectory.points[0].positions)
+        for p in plan.joint_trajectory.points:
+            p.positions = (np.array(p.positions) + diff).tolist()
+        position_trajectory, velocity_trajectory, time_trajectory = MicoController.extract_plan(plan)
+        return position_trajectory, plan
+
     def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None):
         """
         Plan a trajectory from current joint values to goal joint values
@@ -226,17 +235,24 @@ class MicoController(object):
         if len(plan.joint_trajectory.points) == 0:
             return None, None
 
-        # convert position trajectory to work with current joint values
-        diff = np.array(start_joint_values) - np.array(plan.joint_trajectory.points[0].positions)
-        for p in plan.joint_trajectory.points:
-            p.positions = (np.array(p.positions) + diff).tolist()
-        position_trajectory, velocity_trajectory, time_trajectory = MicoController.extract_plan(plan)
-
+        position_trajectory, plan = MicoController.process_plan(plan, start_joint_values)
         return position_trajectory, plan
 
-    def plan_arm_eef_pose(self, pose):
+    def plan_arm_eef_pose_old(self, pose):
         pose_joint_values = self.get_arm_ik(pose)
         return self.plan_arm_joint_values(pose_joint_values)
+
+    def plan_arm_eef_pose(self, ee_pose, start_joint_values=None):
+        if start_joint_values is None:
+            start_joint_values = self.get_arm_joint_values()
+
+        plan = self.mico_moveit.plan_ee_pose(start_joint_values, ee_pose)
+        # check if there exists a plan
+        if len(plan.joint_trajectory.points) == 0:
+            return None, None
+
+        position_trajectory, plan = MicoController.process_plan(plan, start_joint_values)
+        return position_trajectory, plan
 
     def execute_arm_trajectory(self, position_trajectory, motion_plan):
         goal = pybullet_trajectory_execution.msg.TrajectoryGoal(
