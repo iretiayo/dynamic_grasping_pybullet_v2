@@ -88,33 +88,16 @@ class MicoController(object):
             else:
                 print("No path found!")
         else:
-            step = 10  # number of waypoints
-            duration = 1  # time to finish
-            ttt = time.time()
+            num_steps = 10  # number of waypoints
             start_joint_values = self.get_arm_joint_values()
-            # print("start_joint_values: {}".format(start_joint_values))
-            # print("goal_joint_values: {}".format(goal_joint_values))
-            converted_start_joint_values = MicoMoveit.convert_range(start_joint_values)
-            # print("converted start_joint_values: {}".format(converted_start_joint_values))
-            converted_goal_joint_values = MicoMoveit.convert_range(goal_joint_values)
-            # check which way to go for continuous/circular joints - e.g. from -3.1 to 3.1 should be from -3.1 to -3.18
-            from math import pi
-            for i in [0, 3, 4, 5]:
-                if abs(converted_goal_joint_values[i] - converted_start_joint_values[i]) > pi:
-                    if converted_goal_joint_values[i] < converted_start_joint_values[i]:
-                        converted_goal_joint_values[i] += 2 * pi
-                    else:
-                        converted_goal_joint_values[i] -= 2 * pi
-            # print("converted goal_joint_values: {}".format(converted_goal_joint_values))
-            position_trajectory = np.linspace(converted_start_joint_values, converted_goal_joint_values, step)
-            # print("raw non-plan trajectory\n {}".format(position_trajectory))
-            position_trajectory = MicoController.convert_position_trajectory(position_trajectory, start_joint_values)
-            # print("adapted plan trajectory\n {}".format(position_trajectory))
+            diff = np.array(goal_joint_values) - np.array(start_joint_values)
+            diff[diff > 2*np.pi] -= 2*np.pi
+            diff[diff < -2*np.pi] += 2*np.pi
+            converted_goal_joint_values = np.array(start_joint_values) + diff
+            print('\n\n\nUsing custom move to pick')
+            print(diff)
+            position_trajectory = np.linspace(start_joint_values, converted_goal_joint_values, num_steps)
             self.execute_arm_trajectory(position_trajectory, None)
-            # for i in range(step):
-            #     p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL,
-            #                                 position_trajectory[i], forces=[200] * len(self.GROUP_INDEX['arm']))
-            #     time.sleep(float(duration) / float(step))
 
     def reset_arm_joint_values(self, joint_values):
         arm_idx = self.GROUP_INDEX['arm']
