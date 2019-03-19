@@ -82,9 +82,9 @@ class MicoController(object):
             motion where we are confident that no cillision is on the way.
         """
         if plan:
-            position_trajectory = self.plan_arm_joint_values(goal_joint_values)
+            position_trajectory, motion_plan = self.plan_arm_joint_values(goal_joint_values)
             if position_trajectory is not None:
-                self.execute_arm_trajectory(position_trajectory)
+                self.execute_arm_trajectory(position_trajectory, motion_plan)
             else:
                 print("No path found!")
         else:
@@ -110,7 +110,7 @@ class MicoController(object):
             # print("raw non-plan trajectory\n {}".format(position_trajectory))
             position_trajectory = MicoController.convert_position_trajectory(position_trajectory, start_joint_values)
             # print("adapted plan trajectory\n {}".format(position_trajectory))
-            self.execute_arm_trajectory(position_trajectory)
+            self.execute_arm_trajectory(position_trajectory, None)
             # for i in range(step):
             #     p.setJointMotorControlArray(self.id, self.GROUP_INDEX['arm'], p.POSITION_CONTROL,
             #                                 position_trajectory[i], forces=[200] * len(self.GROUP_INDEX['arm']))
@@ -239,25 +239,29 @@ class MicoController(object):
             start_joint_values = self.get_arm_joint_values()
 
         plan = self.mico_moveit.plan(start_joint_values, goal_joint_values)
-
         # check if there exists a plan
         if len(plan.joint_trajectory.points) == 0:
-            return None
-        position_trajectory, velocity_trajectory, time_trajectory_delta = MicoController.convert_plan(plan,
-                                                                                                      start_joint_values)
-        # position_trajectory has start_joint_values but not goal_joint_values
-        return position_trajectory
+            return None, None
+
+        # convert position trajectory to work with current joint values
+        diff = np.array(start_joint_values) - np.array(plan.joint_trajectory.points[0].positions)
+        for p in plan.joint_trajectory.points:
+            p.positions = (np.array(p.positions) + diff).tolist()
+        position_trajectory, velocity_trajectory, time_trajectory = MicoController.extract_plan(plan)
+
+        return position_trajectory, plan
 
     def plan_arm_eef_pose(self, pose):
         pose_joint_values = self.get_arm_ik(pose)
         return self.plan_arm_joint_values(pose_joint_values)
 
-    def execute_arm_trajectory(self, position_trajectory):
+    def execute_arm_trajectory(self, position_trajectory, motion_plan):
         goal = pybullet_trajectory_execution.msg.TrajectoryGoal(
             waypoints=[pybullet_trajectory_execution.msg.Waypoint(waypoint) for waypoint in position_trajectory],
             robot_id=self.id,
             joint_indices=self.GROUP_INDEX['arm'],
-            goal_id=self.goal_id)
+            goal_id=self.goal_id,
+            motion_plan=motion_plan)
         self.client.send_goal(goal, feedback_cb=self.feedback_cb)
         self.goal_id += 1
 

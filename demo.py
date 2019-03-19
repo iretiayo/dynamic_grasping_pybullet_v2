@@ -1,7 +1,7 @@
 from __future__ import division
 import pybullet as p
 import pybullet_data
-from mico_controller import MicoController
+from mico_pybullet import MicoController
 import rospy
 import tf_conversions
 import numpy as np
@@ -369,7 +369,7 @@ if __name__ == "__main__":
         rospy.loginfo("previous trajectory is reaching: {}".format(mc.seq))
 
         if pre_position_trajectory is None:
-            position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values)
+            position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values)
         else:
             # lazy replan
             if np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])) > 0.7:
@@ -378,7 +378,7 @@ if __name__ == "__main__":
                 continue
             else:
                 start_index = min(mc.seq+looking_ahead, len(pre_position_trajectory)-1)
-                position_trajectory = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values, start_joint_values=pre_position_trajectory[start_index])
+                position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values, start_joint_values=pre_position_trajectory[start_index])
         rospy.loginfo("planning takes {}".format(time.time()-motion_start))
 
         if position_trajectory is None:
@@ -386,7 +386,7 @@ if __name__ == "__main__":
         else:
             rospy.loginfo("start executing")
             pre_position_trajectory = position_trajectory # just another reference
-            mc.execute_arm_trajectory(position_trajectory)
+            mc.execute_arm_trajectory(position_trajectory, motion_plan)
             time.sleep(0.2)
 
         # TODO sometimes grasp planning takes LONGER with some errors after tracking for a long time, This results the previous
