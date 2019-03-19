@@ -1,25 +1,12 @@
-import moveit_commander
-import rospy
-from math import pi
-from threading import Lock
 import numpy as np
 import os
 
-from moveit_msgs.msg import RobotState
-from sensor_msgs.msg import JointState
-from std_msgs.msg import Header
-
-
 import rospy
 import moveit_commander as mc
-import moveit_python
-from moveit_msgs.msg import MoveItErrorCodes, DisplayTrajectory,PositionIKRequest
+from moveit_msgs.msg import DisplayTrajectory, PositionIKRequest
 from moveit_msgs.srv import GetPositionIK, GetPositionFK
 
 from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
-import tf2_ros
-import tf_conversions
-import tf2_kdl
 
 
 class MicoMoveit(object):
@@ -68,14 +55,11 @@ class MicoMoveit(object):
     def plan(self, start_joint_values, goal_joint_values):
         """ No matter what start and goal are, the returned plan start and goal will
             make circular joints within [-pi, pi] """
-        ## get moveit_start_state
-        start_joint_state = JointState()
-        start_joint_state.header = Header()
-        start_joint_state.header.stamp = rospy.Time.now() # What is the use of time?
-        start_joint_state.name = self.ARM_JOINT_NAMES
-        start_joint_state.position = start_joint_values
-        start_robot_state = RobotState()
-        start_robot_state.joint_state = start_joint_state
+        # setup moveit_start_state
+        start_robot_state = self.robot.get_current_state()
+        start_robot_state.joint_state.name = self.ARM_JOINT_NAMES
+        start_robot_state.joint_state.position = start_joint_values
+
         self.arm_commander_group.set_start_state(start_robot_state)
         self.arm_commander_group.set_joint_value_target(goal_joint_values)
         # takes around 0.11 second
@@ -83,31 +67,15 @@ class MicoMoveit(object):
         return plan
 
     @staticmethod
-    def extract_plan(plan):
-        """ Extract numpy arrays of position, velocity and time trajectories from moveit plan """
-        points = plan.joint_trajectory.points
-        header = plan.joint_trajectory.header
-        joint_names = plan.joint_trajectory.joint_names
-        position_trajecotry = []
-        velocity_trajectory = []
-        time_trajectory = []
-        for p in points:
-            # position_trajecotry.append(MicoMoveit.convert_range(p.positions))
-            position_trajecotry.append(list(p.positions))
-            velocity_trajectory.append(list(p.velocities))
-            time_trajectory.append(p.time_from_start.to_sec())
-        return np.array(position_trajecotry), np.array(velocity_trajectory), np.array(time_trajectory)
-
-    @staticmethod
     def convert_range(joint_values):
         """ Convert continuous joint to range [-pi, pi] """
         circular_idx = [0, 3, 4, 5]
         new_joint_values = []
         for i, v in enumerate(joint_values):
-            if v > pi and i in circular_idx:
-                new_joint_values.append(v-2*pi)
-            elif v < -pi and i in circular_idx:
-                new_joint_values.append(v+2*pi)
+            if v > np.pi and i in circular_idx:
+                new_joint_values.append(v - 2 * np.pi)
+            elif v < -np.pi and i in circular_idx:
+                new_joint_values.append(v + 2 * np.pi)
             else:
                 new_joint_values.append(v)
         return new_joint_values
@@ -133,13 +101,10 @@ class MicoMoveit(object):
         # when there is collision, we need timeout to control the time to search
         rospy.wait_for_service('compute_ik')
 
-        position = pose_2d[0]
-        orientation = pose_2d[1]
-
         gripper_pose_stamped = PoseStamped()
         gripper_pose_stamped.header.frame_id = self.BASE_LINK
         gripper_pose_stamped.header.stamp = rospy.Time.now()
-        gripper_pose_stamped.pose = Pose(Point(*position), Quaternion(*orientation))
+        gripper_pose_stamped.pose = Pose(Point(*pose_2d[0]), Quaternion(*pose_2d[1]))
 
         service_request = PositionIKRequest()
         service_request.group_name = self.ARM
@@ -148,17 +113,10 @@ class MicoMoveit(object):
         service_request.timeout.secs = timeout
         service_request.avoid_collisions = avoid_collisions
 
-        ## set the gripper joint values when computing arm ik
-        from moveit_msgs.msg import RobotState
-        from sensor_msgs.msg import JointState
-
-        robot_state = RobotState()
-        joint_state = JointState()
-        joint_state.position = arm_joint_values + gripper_joint_values
-        joint_state.name = MicoMoveit.JOINT_NAMES
-        joint_state.header.frame_id = "/world"
-        robot_state.joint_state = joint_state
-        service_request.robot_state = robot_state
+        seed_robot_state = self.robot.get_current_state()
+        seed_robot_state.joint_state.name = self.JOINT_NAMES
+        seed_robot_state.joint_state.position = arm_joint_values + gripper_joint_values
+        service_request.robot_state = seed_robot_state
 
         try:
             resp = self.arm_ik_svr(ik_request=service_request)
@@ -177,8 +135,8 @@ class MicoMoveit(object):
         d = {n: v for (n, v) in zip(joint_state.name, joint_state.position)}
         return [d[n] for n in self.ARM_JOINT_NAMES]
 
+    ''' scene and collision '''
 
-    ### scene and collision
     def clear_scene(self):
         for obj_name in self.get_attached_object_names():
             self.scene.remove_attached_object(self.eef_link, obj_name)
@@ -204,6 +162,7 @@ class MicoMoveit(object):
 
     def get_attached_object_names(self):
         return self.scene.get_attached_objects().keys()
+
 
 if __name__ == "__main__":
     rospy.init_node('mico_moveit')

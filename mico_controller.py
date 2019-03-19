@@ -3,14 +3,10 @@ from collections import namedtuple
 from mico_moveit import MicoMoveit
 import time
 import numpy as np
-import utils as ut
 import rospy
 import tf_conversions
 
-# Brings in the SimpleActionClient
 import actionlib
-# Brings in the messages used by the trajectory_execution action, including the
-# goal message and the result message.
 import pybullet_trajectory_execution.msg
 
 
@@ -18,8 +14,6 @@ class MicoController(object):
     ### NOTE 'm1n6s200_joint_1', 'm1n6s200_joint_4', 'm1n6s200_joint_5', 'm1n6s200_joint_6' are circular/continuous joints
     ### NOTE 'm1n6s200_joint_2', 'm1n6s200_joint_3' are not circular/continuous joints
     ### moveit uses a range of [-pi, pi] for circular/continuous joints
-
-
 
     JOINT_TYPES = {
         p.JOINT_REVOLUTE: 'revolute',  # 0
@@ -68,7 +62,7 @@ class MicoController(object):
         self.mico_moveit = MicoMoveit()
 
         self.client = actionlib.SimpleActionClient('trajectory_execution',
-                                              pybullet_trajectory_execution.msg.TrajectoryAction)
+                                                   pybullet_trajectory_execution.msg.TrajectoryAction)
         self.client.wait_for_server()
         self.goal_id = 0
         self.seq = None
@@ -94,9 +88,9 @@ class MicoController(object):
             else:
                 print("No path found!")
         else:
-            step = 10 # number of waypoints
-            duration = 1 # time to finish
-            ttt= time.time()
+            step = 10  # number of waypoints
+            duration = 1  # time to finish
+            ttt = time.time()
             start_joint_values = self.get_arm_joint_values()
             # print("start_joint_values: {}".format(start_joint_values))
             # print("goal_joint_values: {}".format(goal_joint_values))
@@ -108,9 +102,9 @@ class MicoController(object):
             for i in [0, 3, 4, 5]:
                 if abs(converted_goal_joint_values[i] - converted_start_joint_values[i]) > pi:
                     if converted_goal_joint_values[i] < converted_start_joint_values[i]:
-                        converted_goal_joint_values[i] += 2*pi
+                        converted_goal_joint_values[i] += 2 * pi
                     else:
-                        converted_goal_joint_values[i] -= 2*pi
+                        converted_goal_joint_values[i] -= 2 * pi
             # print("converted goal_joint_values: {}".format(converted_goal_joint_values))
             position_trajectory = np.linspace(converted_start_joint_values, converted_goal_joint_values, step)
             # print("raw non-plan trajectory\n {}".format(position_trajectory))
@@ -123,27 +117,22 @@ class MicoController(object):
             #     time.sleep(float(duration) / float(step))
 
     def reset_arm_joint_values(self, joint_values):
-        joint_values = MicoMoveit.convert_range(joint_values)
-        arm_idx = [self.get_joint_names().index(n) for n in self.GROUPS['arm']]
+        arm_idx = self.GROUP_INDEX['arm']
         for i, v in zip(arm_idx, joint_values):
             p.resetJointState(self.id, i, v)
 
     def reset_arm_eef_pose(self, pose):
         pass
 
-    def move_gripper_joint_values(self, joint_values):
+    def move_gripper_joint_values(self, joint_values, duration=1.0, num_steps=10):
         """ this method has nothing to do with moveit """
         start_joint_values = self.get_gripper_joint_values()
         goal_joint_values = joint_values
-        step = 10
-        a = np.linspace(start_joint_values[0], goal_joint_values[0], step)
-        b = np.linspace(start_joint_values[1], goal_joint_values[1], step)
-        position_trajectory = [[i, j] for (i, j) in zip(a, b)]
-        duration = 1.0
-        # duration = 0.8
-        for i in range(step):
-            p.setJointMotorControlArray(self.id, self.GROUP_INDEX['gripper'], p.POSITION_CONTROL, position_trajectory[i], forces=[200]*2)
-            time.sleep(float(duration)/float(step))
+        position_trajectory = np.linspace(start_joint_values, goal_joint_values, num_steps)
+        for i in range(num_steps):
+            p.setJointMotorControlArray(self.id, self.GROUP_INDEX['gripper'], p.POSITION_CONTROL,
+                                        position_trajectory[i], forces=[200] * 2)
+            time.sleep(float(duration) / float(num_steps))
 
     def open_gripper(self):
         self.move_gripper_joint_values([0.0, 0.0])
@@ -151,7 +140,7 @@ class MicoController(object):
     def close_gripper(self):
         # self.move_gripper_joint_values([2,0, 2.0]) # over close
         # self.move_gripper_joint_values([1.5, 1.5]) # just close
-        self.move_gripper_joint_values([1.3, 1.3]) # not close
+        self.move_gripper_joint_values([1.3, 1.3])  # not close
 
     def cartesian_control(self, x=0.0, y=0.0, z=0.0, frame="world"):
         """
@@ -206,18 +195,27 @@ class MicoController(object):
         return pose_2d_new
 
     @staticmethod
+    def extract_plan(plan):
+        """ Extract numpy arrays of position, velocity and time trajectories from moveit plan """
+        points = plan.joint_trajectory.points
+        position_trajectory = []
+        velocity_trajectory = []
+        time_trajectory = []
+        for p in points:
+            position_trajectory.append(list(p.positions))
+            velocity_trajectory.append(list(p.velocities))
+            time_trajectory.append(p.time_from_start.to_sec())
+        return np.array(position_trajectory), np.array(velocity_trajectory), np.array(time_trajectory)
+
+    @staticmethod
     def convert_plan(plan, start_joint_values):
         """ Convert plan returned by moveit to work with current start joint values """
-        position_trajecotry, velocity_trajectory, time_trajectory = MicoMoveit.extract_plan(plan)
-        ## convert position trajectory to work with current joint values
-        new_position_trajectory = MicoController.convert_position_trajectory(position_trajecotry, start_joint_values)
+        position_trajectory, velocity_trajectory, time_trajectory = MicoController.extract_plan(plan)
 
-        ## convert time to be time difference
-        time_trajectory_delta = list()
-        time_trajectory_delta.append(0.0)
-        for i in range(1, len(time_trajectory)):
-            time_trajectory_delta.append(time_trajectory[i] - time_trajectory[i - 1])
-        return new_position_trajectory, velocity_trajectory, time_trajectory_delta
+        # convert position trajectory to work with current joint values
+        new_position_trajectory = MicoController.convert_position_trajectory(position_trajectory, start_joint_values)
+
+        return new_position_trajectory, velocity_trajectory, time_trajectory
 
     @staticmethod
     def convert_position_trajectory(position_trajectory, start_joint_values):
@@ -226,11 +224,9 @@ class MicoController(object):
         :param position_trajectory: 2d np array
         :param start_joint_values: a list of values, current arm joint values
         """
-        ## convert position trajectory to work with current joint values
+        # convert position trajectory to work with current joint values
         diff = np.array(start_joint_values) - position_trajectory[0]
-        new_position_trajectory = np.zeros(position_trajectory.shape)
-        for i in range(position_trajectory.shape[0]):
-            new_position_trajectory[i] = position_trajectory[i] + diff
+        new_position_trajectory = position_trajectory + diff
         return new_position_trajectory
 
     def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None):
@@ -243,10 +239,12 @@ class MicoController(object):
             start_joint_values = self.get_arm_joint_values()
 
         plan = self.mico_moveit.plan(start_joint_values, goal_joint_values)
+
         # check if there exists a plan
         if len(plan.joint_trajectory.points) == 0:
             return None
-        position_trajectory, velocity_trajectory, time_trajectory_delta = MicoController.convert_plan(plan, start_joint_values)
+        position_trajectory, velocity_trajectory, time_trajectory_delta = MicoController.convert_plan(plan,
+                                                                                                      start_joint_values)
         # position_trajectory has start_joint_values but not goal_joint_values
         return position_trajectory
 
@@ -259,7 +257,7 @@ class MicoController(object):
             waypoints=[pybullet_trajectory_execution.msg.Waypoint(waypoint) for waypoint in position_trajectory],
             robot_id=self.id,
             joint_indices=self.GROUP_INDEX['arm'],
-            goal_id = self.goal_id)
+            goal_id=self.goal_id)
         self.client.send_goal(goal, feedback_cb=self.feedback_cb)
         self.goal_id += 1
 
@@ -267,7 +265,8 @@ class MicoController(object):
         rospy.loginfo("receive feedback: " + str(feedback))
         self.seq = feedback.seq
 
-    ### Helper functions
+    ''' Helper functions '''
+
     def get_arm_eef_pose(self):
         """
         :return: pose_2d, [[x, y, z], [x, y, x, w]]
@@ -278,11 +277,6 @@ class MicoController(object):
         return [position, orn]
 
     def get_arm_ik(self, pose_2d, timeout=0.01, avoid_collisions=True):
-        ## pybullet ik seems problematic and I do not want to deal with it
-        # names = self.get_movable_joint_names()
-        # values = p.calculateInverseKinematics(self.id, self.ARM_EEF_INDEX, pose[0], pose[1])
-        # d = {n:v for (n, v) in zip(names, values)}
-        # return [d[n] for n in self.GROUPS['arm']]
         gripper_joint_values = self.get_gripper_joint_values()
         arm_joint_values = self.get_arm_joint_values()
         j = self.mico_moveit.get_arm_ik(pose_2d, timeout, avoid_collisions, arm_joint_values, gripper_joint_values)
@@ -290,7 +284,8 @@ class MicoController(object):
             # print("No ik exists!")
             return None
         else:
-            return MicoMoveit.convert_range(j)
+            # return MicoMoveit.convert_range(j)
+            return j
 
     def get_joint_state(self, joint_index):
         return self.JointState(*p.getJointState(self.id, joint_index))
@@ -321,9 +316,8 @@ class MicoController(object):
             return self.JointInfo(*p.getJointInfo(self.id, self.get_joint_index(joint)))
 
     def get_movable_joint_names(self):
-        return [self.get_joint_info(i).jointName for i in range(self.num_joints) if self.get_joint_info(i).jointType!=p.JOINT_FIXED]
+        return [self.get_joint_info(i).jointName for i in range(self.num_joints) if
+                self.get_joint_info(i).jointType != p.JOINT_FIXED]
 
     def get_joint_index(self, name):
         return self.get_joint_names().index(name)
-
-
