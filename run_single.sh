@@ -5,7 +5,7 @@ object_name=$2
 conveyor_velocity=$3
 conveyor_distance=$4
 
-echo "iter $iter conveyor_velocity $conveyor_velocity conveyor_distance $conveyor_distance"
+echo "iter $iter object_name $object_name conveyor_velocity $conveyor_velocity conveyor_distance $conveyor_distance"
 mkdir -p log
 
 for i in `seq 1 $iter`

@@ -190,6 +190,7 @@ class MicoController(object):
             time_trajectory.append(p.time_from_start.to_sec())
         return np.array(position_trajectory), np.array(velocity_trajectory), np.array(time_trajectory)
 
+    # abandoned
     @staticmethod
     def convert_plan(plan, start_joint_values):
         """ Convert plan returned by moveit to work with current start joint values """
@@ -200,6 +201,7 @@ class MicoController(object):
 
         return new_position_trajectory, velocity_trajectory, time_trajectory
 
+    # abandoned
     @staticmethod
     def convert_position_trajectory(position_trajectory, start_joint_values):
         """

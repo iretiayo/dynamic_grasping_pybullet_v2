@@ -30,7 +30,7 @@ def get_args():
 
     parser.add_argument('-o', '--object_name', type=str, default= 'cube',
                         help="Target object to be grasped. Ex: cube")
-    parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.03,
+    parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.05,
                         help='Velocity of conveyor belt')
     parser.add_argument('-d', '--conveyor_distance', type=float, default=0.5,
                         help="Distance of conveyor belt to robot base")
@@ -79,15 +79,15 @@ def get_args():
     args.reachability_data_dir = os.path.join(rospkg.RosPack().get_path('mico_reachability_config'), 'data')
     args.step_size, args.mins, args.dims = load_reachability_params(args.reachability_data_dir)
 
-    args.ONLY_TRACKING = False
+    args.ONLY_TRACKING = True
     args.DYNAMIC = True
     args.KEEP_PREVIOUS_GRASP = True
     args.RANK_BY_REACHABILITY = True
-    args.LOAD_OBSTACLES = True
+    args.LOAD_OBSTACLES = False
     args.ONLINE_PLANNING = False
 
-    config = yaml.load(open('scene.yaml'))
-    args.__dict__['scene_config'] = config
+    args.scene_fnm = "scene.yaml"
+    args.scene_config = yaml.load(open(args.scene_fnm))
 
     return args
 
@@ -200,27 +200,34 @@ def get_reachability_space(args):
     rospy.loginfo("start creating sdf reachability space...")
     start_time = time.time()
     if args.LOAD_OBSTACLES:
-        obstacle_mesh_filepaths, obstacle_poses = [], []
-        for obstacle in args.scene_config['obstacles']:
-            obstacle_mesh_filepaths.append(obstacle['ply_filepath'])
-            obstacle_poses.append(ut.list_2_pose(ut.get_body_pose(obstacle['body_id'])))
+        sdf_reachability_space_fnm = os.path.splitext(args.scene_fnm)[0]+'_reach_data.sdf'
+        sdf_reachability_space_filepath = os.path.join(args.reachability_data_dir, sdf_reachability_space_fnm)
+        if os.path.exists(sdf_reachability_space_filepath):
+            # load sdf for this scene if already exists
+            sdf_reachability_space = np.fromfile(sdf_reachability_space_filepath, dtype=float)
+            sdf_reachability_space = sdf_reachability_space.reshape(args.dims)
+        else:
+            # create reachability space from obstacles. requires masking out obstacle areas
+            obstacle_mesh_filepaths, obstacle_poses = [], []
+            for obstacle in args.scene_config['obstacles']:
+                obstacle_mesh_filepaths.append(obstacle['ply_filepath'])
+                obstacle_poses.append(ut.list_2_pose(ut.get_body_pose(obstacle['body_id'])))
 
-        # create reachability space from obstacles
-        obstacles_mask_3d = create_occupancy_grid_from_obstacles(obstacle_mesh_filepaths=obstacle_mesh_filepaths,
-                                                                 obstacle_poses=obstacle_poses,
-                                                                 mins_xyz=args.mins[:3],
-                                                                 step_size_xyz=args.step_size[:3],
-                                                                 dims_xyz=args.dims[:3])
-        binary_reachability_space, mins, step_size, dims, _ = load_reachability_data_from_dir(
-            args.reachability_data_dir)
-        # embed obstacles into reachability space
-        binary_reachability_space[obstacles_mask_3d > 0] = 0
+            obstacles_mask_3d = create_occupancy_grid_from_obstacles(obstacle_mesh_filepaths=obstacle_mesh_filepaths,
+                                                                     obstacle_poses=obstacle_poses,
+                                                                     mins_xyz=args.mins[:3],
+                                                                     step_size_xyz=args.step_size[:3],
+                                                                     dims_xyz=args.dims[:3])
+            binary_reachability_space, mins, step_size, dims, _ = load_reachability_data_from_dir(
+                args.reachability_data_dir)
+            # embed obstacles into reachability space
+            binary_reachability_space[obstacles_mask_3d > 0] = 0
 
-        # Generate sdf
-        binary_reachability_space -= 0.5
-        sdf_reachability_space = skfmm.distance(binary_reachability_space, periodic=[False, False, False, True, True, True])
-        binary_reachability_space += 0.5  # undo previous operation
-        # sdf_reachability_space.tofile(open(os.path.join(args.reachability_data_dir, 'reach_data') + '.sdf', 'w'))
+            # Generate sdf
+            binary_reachability_space -= 0.5
+            sdf_reachability_space = skfmm.distance(binary_reachability_space, periodic=[False, False, False, True, True, True])
+            binary_reachability_space += 0.5  # undo previous operation
+            sdf_reachability_space.tofile(open(sdf_reachability_space_filepath, 'w'))
     else:
         _, mins, step_size, dims, sdf_reachability_space = load_reachability_data_from_dir(args.reachability_data_dir)
     rospy.loginfo("sdf reachability space created, which takes {}".format(time.time()-start_time))
@@ -268,11 +275,11 @@ if __name__ == "__main__":
     # create sdf reachability space
     if args.RANK_BY_REACHABILITY:
         sdf_reachability_space = get_reachability_space(args)
-    rospy.set_param("start_moving", True)
 
     # kalman filter service
     rospy.wait_for_service('motion_prediction')
     motion_predict_svr = rospy.ServiceProxy('motion_prediction', motion_prediction.srv.GetFuturePose)
+    rospy.set_param("start_moving", True)
 
     pre_position_trajectory = None
 
