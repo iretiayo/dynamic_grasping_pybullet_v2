@@ -16,25 +16,40 @@ do
 	gnome-terminal -e "bash -ci '\
 	    source ../../devel/setup.bash && \
 	    python demo.py -o $object_name -v $conveyor_velocity -d $conveyor_distance > $log_file_name;'"
-    demo_pid=$!
 	sleep 3
 
 	gnome-terminal -e "bash -ci '\
 	    source ../../devel/setup.bash && \
 	    roscd motion_prediction/scripts && \
 	    python motion_prediction_server.py;'"
-    kalman_pid=$!
 	sleep 1
 
 	gnome-terminal -e "bash -ci '\
 	    source ../../devel/setup.bash && \
 	    roscd pybullet_trajectory_execution/scripts && \
 	    python trajectory_execution_server.py;'"
-    execution_pid=$!
+	sleep 1
 
-	while kill -0 "$demo_pid" >/dev/null 2>&1; do
-        echo "demo.py PROCESS IS RUNNING"
-    done
-    kill -9 $kalman_pid
-    kill -9 $execution_pid
+	wait=true
+	while [ "$wait" = true ]
+	do
+		if [ -z "$(pgrep -f demo.py)" ] # if it is not running
+		then
+			wait=false
+		else
+			sleep 0.5
+		fi
+	done
+	echo "finished"
+
+	# make sure everything is closed
+	if [ ! -z "$(pgrep -f trajectory_execution_server.py)" ]
+	then
+		kill -9 $(pgrep -f trajectory_execution_server.py)
+	fi
+
+	if [ ! -z "$(pgrep -f motion_prediction_server.py)" ]
+	then
+		kill -9 $(pgrep -f motion_prediction_server.py)
+	fi
 done

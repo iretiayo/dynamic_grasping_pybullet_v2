@@ -83,7 +83,7 @@ def get_args():
     args.DYNAMIC = True
     args.KEEP_PREVIOUS_GRASP = True
     args.RANK_BY_REACHABILITY = True
-    args.LOAD_OBSTACLES = False
+    args.LOAD_OBSTACLES = True
     args.ONLINE_PLANNING = False
 
     args.scene_fnm = "scene.yaml"
@@ -200,7 +200,7 @@ def get_reachability_space(args):
     rospy.loginfo("start creating sdf reachability space...")
     start_time = time.time()
     if args.LOAD_OBSTACLES:
-        sdf_reachability_space_fnm = os.path.splitext(args.scene_fnm)[0]+'_reach_data.sdf'
+        sdf_reachability_space_fnm = os.path.splitext(args.scene_fnm)[0]+'_'+str(args.conveyor_distance)+'_reach_data.sdf'
         sdf_reachability_space_filepath = os.path.join(args.reachability_data_dir, sdf_reachability_space_fnm)
         if os.path.exists(sdf_reachability_space_filepath):
             # load sdf for this scene if already exists

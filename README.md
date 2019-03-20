@@ -1,3 +1,6 @@
+## Dependencies
+numpy-1.16.2
+
 ## MoveIt! vs pybullet
 To indicate that a joint is continuous/circular
 - pybullet needs the lower limit to be larger than upper limit in the urdf. Joint type is irrelavant.
