@@ -385,13 +385,20 @@ if __name__ == "__main__":
                 rospy.loginfo("eef position is still far from target position; do not replan; keep executing previous plan")
                 continue
             else:
-                start_index = min(mc.seq + looking_ahead, len(pre_position_trajectory) - 1)
-                start_joint_values = pre_position_trajectory[start_index]
+                # start_index = min(mc.seq + looking_ahead, len(pre_position_trajectory) - 1)
+                # start_joint_values = pre_position_trajectory[start_index]
                 # start_joint_values = mc.get_arm_joint_values()
+                planning_start_time = rospy.Time.now()
+                time_since_start = (planning_start_time - mc.start_time_stamp).to_sec()
+                planning_time = 0.25
+                start_joint_values = mc.interpolate_plan_at_time(motion_plan, time_since_start + planning_time)
                 position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values,
                                                                             start_joint_values=start_joint_values)
                 # position_trajectory, motion_plan = mc.plan_arm_eef_pose(ee_pose=pre_g_pose,
                 #                                                         start_joint_values=start_joint_values)
+                sleep_time = planning_time - (rospy.Time.now() - planning_start_time).to_sec()
+                print('Sleep after planning: {}'.format(sleep_time))
+                rospy.sleep(max(0, sleep_time))
         rospy.loginfo("planning takes {}".format(time.time()-motion_start))
 
         if position_trajectory is None:

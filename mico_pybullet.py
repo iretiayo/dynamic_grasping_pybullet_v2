@@ -66,6 +66,7 @@ class MicoController(object):
         self.client.wait_for_server()
         self.goal_id = 0
         self.seq = None
+        self.start_time_stamp = None
 
     ### Control
     def move_arm_eef_pose(self, pose, plan=True):
@@ -223,6 +224,19 @@ class MicoController(object):
         position_trajectory, velocity_trajectory, time_trajectory = MicoController.extract_plan(plan)
         return position_trajectory, plan
 
+    @staticmethod
+    def interpolate_plan_at_time(plan, time_point):
+        position_trajectory, velocity_trajectory, time_trajectory = MicoController.extract_plan(plan)
+        idx = min(np.argmin(np.abs(time_trajectory - time_point)), len(time_trajectory) - 1)
+        if time_point < time_trajectory[idx]:
+            idx -= 1
+        if idx == len(time_trajectory) - 1:
+            return position_trajectory[idx]
+
+        diff = position_trajectory[idx + 1] - position_trajectory[idx]
+        time_fraction = (time_point - time_trajectory[idx]) / (time_trajectory[idx + 1] - time_trajectory[idx])
+        return position_trajectory[idx] + time_fraction * diff
+
     def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None):
         """
         Plan a trajectory from current joint values to goal joint values
@@ -269,6 +283,7 @@ class MicoController(object):
     def feedback_cb(self, feedback):
         rospy.loginfo("receive feedback: " + str(feedback))
         self.seq = feedback.seq
+        self.start_time_stamp = feedback.start_time_stamp
 
     ''' Helper functions '''
 
