@@ -5,6 +5,7 @@ import rospy
 import moveit_commander as mc
 from moveit_msgs.msg import DisplayTrajectory, PositionIKRequest
 from moveit_msgs.srv import GetPositionIK, GetPositionFK
+import move_group_interface_custom
 
 from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
 
@@ -52,6 +53,8 @@ class MicoMoveit(object):
                                                             queue_size=20)
         self.eef_link = self.arm_commander_group.get_end_effector_link()
 
+        self.arm_move_group = move_group_interface_custom.MoveGroupInterface(self.ARM, self.BASE_LINK)
+
     def plan(self, start_joint_values, goal_joint_values):
         """ No matter what start and goal are, the returned plan start and goal will
             make circular joints within [-pi, pi] """
@@ -77,6 +80,22 @@ class MicoMoveit(object):
 
         plan = self.arm_commander_group.plan()
         return plan
+
+    def plan_stomp(self, start_joint_values, goal_joint_values, trajectory_constraints=None):
+        """ No matter what start and goal are, the returned plan start and goal will
+            make circular joints within [-pi, pi] """
+        # setup moveit_start_state
+        start_robot_state = self.robot.get_current_state()
+        start_robot_state.joint_state.name = self.ARM_JOINT_NAMES
+        start_robot_state.joint_state.position = start_joint_values
+
+        result = self.arm_move_group.moveToJointPosition(joints=self.ARM_JOINT_NAMES,
+                                                         positions=goal_joint_values,
+                                                         start_state=start_robot_state,
+                                                         trajectory_constraints=trajectory_constraints,
+                                                         wait=True, plan_only=True)
+        print('planning time: {}'.format(result.planning_time))
+        return result.planned_trajectory
 
     @staticmethod
     def convert_range(joint_values):

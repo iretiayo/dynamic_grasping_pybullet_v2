@@ -5,6 +5,7 @@ import time
 import numpy as np
 import rospy
 import tf_conversions
+import moveit_msgs.msg
 
 import actionlib
 import pybullet_trajectory_execution.msg
@@ -56,7 +57,7 @@ class MicoController(object):
 
     HOME = [4.80469, 2.92482, 1.002, 4.20319, 1.4458, 1.3233]
 
-    def __init__(self, mico_id):
+    def __init__(self, mico_id, use_stomp=True):
         self.id = mico_id
         self.num_joints = p.getNumJoints(self.id)
         self.mico_moveit = MicoMoveit()
@@ -67,6 +68,7 @@ class MicoController(object):
         self.goal_id = 0
         self.seq = None
         self.start_time_stamp = None
+        self.use_stomp = use_stomp
 
     ### Control
     def move_arm_eef_pose(self, pose, plan=True):
@@ -227,17 +229,45 @@ class MicoController(object):
     @staticmethod
     def interpolate_plan_at_time(plan, time_point):
         position_trajectory, velocity_trajectory, time_trajectory = MicoController.extract_plan(plan)
+        final_waypoints = []
         idx = min(np.argmin(np.abs(time_trajectory - time_point)), len(time_trajectory) - 1)
         if time_point < time_trajectory[idx]:
             idx -= 1
         if idx == len(time_trajectory) - 1:
-            return position_trajectory[idx]
+            return position_trajectory[idx], final_waypoints
 
         diff = position_trajectory[idx + 1] - position_trajectory[idx]
         time_fraction = (time_point - time_trajectory[idx]) / (time_trajectory[idx + 1] - time_trajectory[idx])
-        return position_trajectory[idx] + time_fraction * diff
+        final_waypoints = position_trajectory[idx + 1:].tolist()
+        return position_trajectory[idx] + time_fraction * diff, final_waypoints
 
-    def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None):
+    def encode_seed_trajectory(self, seed_waypoints, start_jv, goal_jv):
+        if seed_waypoints is None or len(seed_waypoints) == 0:
+            return None
+        tcs = moveit_msgs.msg.TrajectoryConstraints()
+
+        # joint_wps = [p.positions for p in plan.joint_trajectory.points]
+
+        joint_wps = [start_jv] + list(seed_waypoints)
+        joint_wps = [self.mico_moveit.convert_range(jv) for jv in joint_wps]
+        # joint_wps = np.array(joint_wps)
+        # # import ipdb; ipdb.set_trace()
+        # joint_wps[joint_wps > np.pi] -= 2 * np.pi
+        # joint_wps[joint_wps < -np.pi] += 2 * np.pi
+        joint_wps = list(joint_wps) + [goal_jv]
+
+        for joint_wp in joint_wps:
+            cs = moveit_msgs.msg.Constraints()
+            for j_idx in range(len(joint_wp)):
+                jc = moveit_msgs.msg.JointConstraint()
+                # jc.joint_name = plan.joint_trajectory.joint_names[j_idx]
+                jc.joint_name = self.GROUPS['arm'][j_idx]
+                jc.position = joint_wp[j_idx]
+                cs.joint_constraints.append(jc)
+            tcs.constraints.append(cs)
+        return tcs
+
+    def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None, seed_waypoints=None):
         """
         Plan a trajectory from current joint values to goal joint values
         :param goal_joint_values: a list of goal joint values
@@ -246,7 +276,12 @@ class MicoController(object):
         if start_joint_values is None:
             start_joint_values = self.get_arm_joint_values()
 
-        plan = self.mico_moveit.plan(start_joint_values, goal_joint_values)
+        if self.use_stomp:
+            trajectory_constraints = self.encode_seed_trajectory(seed_waypoints, start_joint_values, goal_joint_values)
+            plan = self.mico_moveit.plan_stomp(list(start_joint_values), goal_joint_values,
+                                               trajectory_constraints=trajectory_constraints)
+        else:
+            plan = self.mico_moveit.plan(start_joint_values, goal_joint_values)
         # check if there exists a plan
         if len(plan.joint_trajectory.points) == 0:
             return None, None
@@ -296,9 +331,12 @@ class MicoController(object):
         orn = list(link_state.linkWorldOrientation)
         return [position, orn]
 
-    def get_arm_ik(self, pose_2d, timeout=0.01, avoid_collisions=True):
+    def get_arm_ik(self, pose_2d, seed_jv=None, timeout=0.01, avoid_collisions=True):
         gripper_joint_values = self.get_gripper_joint_values()
-        arm_joint_values = self.get_arm_joint_values()
+        if seed_jv is not None:
+            arm_joint_values = seed_jv
+        else:
+            arm_joint_values = self.get_arm_joint_values()
         j = self.mico_moveit.get_arm_ik(pose_2d, timeout, avoid_collisions, arm_joint_values, gripper_joint_values)
         if j is None:
             # print("No ik exists!")

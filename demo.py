@@ -188,7 +188,7 @@ def create_scence_moveit(args, mc):
 
     mc.mico_moveit.add_mesh(args.object_name, ut.get_body_pose(args.target_object_id), args.object_mesh_filepath)
     mc.mico_moveit.add_box("conveyor", ut.get_body_pose(args.conveyor_id), size=(.1, .1, .02))
-    mc.mico_moveit.add_box("floor", ((0, 0, -0.005), (0, 0, 0, 1)), size=(2, 2, 0.01))
+    mc.mico_moveit.add_box("floor", ((0, 0, -0.055), (0, 0, 0, 1)), size=(2, 2, 0.1))
 
     if args.LOAD_OBSTACLES:
         for obstacle in args.scene_config['obstacles']:
@@ -319,7 +319,7 @@ if __name__ == "__main__":
             ee_in_world, pre_g_pose = convert_graspit_pose_in_object_to_moveit_grasp_pose(graspit_grasp_poses_in_object[0],
                                                                                           future_pose,
                                                                                           old_ee_to_new_ee_translation_rotation)
-            j = mc.get_arm_ik(pre_g_pose)
+            j = mc.get_arm_ik(pre_g_pose, seed_jv=pre_g_joint_values)
             if j is not None: # previous grasp after conversion is still reachabale
                 rospy.loginfo("the previous pre-grasp is still reachabale")
                 pre_g_joint_values = j
@@ -341,7 +341,7 @@ if __name__ == "__main__":
                 pre_grasps_in_world.append(pre_g_pose)
 
             if args.KEEP_PREVIOUS_GRASP and current_grasp_idx is not None:
-                pre_g_joint_values = mc.get_arm_ik(tf_conversions.toTf(tf_conversions.fromMsg(pre_grasps_in_world[current_grasp_idx])))
+                pre_g_joint_values = mc.get_arm_ik(tf_conversions.toTf(tf_conversions.fromMsg(pre_grasps_in_world[current_grasp_idx])), seed_jv=None)
                 if pre_g_joint_values is not None:   # ik_exists
                     rospy.loginfo("the previous pre-grasp is reachable")
                 else:
@@ -356,7 +356,7 @@ if __name__ == "__main__":
                     grasp_order_idxs = np.argsort(sdf_values)[::-1]
                 for idx in range(len(grasp_order_idxs)):
                     g_idx = grasp_order_idxs[idx]
-                    pre_g_joint_values = mc.get_arm_ik(tf_conversions.toTf(tf_conversions.fromMsg(pre_grasps_in_world[g_idx])))
+                    pre_g_joint_values = mc.get_arm_ik(tf_conversions.toTf(tf_conversions.fromMsg(pre_grasps_in_world[g_idx])), seed_jv=None)
                     if pre_g_joint_values is not None:
                         current_grasp_idx = g_idx
                         break
@@ -391,9 +391,10 @@ if __name__ == "__main__":
                 planning_start_time = rospy.Time.now()
                 time_since_start = (planning_start_time - mc.start_time_stamp).to_sec()
                 planning_time = 0.25
-                start_joint_values = mc.interpolate_plan_at_time(old_motion_plan, time_since_start + planning_time)
+                start_joint_values, final_waypoints = mc.interpolate_plan_at_time(old_motion_plan, time_since_start + planning_time)
                 position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values,
-                                                                            start_joint_values=start_joint_values)
+                                                                            start_joint_values=start_joint_values,
+                                                                            seed_waypoints=final_waypoints)
                 # position_trajectory, motion_plan = mc.plan_arm_eef_pose(ee_pose=pre_g_pose,
                 #                                                         start_joint_values=start_joint_values)
                 sleep_time = planning_time - (rospy.Time.now() - planning_start_time).to_sec()
@@ -438,7 +439,7 @@ if __name__ == "__main__":
                         ee_idx = current_grasp_idx
                     ee_in_world, pre_g_pose = convert_graspit_pose_in_object_to_moveit_grasp_pose(graspit_grasp_poses_in_object[ee_idx], predicted_pose,
                                                                                                   old_ee_to_new_ee_translation_rotation)
-                    j = mc.get_arm_ik(tf_conversions.toTf(tf_conversions.fromMsg(ee_in_world)), avoid_collisions=False)
+                    j = mc.get_arm_ik(tf_conversions.toTf(tf_conversions.fromMsg(ee_in_world)), seed_jv=None, avoid_collisions=False)
                     if j is None:
                         # do not check g_pose is reachable or not during grasp planning, but check predicted g_pose directly
                         # wanna drive the arm to a pre-grasp pose as soon as possible
