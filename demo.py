@@ -391,7 +391,7 @@ if __name__ == "__main__":
                 planning_start_time = rospy.Time.now()
                 time_since_start = (planning_start_time - mc.start_time_stamp).to_sec()
                 planning_time = 0.25
-                start_joint_values = mc.interpolate_plan_at_time(motion_plan, time_since_start + planning_time)
+                start_joint_values = mc.interpolate_plan_at_time(old_motion_plan, time_since_start + planning_time)
                 position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values,
                                                                             start_joint_values=start_joint_values)
                 # position_trajectory, motion_plan = mc.plan_arm_eef_pose(ee_pose=pre_g_pose,
@@ -407,6 +407,7 @@ if __name__ == "__main__":
             rospy.loginfo("start executing")
             pre_position_trajectory = position_trajectory # just another reference
             mc.execute_arm_trajectory(position_trajectory, motion_plan)
+            old_motion_plan = motion_plan
             time.sleep(0.2)
 
         # TODO sometimes grasp planning takes LONGER with some errors after tracking for a long time, This results the previous
