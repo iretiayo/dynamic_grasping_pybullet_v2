@@ -246,7 +246,10 @@ class MicoController(object):
         if start_joint_values is None:
             start_joint_values = self.get_arm_joint_values()
 
-        plan = self.mico_moveit.plan(start_joint_values, goal_joint_values)
+        start_joint_values_converted = self.mico_moveit.convert_range(start_joint_values)
+        goal_joint_values_converted = self.mico_moveit.convert_range(goal_joint_values)
+
+        plan = self.mico_moveit.plan(start_joint_values_converted, goal_joint_values_converted) # STOMP does not convert goal joint values
         # check if there exists a plan
         if len(plan.joint_trajectory.points) == 0:
             return None, None

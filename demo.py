@@ -188,7 +188,7 @@ def create_scence_moveit(args, mc):
 
     mc.mico_moveit.add_mesh(args.object_name, ut.get_body_pose(args.target_object_id), args.object_mesh_filepath)
     mc.mico_moveit.add_box("conveyor", ut.get_body_pose(args.conveyor_id), size=(.1, .1, .02))
-    mc.mico_moveit.add_box("floor", ((0, 0, -0.005), (0, 0, 0, 1)), size=(2, 2, 0.01))
+    mc.mico_moveit.add_box("floor", ((0, 0, -0.055), (0, 0, 0, 1)), size=(2, 2, 0.1))
 
     if args.LOAD_OBSTACLES:
         for obstacle in args.scene_config['obstacles']:
