@@ -284,7 +284,7 @@ class MicoController(object):
         self.goal_id += 1
 
     def feedback_cb(self, feedback):
-        rospy.loginfo("receive feedback: " + str(feedback))
+        # rospy.loginfo("receive feedback: " + str(feedback))
         self.seq = feedback.seq
         self.start_time_stamp = feedback.start_time_stamp
 

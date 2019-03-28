@@ -2,6 +2,12 @@ from collections import namedtuple
 import pybullet as p
 from geometry_msgs.msg import Pose, Point, Quaternion
 import numpy as np
+import rospy
+import time
+
+def print_loop_end(loop_start):
+    rospy.loginfo("loop ends; whole loop takes {}".format(time.time() - loop_start))
+    print("\n")
 
 def pose_2_list(pose):
     """

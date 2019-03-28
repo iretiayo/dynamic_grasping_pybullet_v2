@@ -83,7 +83,7 @@ def get_args():
     args.DYNAMIC = True
     args.KEEP_PREVIOUS_GRASP = True
     args.RANK_BY_REACHABILITY = True
-    args.LOAD_OBSTACLES = True
+    args.LOAD_OBSTACLES = False
     args.ONLINE_PLANNING = False
 
     args.scene_fnm = "scene.yaml"
@@ -301,6 +301,7 @@ if __name__ == "__main__":
     start_time = time.time()    # enter workspace
 
     while True:
+        loop_start = time.time()
         current_pose = ut.get_body_pose(args.target_object_id)
         current_conveyor_pose = ut.get_body_pose(args.conveyor_id)
 
@@ -364,10 +365,11 @@ if __name__ == "__main__":
             # did not find a reachable pre-grasp
             if current_grasp_idx is None:
                 rospy.loginfo("object out of range! Or no grasp reachable")
+                ut.print_loop_end(loop_start)
                 continue
             else:
                 ee_in_world, pre_g_pose = ees_in_world[current_grasp_idx], pre_grasps_in_world[current_grasp_idx]
-                ut.create_frame_marker(ee_in_world)
+                ut.create_frame_marker(pre_g_pose)
         rospy.loginfo("grasp planning takes {}".format(time.time()-grasp_planning_start))
 
         #### move to pre-grasp pose
@@ -382,8 +384,9 @@ if __name__ == "__main__":
         else:
             # lazy replan
             if np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])) > 0.7:
-                print(np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])))
-                rospy.loginfo("eef position is still far from target position; do not replan; keep executing previous plan")
+                rospy.loginfo("distance from eef position to target object position: {}".format(np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0]))))
+                rospy.loginfo("eef is still far from target object; do not replan; keep executing previous plan")
+                ut.print_loop_end(loop_start)
                 continue
             else:
                 # start_index = min(mc.seq + looking_ahead, len(pre_position_trajectory) - 1)
@@ -398,18 +401,20 @@ if __name__ == "__main__":
                 # position_trajectory, motion_plan = mc.plan_arm_eef_pose(ee_pose=pre_g_pose,
                 #                                                         start_joint_values=start_joint_values)
                 sleep_time = planning_time - (rospy.Time.now() - planning_start_time).to_sec()
-                print('Sleep after planning: {}'.format(sleep_time))
+                rospy.loginfo(('Sleep after planning: {}'.format(sleep_time)))
                 rospy.sleep(max(0, sleep_time))
         rospy.loginfo("planning takes {}".format(time.time()-motion_start))
 
         if position_trajectory is None:
-            rospy.loginfo("No plans found!")
+            rospy.loginfo("No plans found within {}".format(planning_time))
+            ut.print_loop_end(loop_start)
+            continue
         else:
             rospy.loginfo("start executing")
             pre_position_trajectory = position_trajectory # just another reference
             mc.execute_arm_trajectory(position_trajectory, motion_plan)
             old_motion_plan = motion_plan
-            time.sleep(0.2)
+            time.sleep(0.2) # TODO is this necessary?
 
         # TODO sometimes grasp planning takes LONGER with some errors after tracking for a long time, This results the previous
         # trajectory to have finished before we send another goal to move arm
@@ -428,7 +433,7 @@ if __name__ == "__main__":
                 d_gpos_threshold = 0.06
             start_grasp = can_grasp(pre_g_pose, object_pose, eef_pose,
                                     d_gpos_threshold=d_gpos_threshold, d_target_threshold=None)
-            if start_grasp:
+            if start_grasp: # can grasp
                 if args.DYNAMIC:
                     rospy.loginfo("start grasping")
                     # predicted_pose = predict(1, target_object)
@@ -444,6 +449,7 @@ if __name__ == "__main__":
                         # do not check g_pose is reachable or not during grasp planning, but check predicted g_pose directly
                         # wanna drive the arm to a pre-grasp pose as soon as possible
                         rospy.loginfo("the predicted g_pose is actually not reachable, will continue")
+                        ut.print_loop_end(loop_start)
                         continue
                     mc.move_arm_joint_values(j, plan=False) # TODO sometimes this motion is werid? rarely
                     if args.conveyor_velocity == 0.01:
@@ -460,9 +466,10 @@ if __name__ == "__main__":
                 else:
                     mc.grasp(pre_g_pose, args.DYNAMIC)
                     break
-        print("\n")
+        #### end grasp
+        ut.print_loop_end(loop_start)
 
-    # end while
+    #### end while
     rospy.sleep(1)  # give some time for lift to finish before get time
     time_spent = time.time() - start_time
     rospy.loginfo("time spent: {}".format(time_spent))
