@@ -1,6 +1,7 @@
 from collections import namedtuple
 import pybullet as p
 from geometry_msgs.msg import Pose, Point, Quaternion
+import numpy as np
 
 def pose_2_list(pose):
     """
@@ -94,3 +95,37 @@ def reset_camera(yaw=50.0, pitch=-35.0, dist=5.0, target=(0.0, 0.0, 0.0)):
 
 def get_camera():
     return CameraInfo(*p.getDebugVisualizerCamera())
+
+### Visualization
+def create_frame_marker(pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
+                        x_color=np.array([1, 0, 0]),
+                        y_color=np.array([0, 1, 0]),
+                        z_color=np.array([0, 0, 1]),
+                        line_length=0.1,
+                        line_width=2,
+                        life_time=0,
+                        replace_frame_id=None):
+    """
+    Create a pose marker that identifies a position and orientation in space with 3 colored lines.
+    """
+    pose_2d = pose_2_list(pose)
+    position = np.array(pose_2d[0])
+    orientation = np.array(pose_2d[1])
+
+    pts = np.array([[0,0,0],[line_length,0,0],[0,line_length,0],[0,0,line_length]])
+    rotIdentity = np.array([0,0,0,1])
+    po, _ = p.multiplyTransforms(position, orientation, pts[0,:], rotIdentity)
+    px, _ = p.multiplyTransforms(position, orientation, pts[1,:], rotIdentity)
+    py, _ = p.multiplyTransforms(position, orientation, pts[2,:], rotIdentity)
+    pz, _ = p.multiplyTransforms(position, orientation, pts[3,:], rotIdentity)
+
+    if replace_frame_id is not None:
+        x_id = p.addUserDebugLine(po, px, x_color, line_width, life_time, replaceItemUniqueId=replace_frame_id[0])
+        y_id = p.addUserDebugLine(po, py, y_color, line_width, life_time, replaceItemUniqueId=replace_frame_id[1])
+        z_id = p.addUserDebugLine(po, pz, z_color, line_width, life_time, replaceItemUniqueId=replace_frame_id[2])
+    else:
+        x_id = p.addUserDebugLine(po, px, x_color, line_width, life_time)
+        y_id = p.addUserDebugLine(po, py, y_color, line_width, life_time)
+        z_id = p.addUserDebugLine(po, pz, z_color, line_width, life_time)
+    frame_id = (x_id, y_id, z_id)
+    return frame_id

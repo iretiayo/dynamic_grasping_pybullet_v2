@@ -367,6 +367,7 @@ if __name__ == "__main__":
                 continue
             else:
                 ee_in_world, pre_g_pose = ees_in_world[current_grasp_idx], pre_grasps_in_world[current_grasp_idx]
+                ut.create_frame_marker(ee_in_world)
         rospy.loginfo("grasp planning takes {}".format(time.time()-grasp_planning_start))
 
         #### move to pre-grasp pose
