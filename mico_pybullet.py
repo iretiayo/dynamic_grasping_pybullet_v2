@@ -237,7 +237,7 @@ class MicoController(object):
         time_fraction = (time_point - time_trajectory[idx]) / (time_trajectory[idx + 1] - time_trajectory[idx])
         return position_trajectory[idx] + time_fraction * diff
 
-    def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None):
+    def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None, maximum_planning_time=0.5):
         """
         Plan a trajectory from current joint values to goal joint values
         :param goal_joint_values: a list of goal joint values
@@ -249,7 +249,8 @@ class MicoController(object):
         start_joint_values_converted = self.mico_moveit.convert_range(start_joint_values)
         goal_joint_values_converted = self.mico_moveit.convert_range(goal_joint_values)
 
-        plan = self.mico_moveit.plan(start_joint_values_converted, goal_joint_values_converted) # STOMP does not convert goal joint values
+        plan = self.mico_moveit.plan(start_joint_values_converted, goal_joint_values_converted,
+                                     maximum_planning_time=maximum_planning_time) # STOMP does not convert goal joint values
         # check if there exists a plan
         if len(plan.joint_trajectory.points) == 0:
             return None, None
@@ -261,11 +262,11 @@ class MicoController(object):
         pose_joint_values = self.get_arm_ik(pose)
         return self.plan_arm_joint_values(pose_joint_values)
 
-    def plan_arm_eef_pose(self, ee_pose, start_joint_values=None):
+    def plan_arm_eef_pose(self, ee_pose, start_joint_values=None, maximum_planning_time=0.5):
         if start_joint_values is None:
             start_joint_values = self.get_arm_joint_values()
 
-        plan = self.mico_moveit.plan_ee_pose(start_joint_values, ee_pose)
+        plan = self.mico_moveit.plan_ee_pose(start_joint_values, ee_pose, maximum_planning_time=maximum_planning_time)
         # check if there exists a plan
         if len(plan.joint_trajectory.points) == 0:
             return None, None

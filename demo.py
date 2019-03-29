@@ -404,7 +404,8 @@ if __name__ == "__main__":
                 planning_time = 0.25
                 start_joint_values = mc.interpolate_plan_at_time(old_motion_plan, time_since_start + planning_time)
                 position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values,
-                                                                            start_joint_values=start_joint_values)
+                                                                            start_joint_values=start_joint_values,
+                                                                            maximum_planning_time=planning_time)
                 # position_trajectory, motion_plan = mc.plan_arm_eef_pose(ee_pose=pre_g_pose,
                 #                                                         start_joint_values=start_joint_values)
                 sleep_time = planning_time - (rospy.Time.now() - planning_start_time).to_sec()
