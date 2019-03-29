@@ -233,6 +233,9 @@ def get_reachability_space(args):
     rospy.loginfo("sdf reachability space created, which takes {}".format(time.time()-start_time))
     return sdf_reachability_space
 
+def compute_duration(distance):
+    return 1.0 if distance<=0.5 else distance/0.5
+
 
 if __name__ == "__main__":
     args = get_args()
@@ -309,9 +312,13 @@ if __name__ == "__main__":
             # target moves outside workspace, break directly
             break
 
-        # grasp planning
+        # because of lazy plan (doing nothing for these loops), we should predict longer
+        duration = compute_duration(np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])))
+        rospy.loginfo("predict {} second in advance".format(duration))
+
+        #### grasp planning
         grasp_planning_start = time.time()
-        future_pose = motion_predict_svr(duration=1).prediction.pose
+        future_pose = motion_predict_svr(duration=duration).prediction.pose
 
         # information about the current grasp
         pre_g_pose, g_pose, pre_g_joint_values, current_grasp_idx = None, None, None, None
@@ -383,7 +390,7 @@ if __name__ == "__main__":
             # position_trajectory, motion_plan = mc.plan_arm_eef_pose(ee_pose=pre_g_pose)
         else:
             # lazy replan
-            if np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])) > 0.7:
+            if np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])) > 0.5:
                 rospy.loginfo("distance from eef position to target object position: {}".format(np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0]))))
                 rospy.loginfo("eef is still far from target object; do not replan; keep executing previous plan")
                 ut.print_loop_end(loop_start)
