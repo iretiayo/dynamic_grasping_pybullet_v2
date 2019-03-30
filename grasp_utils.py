@@ -8,6 +8,7 @@ import pickle
 import numpy as np
 
 import graspit_commander
+import grid_sample_client
 from geometry_msgs.msg import Pose, Point, Quaternion
 
 from reachability_utils.reachability_resolution_analysis import interpolate_pose_in_reachability_space_grid
@@ -68,7 +69,8 @@ def change_end_effector_link(graspit_grasp_msg_pose, old_link_to_new_link_transl
 
 
 def get_grasps(robot_name='MicoGripper', object_mesh='cube', object_pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
-               floor_offset=0, max_steps=35000, search_energy='GUIDED_POTENTIAL_QUALITY_ENERGY', seed_grasp=None):
+               floor_offset=0, max_steps=35000, search_energy='GUIDED_POTENTIAL_QUALITY_ENERGY', seed_grasp=None,
+               uniform_grasp=True):
     gc = graspit_commander.GraspitCommander()
     gc.clearWorld()
 
@@ -76,19 +78,32 @@ def get_grasps(robot_name='MicoGripper', object_mesh='cube', object_pose=Pose(Po
     gc.setRobotPose(Pose(Point(0, 0, 1), Quaternion(0, 0, 0, 1)))
     gc.importGraspableBody(object_mesh, object_pose)
     if floor_offset:
+        floor_offset -= 0.01
+        if 'cube' in object_mesh:
+            floor_offset -= 0.02
         gc.importObstacle('floor', Pose(Point(-1, -1, floor_offset + object_pose.position.z), Quaternion(0, 0, 0, 1)))
 
-    # simulated annealling
-    grasps = gc.planGrasps(max_steps=max_steps, search_energy=search_energy,
-                           use_seed_grasp=seed_grasp is not None, seed_grasp=seed_grasp)
-    grasps = grasps.grasps
+    if uniform_grasp:
+        # grid_sample
+        pre_grasps = []
+        pre_grasps.extend(grid_sample_client.GridSampleClient.computePreGrasps(resolution=25, sampling_type=0).grasps)
+        pre_grasps.extend(grid_sample_client.GridSampleClient.computePreGrasps(resolution=4, sampling_type=1).grasps)
+        grasps = grid_sample_client.GridSampleClient.evaluatePreGrasps(pre_grasps)
+    else:
+        # simulated annealling
+        grasps = gc.planGrasps(max_steps=max_steps, search_energy=search_energy,
+                               use_seed_grasp=seed_grasp is not None, seed_grasp=seed_grasp)
+        grasps = grasps.grasps
 
     # keep only good grasps
     good_grasps = [g for g in grasps if g.volume_quality > 0]
 
+    # import time
     # for g in good_grasps:
     #     gc.setRobotPose(g.pose)
     #     time.sleep(3)
+    # import ipdb; ipdb.set_trace()
+    print('Number of good grasps: \t {} out of {}'.format(len(good_grasps), len(grasps)))
 
     # return grasp_poses_in_world and grasp_poses_in_object
     grasp_poses_in_world, grasp_poses_in_object = extract_grasp_poses_from_graspit_grasps(graspit_grasps=good_grasps,
@@ -107,6 +122,7 @@ def extract_grasp_poses_from_graspit_grasps(graspit_grasps, object_pose=Pose(Poi
 
 def generate_grasps(load_fnm=None, save_fnm=None, object_mesh="cube", object_pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
                     floor_offset=0, max_steps=35000, search_energy='GUIDED_POTENTIAL_QUALITY_ENERGY', seed_grasp=None):
+
     if load_fnm and os.path.exists(load_fnm):
         grasps = pickle.load(open(load_fnm, "rb"))
         grasp_poses_in_world, grasp_poses_in_object = extract_grasp_poses_from_graspit_grasps(graspit_grasps=grasps,

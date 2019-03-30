@@ -302,6 +302,7 @@ if __name__ == "__main__":
     while ut.get_body_pose(args.target_object_id)[0][0] < starting_x:
         pass
     start_time = time.time()    # enter workspace
+    selected_grasp_indexes = []
 
     while True:
         loop_start = time.time()
@@ -369,6 +370,7 @@ if __name__ == "__main__":
                         current_grasp_idx = g_idx
                         break
 
+            selected_grasp_indexes.append(current_grasp_idx)
             # did not find a reachable pre-grasp
             if current_grasp_idx is None:
                 rospy.loginfo("object out of range! Or no grasp reachable")
@@ -490,6 +492,7 @@ if __name__ == "__main__":
     result = {'object_name': args.object_name,
               'success': success,
               'time_spent': time_spent,
+              'selected_grasp_indexes': selected_grasp_indexes,
               'video_filename': video_fname,
               'conveyor_velocity': args.conveyor_velocity,
               'conveyor_distance': args.conveyor_distance}
