@@ -135,3 +135,83 @@ def create_frame_marker(pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
         z_id = p.addUserDebugLine(po, pz, z_color, line_width, life_time)
     frame_id = (x_id, y_id, z_id)
     return frame_id
+
+def create_arrow_marker(pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
+                        line_length=0.1,
+                        arrow_length=0.01,
+                        line_width=2,
+                        arrow_width=6,
+                        life_time=0,
+                        color_index = 0,
+                        replace_frame_id=None):
+    """
+    Create an arrow marker that identifies the z-axis of the end effector frame.
+    """
+
+    pose_2d = pose_2_list(pose)
+    position = np.array(pose_2d[0])
+    orientation = np.array(pose_2d[1])
+
+    pts = np.array([[0,0,0],[line_length,0,0],[0,line_length,0],[0,0,line_length]])
+    z_extend = [0,0,line_length + arrow_length]
+    rotIdentity = np.array([0, 0, 0, 1])
+    po, _ = p.multiplyTransforms(position, orientation, pts[0, :], rotIdentity)
+    pz, _ = p.multiplyTransforms(position, orientation, pts[3,:], rotIdentity)
+    pz_extend, _ = p.multiplyTransforms(position, orientation, z_extend, rotIdentity)
+
+    if replace_frame_id is not None:
+        z_id = p.addUserDebugLine(po, pz, rgb_colors_1[color_index], line_width, life_time, replaceItemUniqueId=replace_frame_id[2])
+        z_extend_id = p.addUserDebugLine(pz, pz_extend, rgb_colors_1[color_index], arrow_width, life_time, replaceItemUniqueId=replace_frame_id[2])
+    else:
+        z_id = p.addUserDebugLine(po, pz, rgb_colors_1[color_index], line_width, life_time)
+        z_extend_id = p.addUserDebugLine(pz, pz_extend, rgb_colors_1[color_index], arrow_width, life_time)
+    frame_id = (z_id, z_extend_id)
+    return frame_id
+
+
+# https://sashat.me/2017/01/11/list-of-20-simple-distinct-colors/
+rgb_colors_255 = [(230, 25, 75),    # red
+                  (60, 180, 75),    # green
+                  (255, 225, 25),   # yello
+                  (0, 130, 200),    # blue
+                  (245, 130, 48),   # orange
+                  (145, 30, 180),   # purple
+                  (70, 240, 240),   # cyan
+                  (240, 50, 230),   # magenta
+                  (210, 245, 60),   # lime
+                  (250, 190, 190),  # pink
+                  (0, 128, 128),    # teal
+                  (230, 190, 255),  # lavender
+                  (170, 110, 40),   # brown
+                  (255, 250, 200),  # beige
+                  (128, 0, 0),      # maroon
+                  (170, 255, 195),  # lavender
+                  (128, 128, 0),    # olive
+                  (255, 215, 180),  # apricot
+                  (0, 0, 128),      # navy
+                  (128, 128, 128),  # grey
+                  (0, 0, 0),        # white
+                  (255, 255, 255)]  # black
+
+rgb_colors_1 = [(0.9019607843137255, 0.09803921568627451, 0.29411764705882354),   # red
+                (0.23529411764705882, 0.7058823529411765, 0.29411764705882354),   # green
+                (1.0, 0.8823529411764706, 0.09803921568627451),                   # yello
+                (0.0, 0.5098039215686274, 0.7843137254901961),                    # blue
+                (0.9607843137254902, 0.5098039215686274, 0.18823529411764706),    # orange
+                (0.5686274509803921, 0.11764705882352941, 0.7058823529411765),    # purple
+                (0.27450980392156865, 0.9411764705882353, 0.9411764705882353),    # cyan
+                (0.9411764705882353, 0.19607843137254902, 0.9019607843137255),    # magenta
+                (0.8235294117647058, 0.9607843137254902, 0.23529411764705882),    # lime
+                (0.9803921568627451, 0.7450980392156863, 0.7450980392156863),     # pink
+                (0.0, 0.5019607843137255, 0.5019607843137255),                    # teal
+                (0.9019607843137255, 0.7450980392156863, 1.0),                    # lavender
+                (0.6666666666666666, 0.43137254901960786, 0.1568627450980392),    # brown
+                (1.0, 0.9803921568627451, 0.7843137254901961),                    # beige
+                (0.5019607843137255, 0.0, 0.0),                                   # maroon
+                (0.6666666666666666, 1.0, 0.7647058823529411),                    # lavender
+                (0.5019607843137255, 0.5019607843137255, 0.0),                    # olive
+                (1.0, 0.8431372549019608, 0.7058823529411765),                    # apricot
+                (0.0, 0.0, 0.5019607843137255),                                   # navy
+                (0.5019607843137255, 0.5019607843137255, 0.5019607843137255),     # grey
+                (0.0, 0.0, 0.0),                                                  # black
+                (1.0, 1.0, 1.0)]                                                  # white
