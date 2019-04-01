@@ -23,6 +23,7 @@ from graspit_interface.msg import Grasp
 
 from grasp_utils import load_reachability_params, get_transform, get_reachability_of_grasps_pose, generate_grasps, \
     create_occupancy_grid_from_obstacles, convert_graspit_pose_in_object_to_moveit_grasp_pose
+from stats_utils import get_grasp_switch_idxs, get_grasp_distance
 
 
 def get_args():
@@ -85,6 +86,7 @@ def get_args():
     args.RANK_BY_REACHABILITY = True
     args.LOAD_OBSTACLES = True
     args.ONLINE_PLANNING = False
+    args.COMPUTE_GRASP_SWITCHES = True
 
     args.scene_fnm = "scene.yaml"
     args.scene_config = yaml.load(open(args.scene_fnm))
@@ -303,6 +305,7 @@ if __name__ == "__main__":
     while ut.get_body_pose(args.target_object_id)[0][0] < starting_x:
         pass
     start_time = time.time()    # enter workspace
+    selected_grasp_indexes = []
 
     while True:
         loop_start = time.time()
@@ -370,6 +373,7 @@ if __name__ == "__main__":
                         current_grasp_idx = g_idx
                         break
 
+            selected_grasp_indexes.append(current_grasp_idx)
             # did not find a reachable pre-grasp
             if current_grasp_idx is None:
                 rospy.loginfo("object out of range! Or no grasp reachable")
@@ -377,7 +381,7 @@ if __name__ == "__main__":
                 continue
             else:
                 ee_in_world, pre_g_pose = ees_in_world[current_grasp_idx], pre_grasps_in_world[current_grasp_idx]
-                ut.create_arrow_marker(pre_g_pose, color_index=current_grasp_idx)
+                ut.create_arrow_marker(pre_g_pose, color_index=current_grasp_idx % 20)
         rospy.loginfo("grasp planning takes {}".format(time.time()-grasp_planning_start))
 
         #### move to pre-grasp pose
@@ -405,8 +409,10 @@ if __name__ == "__main__":
                 time_since_start = (planning_start_time - mc.start_time_stamp).to_sec()
                 planning_time = 0.25
                 start_joint_values = mc.interpolate_plan_at_time(old_motion_plan, time_since_start + planning_time)
+                # TODO the maximum planning time is the not the actual time we get a plan
                 # position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values,
-                #                                                             start_joint_values=start_joint_values)
+                #                                                             start_joint_values=start_joint_values,
+                #                                                             maximum_planning_time=planning_time)
                 # position_trajectory, motion_plan = mc.plan_arm_eef_pose(ee_pose=pre_g_pose,
                 #                                                         start_joint_values=start_joint_values)
                 position_trajectory, motion_plan = mc.plan(goal_eef_pose=pre_g_pose, start_joint_values=start_joint_values)
@@ -495,6 +501,19 @@ if __name__ == "__main__":
               'video_filename': video_fname,
               'conveyor_velocity': args.conveyor_velocity,
               'conveyor_distance': args.conveyor_distance}
+
+    # get grasp switch stats
+    if args.COMPUTE_GRASP_SWITCHES:
+        num_grasp_switches, grasp_switch_indices = get_grasp_switch_idxs(selected_grasp_indexes)
+        position_distances, orientation_distances = get_grasp_distance(graspit_grasp_poses_in_object, grasp_switch_indices)
+
+        grasp_switch_stats = {
+                  'num_grasp_switches': num_grasp_switches,
+                  'mean_grasp_position_switch': np.mean(position_distances),
+                  'mean_grasp_orientation_switch': np.mean(orientation_distances),
+                  'median_grasp_position_switch': np.median(position_distances),
+                  'median_grasp_orientation_switch': np.median(position_distances)}
+        result.update(grasp_switch_stats)
 
     result_file_path = os.path.join(args.result_dir, '{}.csv'.format(args.object_name))
     file_exists = os.path.exists(result_file_path)

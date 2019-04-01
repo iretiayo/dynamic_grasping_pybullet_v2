@@ -54,7 +54,7 @@ class MicoMoveit(object):
                                                             queue_size=20)
         self.eef_link = self.arm_commander_group.get_end_effector_link()
 
-    def plan(self, start_joint_values, goal_joint_values):
+    def plan(self, start_joint_values, goal_joint_values, maximum_planning_time=0.5):
         """ No matter what start and goal are, the returned plan start and goal will
             make circular joints within [-pi, pi] """
         # setup moveit_start_state
@@ -64,11 +64,12 @@ class MicoMoveit(object):
 
         self.arm_commander_group.set_start_state(start_robot_state)
         self.arm_commander_group.set_joint_value_target(goal_joint_values)
+        self.arm_commander_group.set_planning_time(maximum_planning_time)
         # takes around 0.11 second
         plan = self.arm_commander_group.plan()
         return plan
 
-    def plan_ee_pose(self, start_joint_values, goal_ee_pose):
+    def plan_ee_pose(self, start_joint_values, goal_ee_pose, maximum_planning_time=0.5):
         """ using set_pose_target instead """
         # setup moveit_start_state
         start_robot_state = self.robot.get_current_state()
@@ -77,6 +78,7 @@ class MicoMoveit(object):
 
         self.arm_commander_group.set_start_state(start_robot_state)
         self.arm_commander_group.set_pose_target(goal_ee_pose)
+        self.arm_commander_group.set_planning_time(maximum_planning_time)
 
         plan = self.arm_commander_group.plan()
         return plan

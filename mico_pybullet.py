@@ -265,13 +265,14 @@ class MicoController(object):
             robot_trajectory.joint_trajectory.points.append(point)
         return robot_trajectory
 
-    def plan(self, goal_eef_pose, start_joint_values=None):
+    def plan(self, goal_eef_pose, start_joint_values=None, maximum_planning_time=0.5):
         """
         hybrid planner
         :param goal_eef_pose: ros pose
         """
         if start_joint_values is None:
             start_joint_values = self.get_arm_joint_values()
+        # plan straight line is fast enough
         straight_trajectory, straight_plan, fraction = self.plan_straight_line(goal_eef_pose, start_joint_values)
 
         # TODO speed the straight part maybe?
@@ -282,15 +283,14 @@ class MicoController(object):
             return straight_trajectory, straight_plan
         else:
             if straight_trajectory is None:
-                # TODO if straight returns 0 waypoint, does it mean the start point is in collision,
-                #  so that rrt should return false as well?
-                rrt_trajectory, rrt_plan = self.plan_arm_eef_pose(goal_eef_pose, start_joint_values)
+                # TODO if plan_straight returns 0 waypoint, does it mean the start point is in collision, so that rrt will return None as well? Seems not...
+                rrt_trajectory, rrt_plan = self.plan_arm_eef_pose(goal_eef_pose, start_joint_values, maximum_planning_time)
                 rospy.loginfo(
                     "Generate a trajectory with {} waypoint ({} straight + {} rrt)".format(len(rrt_trajectory),
                                                                                            0, len(rrt_trajectory)))
                 return rrt_trajectory, rrt_plan
 
-            rrt_trajectory, rrt_plan = self.plan_arm_eef_pose(goal_eef_pose, start_joint_values=straight_trajectory[-1])
+            rrt_trajectory, rrt_plan = self.plan_arm_eef_pose(goal_eef_pose, straight_trajectory[-1], maximum_planning_time)
             plan = self.combine_motion_plan(straight_plan, rrt_plan)
             position_trajectory, _, _ = self.extract_plan(plan)
             rospy.loginfo(
@@ -299,7 +299,7 @@ class MicoController(object):
                                                                                        len(rrt_trajectory)-1))
             return position_trajectory, plan
 
-    def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None):
+    def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None, maximum_planning_time=0.5):
         """
         Plan a trajectory from current joint values to goal joint values
         :param goal_joint_values: a list of goal joint values
@@ -311,7 +311,8 @@ class MicoController(object):
         start_joint_values_converted = self.mico_moveit.convert_range(start_joint_values)
         goal_joint_values_converted = self.mico_moveit.convert_range(goal_joint_values)
 
-        plan = self.mico_moveit.plan(start_joint_values_converted, goal_joint_values_converted) # STOMP does not convert goal joint values
+        plan = self.mico_moveit.plan(start_joint_values_converted, goal_joint_values_converted,
+                                     maximum_planning_time=maximum_planning_time) # STOMP does not convert goal joint values
         # check if there exists a plan
         if len(plan.joint_trajectory.points) == 0:
             return None, None
@@ -323,11 +324,11 @@ class MicoController(object):
         pose_joint_values = self.get_arm_ik(pose)
         return self.plan_arm_joint_values(pose_joint_values)
 
-    def plan_arm_eef_pose(self, ee_pose, start_joint_values=None):
+    def plan_arm_eef_pose(self, ee_pose, start_joint_values=None, maximum_planning_time=0.5):
         if start_joint_values is None:
             start_joint_values = self.get_arm_joint_values()
 
-        plan = self.mico_moveit.plan_ee_pose(start_joint_values, ee_pose)
+        plan = self.mico_moveit.plan_ee_pose(start_joint_values, ee_pose, maximum_planning_time=maximum_planning_time)
         # check if there exists a plan
         if len(plan.joint_trajectory.points) == 0:
             return None, None
