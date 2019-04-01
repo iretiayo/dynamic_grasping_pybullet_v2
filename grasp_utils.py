@@ -107,6 +107,11 @@ def extract_grasp_poses_from_graspit_grasps(graspit_grasps, object_pose=Pose(Poi
 
 def generate_grasps(load_fnm=None, save_fnm=None, object_mesh="cube", object_pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
                     floor_offset=0, max_steps=35000, search_energy='GUIDED_POTENTIAL_QUALITY_ENERGY', seed_grasp=None):
+    """
+    :return grasps: a list of graspit Grasps
+    :return grasp_poses_in_world: a list of ROS poses, poses of graspit end-effector in graspit world frame
+    :return grasp_poses_in_object: a list of ROS poses, poses of graspit end-effector in graspit object frame
+    """
     if load_fnm and os.path.exists(load_fnm):
         grasps = pickle.load(open(load_fnm, "rb"))
         grasp_poses_in_world, grasp_poses_in_object = extract_grasp_poses_from_graspit_grasps(graspit_grasps=grasps,
@@ -123,6 +128,14 @@ def generate_grasps(load_fnm=None, save_fnm=None, object_mesh="cube", object_pos
 
 def convert_graspit_pose_in_object_to_moveit_grasp_pose(graspit_grasp_pose_in_object, object_pose,
                                                         old_ee_to_new_ee_translation_rotation, pre_grasp_offset=-0.05):
+    """
+    :param graspit_grasp_pose_in_object: pose of graspit end-effector in graspiy object frame
+    :param object_pose: the pose of the object where the graspit_grasp_pose_in_object are generated
+    :param old_ee_to_new_ee_translation_rotation: transform from graspit end-effector to moveit end-effector
+    :param pre_grasp_offset: how much to back off for pre-grasp
+    :return ee_in_world: ROS pose, moveit end-effector pose in moveit world frame
+    :return pre_grasp: ROS pose, moveit end-effector pre-grasp pose in moveit world frame
+    """
     ee_in_world = tf_conversions.toMsg(tf_conversions.fromMsg(object_pose) *
                                        tf_conversions.fromMsg(graspit_grasp_pose_in_object) *
                                        tf_conversions.fromTf(old_ee_to_new_ee_translation_rotation))

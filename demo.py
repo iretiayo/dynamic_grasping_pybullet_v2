@@ -28,7 +28,7 @@ from grasp_utils import load_reachability_params, get_transform, get_reachabilit
 def get_args():
     parser = argparse.ArgumentParser(description='Run Dynamic Grasping Experiment')
 
-    parser.add_argument('-o', '--object_name', type=str, default= 'cube',
+    parser.add_argument('-o', '--object_name', type=str, default= 'tomato_soup_can',
                         help="Target object to be grasped. Ex: cube")
     parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.05,
                         help='Velocity of conveyor belt')
@@ -83,7 +83,7 @@ def get_args():
     args.DYNAMIC = True
     args.KEEP_PREVIOUS_GRASP = True
     args.RANK_BY_REACHABILITY = True
-    args.LOAD_OBSTACLES = False
+    args.LOAD_OBSTACLES = True
     args.ONLINE_PLANNING = False
 
     args.scene_fnm = "scene.yaml"
@@ -274,6 +274,7 @@ if __name__ == "__main__":
                                     object_pose=object_pose_init, floor_offset=args.target_mesh_bounds.min(0)[2],
                                     max_steps=max_steps, search_energy=search_energy, seed_grasp=None)
     graspit_grasps, graspit_grasp_poses_in_world, graspit_grasp_poses_in_object = grasp_results
+    rospy.loginfo("number of initial grasps: {}".format(len(graspit_grasps)))
 
     # create sdf reachability space
     if args.RANK_BY_REACHABILITY:
@@ -386,8 +387,9 @@ if __name__ == "__main__":
         rospy.loginfo("previous trajectory is reaching: {}".format(mc.seq))
 
         if pre_position_trajectory is None:
-            position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values)
+            # position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values)
             # position_trajectory, motion_plan = mc.plan_arm_eef_pose(ee_pose=pre_g_pose)
+            position_trajectory, motion_plan = mc.plan(goal_eef_pose=pre_g_pose)
         else:
             # lazy replan
             if np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])) > 0.5:
@@ -403,10 +405,11 @@ if __name__ == "__main__":
                 time_since_start = (planning_start_time - mc.start_time_stamp).to_sec()
                 planning_time = 0.25
                 start_joint_values = mc.interpolate_plan_at_time(old_motion_plan, time_since_start + planning_time)
-                position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values,
-                                                                            start_joint_values=start_joint_values)
+                # position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values,
+                #                                                             start_joint_values=start_joint_values)
                 # position_trajectory, motion_plan = mc.plan_arm_eef_pose(ee_pose=pre_g_pose,
                 #                                                         start_joint_values=start_joint_values)
+                position_trajectory, motion_plan = mc.plan(goal_eef_pose=pre_g_pose, start_joint_values=start_joint_values)
                 sleep_time = planning_time - (rospy.Time.now() - planning_start_time).to_sec()
                 rospy.loginfo(('Sleep after planning: {}'.format(sleep_time)))
                 rospy.sleep(max(0, sleep_time))
@@ -417,7 +420,7 @@ if __name__ == "__main__":
             ut.print_loop_end(loop_start)
             continue
         else:
-            rospy.loginfo("start executing")
+            rospy.loginfo("start executing with goal id {}".format(mc.goal_id))
             pre_position_trajectory = position_trajectory # just another reference
             mc.execute_arm_trajectory(position_trajectory, motion_plan)
             old_motion_plan = motion_plan

@@ -3,10 +3,12 @@ import os
 
 import rospy
 import moveit_commander as mc
-from moveit_msgs.msg import DisplayTrajectory, PositionIKRequest
+from moveit_msgs.msg import DisplayTrajectory, PositionIKRequest, RobotState
+from sensor_msgs.msg import JointState
 from moveit_msgs.srv import GetPositionIK, GetPositionFK
 
 from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
+from std_msgs.msg import Header
 
 
 class MicoMoveit(object):
@@ -30,7 +32,7 @@ class MicoMoveit(object):
     def __init__(self):
         # the service names have to be this
         self.arm_ik_svr = rospy.ServiceProxy('compute_ik', GetPositionIK)
-        self.arm_fk_svr = rospy.ServiceProxy('compyte_fk', GetPositionFK)
+        self.arm_fk_svr = rospy.ServiceProxy('compute_fk', GetPositionFK)
 
         try:
             self.arm_commander_group = mc.MoveGroupCommander('arm')
@@ -67,6 +69,7 @@ class MicoMoveit(object):
         return plan
 
     def plan_ee_pose(self, start_joint_values, goal_ee_pose):
+        """ using set_pose_target instead """
         # setup moveit_start_state
         start_robot_state = self.robot.get_current_state()
         start_robot_state.joint_state.name = self.ARM_JOINT_NAMES
@@ -77,6 +80,35 @@ class MicoMoveit(object):
 
         plan = self.arm_commander_group.plan()
         return plan
+
+    def plan_straight_line(self, start_joint_values, end_eef_pose, ee_step=0.05, jump_threshold=3.0, avoid_collisions=True):
+        """
+        :param start_joint_values: start joint values
+        :param end_eef_pose: goal end effector pose
+        :param ee_step: float. The distance in meters to interpolate the path.
+        :param jump_threshold: The maximum allowable distance in the arm's
+            configuration space allowed between two poses in the path. Used to
+            prevent "jumps" in the IK solution.
+        :param avoid_collisions: bool. Whether to check for obstacles or not.
+        :return:
+        """
+        # set moveit start state
+        joint_state = JointState()
+        joint_state.name = self.ARM_JOINT_NAMES
+        joint_state.position = start_joint_values
+        moveit_robot_state = RobotState()
+        moveit_robot_state.joint_state = joint_state
+        self.arm_commander_group.set_start_state(moveit_robot_state)
+
+        start_eef_pose = self.get_arm_fk(start_joint_values)
+        plan, fraction = self.arm_commander_group.compute_cartesian_path(
+            [start_eef_pose, end_eef_pose],
+            ee_step,
+            jump_threshold,
+            avoid_collisions)
+        # remove the first redundant point
+        plan.joint_trajectory.points = plan.joint_trajectory.points[1:]
+        return plan, fraction
 
     @staticmethod
     def convert_range(joint_values):
@@ -140,6 +172,27 @@ class MicoMoveit(object):
             else:
                 print("Other errors!")
                 return None
+        except rospy.ServiceException, e:
+            print("Service call failed: %s" % e)
+
+    def get_arm_fk(self, arm_joint_values):
+        """ return a ros pose """
+        rospy.wait_for_service('compute_fk')
+
+        header = Header(frame_id="world")
+        fk_link_names = [self.TIP_LINK]
+        robot_state = RobotState()
+        robot_state.joint_state.name = self.ARM_JOINT_NAMES
+        robot_state.joint_state.position = arm_joint_values
+
+
+        try:
+            resp = self.arm_fk_svr(header=header, fk_link_names=fk_link_names, robot_state=robot_state)
+            if resp.error_code.val != 1:
+                print("error ({}) happens when computing fk".format(resp.error_code.val))
+                return None
+            else:
+                return resp.pose_stamped[0].pose
         except rospy.ServiceException, e:
             print("Service call failed: %s" % e)
 

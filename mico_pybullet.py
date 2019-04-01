@@ -5,6 +5,9 @@ import time
 import numpy as np
 import rospy
 import tf_conversions
+import utils as ut
+from moveit_msgs.msg import RobotTrajectory
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 import actionlib
 import pybullet_trajectory_execution.msg
@@ -180,7 +183,10 @@ class MicoController(object):
 
     @staticmethod
     def extract_plan(plan):
-        """ Extract numpy arrays of position, velocity and time trajectories from moveit plan """
+        """
+        Extract numpy arrays of position, velocity and time trajectories from moveit plan,
+        and return numpy arrays.
+        """
         points = plan.joint_trajectory.points
         position_trajectory = []
         velocity_trajectory = []
@@ -217,7 +223,11 @@ class MicoController(object):
 
     @staticmethod
     def process_plan(plan, start_joint_values):
-        # convert position trajectory to work with current joint values
+        """
+        convert position trajectory to work with current joint values
+        :return position_trajectory: numpy array
+        :return plan: RobotTrajectory
+        """
         diff = np.array(start_joint_values) - np.array(plan.joint_trajectory.points[0].positions)
         for p in plan.joint_trajectory.points:
             p.positions = (np.array(p.positions) + diff).tolist()
@@ -236,6 +246,58 @@ class MicoController(object):
         diff = position_trajectory[idx + 1] - position_trajectory[idx]
         time_fraction = (time_point - time_trajectory[idx]) / (time_trajectory[idx + 1] - time_trajectory[idx])
         return position_trajectory[idx] + time_fraction * diff
+
+    @staticmethod
+    def combine_motion_plan(plan1, plan2):
+        """ only assign positions and time_from_start here. Combines 2 RobotTrajectory """
+        position_trajectory1, velocity_trajectory1, time_trajectory1 = MicoController.extract_plan(plan1)
+        position_trajectory2, velocity_trajectory2, time_trajectory2 = MicoController.extract_plan(plan2)
+        position_trajectory1, position_trajectory2, time_trajectory1, time_trajectory2 = \
+            position_trajectory1.tolist(), position_trajectory2.tolist(), time_trajectory1.tolist(), time_trajectory2.tolist()
+        time_trajectory2 = [t2+time_trajectory1[-1] for t2 in time_trajectory2]
+
+        # discard the first value of trajectory 2
+        position_trajectory = position_trajectory1 + position_trajectory2[1:]
+        time_trajectory = time_trajectory1 + time_trajectory2[1:]
+        robot_trajectory = RobotTrajectory()
+        for p, t in zip(position_trajectory, time_trajectory):
+            point = JointTrajectoryPoint(positions=p, time_from_start=rospy.Duration.from_sec(t))
+            robot_trajectory.joint_trajectory.points.append(point)
+        return robot_trajectory
+
+    def plan(self, goal_eef_pose, start_joint_values=None):
+        """
+        hybrid planner
+        :param goal_eef_pose: ros pose
+        """
+        if start_joint_values is None:
+            start_joint_values = self.get_arm_joint_values()
+        straight_trajectory, straight_plan, fraction = self.plan_straight_line(goal_eef_pose, start_joint_values)
+
+        # TODO speed the straight part maybe?
+        if fraction == 1:
+            rospy.loginfo(
+                "Generate a trajectory with {} waypoint ({} straight + {} rrt)".format(len(straight_trajectory),
+                                                                                       len(straight_trajectory), 0))
+            return straight_trajectory, straight_plan
+        else:
+            if straight_trajectory is None:
+                # TODO if straight returns 0 waypoint, does it mean the start point is in collision,
+                #  so that rrt should return false as well?
+                rrt_trajectory, rrt_plan = self.plan_arm_eef_pose(goal_eef_pose, start_joint_values)
+                rospy.loginfo(
+                    "Generate a trajectory with {} waypoint ({} straight + {} rrt)".format(len(rrt_trajectory),
+                                                                                           0, len(rrt_trajectory)))
+                return rrt_trajectory, rrt_plan
+
+            rrt_trajectory, rrt_plan = self.plan_arm_eef_pose(goal_eef_pose, start_joint_values=straight_trajectory[-1])
+            plan = self.combine_motion_plan(straight_plan, rrt_plan)
+            position_trajectory, _, _ = self.extract_plan(plan)
+            rospy.loginfo(
+                "Generate a trajectory with {} waypoint ({} straight + {} rrt)".format(len(position_trajectory),
+                                                                                       len(straight_trajectory),
+                                                                                       len(rrt_trajectory)-1))
+            return position_trajectory, plan
 
     def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None):
         """
@@ -273,6 +335,22 @@ class MicoController(object):
         position_trajectory, plan = MicoController.process_plan(plan, start_joint_values)
         return position_trajectory, plan
 
+    def plan_straight_line(self, goal_eef_pose, start_joint_values=None):
+        if start_joint_values is None:
+            start_joint_values = self.get_arm_joint_values()
+
+        # moveit will do the conversion internally
+        plan, fraction = self.mico_moveit.plan_straight_line(start_joint_values, goal_eef_pose)
+
+        # print("plan length: {}, fraction: {}".format(len(plan.joint_trajectory.points), fraction))
+
+        # check if there exists a plan
+        if len(plan.joint_trajectory.points) == 0:
+            return None, None, fraction
+
+        position_trajectory, plan = MicoController.process_plan(plan, start_joint_values)
+        return position_trajectory, plan, fraction
+
     def execute_arm_trajectory(self, position_trajectory, motion_plan):
         goal = pybullet_trajectory_execution.msg.TrajectoryGoal(
             waypoints=[pybullet_trajectory_execution.msg.Waypoint(waypoint) for waypoint in position_trajectory],
@@ -309,6 +387,10 @@ class MicoController(object):
         else:
             # return MicoMoveit.convert_range(j)
             return j
+
+    def get_arm_fk(self, arm_joint_values):
+        pose = self.mico_moveit.get_arm_fk(arm_joint_values)
+        return ut.pose_2_list(pose) if pose is not None else None
 
     def get_joint_state(self, joint_index):
         return self.JointState(*p.getJointState(self.id, joint_index))
