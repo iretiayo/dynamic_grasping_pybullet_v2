@@ -509,10 +509,8 @@ if __name__ == "__main__":
 
         grasp_switch_stats = {
                   'num_grasp_switches': num_grasp_switches,
-                  'mean_grasp_position_switch': np.mean(position_distances),
-                  'mean_grasp_orientation_switch': np.mean(orientation_distances),
-                  'median_grasp_position_switch': np.median(position_distances),
-                  'median_grasp_orientation_switch': np.median(position_distances)}
+                  'grasp_switches_position_distances': position_distances,
+                  'grasp_switches_orientation_distances': orientation_distances}
         result.update(grasp_switch_stats)
 
     result_file_path = os.path.join(args.result_dir, '{}.csv'.format(args.object_name))
