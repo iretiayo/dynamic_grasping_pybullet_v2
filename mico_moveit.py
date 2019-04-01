@@ -110,6 +110,9 @@ class MicoMoveit(object):
             avoid_collisions)
         # remove the first redundant point
         plan.joint_trajectory.points = plan.joint_trajectory.points[1:]
+        # speed up the trajectory
+        for p in plan.joint_trajectory.points:
+            p.time_from_start = rospy.Duration.from_sec(p.time_from_start.to_sec()/1.5)
         return plan, fraction
 
     @staticmethod

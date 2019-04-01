@@ -80,7 +80,7 @@ def get_args():
     args.reachability_data_dir = os.path.join(rospkg.RosPack().get_path('mico_reachability_config'), 'data')
     args.step_size, args.mins, args.dims = load_reachability_params(args.reachability_data_dir)
 
-    args.ONLY_TRACKING = True
+    args.ONLY_TRACKING = False
     args.DYNAMIC = True
     args.KEEP_PREVIOUS_GRASP = True
     args.RANK_BY_REACHABILITY = True
@@ -386,6 +386,7 @@ if __name__ == "__main__":
 
         #### move to pre-grasp pose
         looking_ahead = 3
+        planning_time = 0.25
         rospy.loginfo("trying to reach {}-th pre-grasp pose".format(current_grasp_idx))
         motion_start = time.time()
         rospy.loginfo("previous trajectory is reaching: {}".format(mc.seq))
@@ -393,7 +394,10 @@ if __name__ == "__main__":
         if pre_position_trajectory is None:
             # position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values)
             # position_trajectory, motion_plan = mc.plan_arm_eef_pose(ee_pose=pre_g_pose)
-            position_trajectory, motion_plan = mc.plan(goal_eef_pose=pre_g_pose)
+            # position_trajectory, motion_plan = mc.hierarchical_plan(goal_eef_pose=pre_g_pose,
+            #                                                         target_id=args.target_object_id,
+            #                                                         maximum_planning_time=planning_time)
+            position_trajectory, motion_plan = mc.plan(goal_eef_pose=pre_g_pose, maximum_planning_time=planning_time)
         else:
             # lazy replan
             if np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])) > 0.5:
@@ -407,7 +411,6 @@ if __name__ == "__main__":
                 # start_joint_values = mc.get_arm_joint_values()
                 planning_start_time = rospy.Time.now()
                 time_since_start = (planning_start_time - mc.start_time_stamp).to_sec()
-                planning_time = 0.25
                 start_joint_values = mc.interpolate_plan_at_time(old_motion_plan, time_since_start + planning_time)
                 # TODO the maximum planning time is the not the actual time we get a plan
                 # position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values,
@@ -415,7 +418,13 @@ if __name__ == "__main__":
                 #                                                             maximum_planning_time=planning_time)
                 # position_trajectory, motion_plan = mc.plan_arm_eef_pose(ee_pose=pre_g_pose,
                 #                                                         start_joint_values=start_joint_values)
-                position_trajectory, motion_plan = mc.plan(goal_eef_pose=pre_g_pose, start_joint_values=start_joint_values)
+                # position_trajectory, motion_plan = mc.hierarchical_plan(goal_eef_pose=pre_g_pose,
+                #                                                         target_id=args.target_object_id,
+                #                                                         start_joint_values=start_joint_values,
+                #                                                         maximum_planning_time=planning_time)
+                position_trajectory, motion_plan = mc.plan(goal_eef_pose=pre_g_pose,
+                                                            start_joint_values=start_joint_values,
+                                                            maximum_planning_time=planning_time)
                 sleep_time = planning_time - (rospy.Time.now() - planning_start_time).to_sec()
                 rospy.loginfo(('Sleep after planning: {}'.format(sleep_time)))
                 rospy.sleep(max(0, sleep_time))

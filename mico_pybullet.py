@@ -265,6 +265,16 @@ class MicoController(object):
             robot_trajectory.joint_trajectory.points.append(point)
         return robot_trajectory
 
+    def hierarchical_plan(self, goal_eef_pose, target_id, start_joint_values=None, maximum_planning_time=0.5):
+        eef_pose_2d = self.get_arm_eef_pose()
+        target_pose_2d = ut.get_body_pose(target_id)
+        dist = np.linalg.norm(np.array(eef_pose_2d[0]) - np.array(target_pose_2d[0]))
+        if dist > 0.5:
+            return self.plan(goal_eef_pose, start_joint_values, maximum_planning_time)
+        else:
+            return self.plan_arm_eef_pose(goal_eef_pose, start_joint_values, maximum_planning_time)
+
+
     def plan(self, goal_eef_pose, start_joint_values=None, maximum_planning_time=0.5):
         """
         hybrid planner
