@@ -95,12 +95,22 @@ class MicoMoveit(object):
         :return:
         """
         # set moveit start state
-        joint_state = JointState()
-        joint_state.name = self.ARM_JOINT_NAMES
-        joint_state.position = start_joint_values
-        moveit_robot_state = RobotState()
-        moveit_robot_state.joint_state = joint_state
-        self.arm_commander_group.set_start_state(moveit_robot_state)
+        # TODO plan should take in gripper joint values for start state
+        # TODO reduce step
+
+        # from scratch
+        # joint_state = JointState()
+        # joint_state.name = self.ARM_JOINT_NAMES
+        # joint_state.position = start_joint_values
+        # moveit_robot_state = RobotState()
+        # moveit_robot_state.joint_state = joint_state
+
+        # using current state, including all other joint info
+        start_robot_state = self.robot.get_current_state()
+        start_robot_state.joint_state.name = self.ARM_JOINT_NAMES
+        start_robot_state.joint_state.position = start_joint_values
+
+        self.arm_commander_group.set_start_state(start_robot_state)
 
         start_eef_pose = self.get_arm_fk(start_joint_values)
         plan, fraction = self.arm_commander_group.compute_cartesian_path(

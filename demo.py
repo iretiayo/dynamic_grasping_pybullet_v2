@@ -86,11 +86,11 @@ def get_args():
     args.KEEP_PREVIOUS_GRASP = True
     args.RANK_BY_REACHABILITY = True
     args.LOAD_OBSTACLES = True
-    args.ONLINE_PLANNING = True
-    args.UNIFORM_GRASP = False
+    args.ONLINE_PLANNING = False
+    args.UNIFORM_GRASP = True
     args.COMPUTE_GRASP_SWITCHES = True
 
-    assert args.ONLINE_PLANNING != args.UNIFORM_GRASP
+    assert not (args.ONLINE_PLANNING and args.UNIFORM_GRASP)
 
     args.scene_fnm = "scene.yaml"
     args.scene_config = yaml.load(open(args.scene_fnm))
@@ -271,7 +271,10 @@ if __name__ == "__main__":
         search_energy = 'REACHABLE_FIRST_HYBRID_GRASP_ENERGY'
         max_steps = 35000
     else:
-        grasp_filepath = os.path.join(args.mesh_dir, args.object_name, "grasps_" + str(args.object_name) + '.pk')
+        if args.UNIFORM_GRASP:
+            grasp_filepath = os.path.join(args.mesh_dir, args.object_name, "grasps_uniform_" + str(args.object_name) + '.pk')
+        else:
+            grasp_filepath = os.path.join(args.mesh_dir, args.object_name, "grasps_simann_" + str(args.object_name) + '.pk')
         object_pose_init = Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1))
         search_energy = 'GUIDED_POTENTIAL_QUALITY_ENERGY'
         max_steps = 70000
