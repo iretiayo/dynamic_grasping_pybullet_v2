@@ -20,6 +20,7 @@ import trimesh
 import yaml
 from geometry_msgs.msg import Pose, Point, Quaternion
 from graspit_interface.msg import Grasp
+from collections import OrderedDict
 
 from grasp_utils import load_reachability_params, get_transform, get_reachability_of_grasps_pose, generate_grasps, \
     create_occupancy_grid_from_obstacles, convert_graspit_pose_in_object_to_moveit_grasp_pose
@@ -513,23 +514,24 @@ if __name__ == "__main__":
     rospy.loginfo("success: {}".format(success))
 
     # save result to file: object_name, success, time, velocity, conveyor_distance
-    result = {'object_name': args.object_name,
-              'success': success,
-              'time_spent': time_spent,
-              'video_filename': video_fname,
-              'conveyor_velocity': args.conveyor_velocity,
-              'conveyor_distance': args.conveyor_distance}
+    result = [('object_name', args.object_name),
+              ('success', success),
+              ('time_spent', time_spent),
+              ('video_filename', video_fname),
+              ('conveyor_velocity', args.conveyor_velocity),
+              ('conveyor_distance', args.conveyor_distance)]
 
     # get grasp switch stats
     if args.COMPUTE_GRASP_SWITCHES:
         num_grasp_switches, grasp_switch_indices = get_grasp_switch_idxs(selected_grasp_indexes)
         position_distances, orientation_distances = get_grasp_distance(graspit_grasp_poses_in_object, grasp_switch_indices)
 
-        grasp_switch_stats = {
-                  'num_grasp_switches': num_grasp_switches,
-                  'grasp_switches_position_distances': position_distances,
-                  'grasp_switches_orientation_distances': orientation_distances}
-        result.update(grasp_switch_stats)
+        grasp_switch_stats = [
+                  ('num_grasp_switches', num_grasp_switches),
+                  ('grasp_switches_position_distances', position_distances),
+                  ('grasp_switches_orientation_distances', orientation_distances)]
+        result += grasp_switch_stats
+        result = OrderedDict(result)
 
     result_file_path = os.path.join(args.result_dir, '{}.csv'.format(args.object_name))
     file_exists = os.path.exists(result_file_path)
