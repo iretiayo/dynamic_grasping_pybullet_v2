@@ -85,8 +85,11 @@ def get_args():
     args.KEEP_PREVIOUS_GRASP = True
     args.RANK_BY_REACHABILITY = True
     args.LOAD_OBSTACLES = True
-    args.ONLINE_PLANNING = False
+    args.ONLINE_PLANNING = True
+    args.UNIFORM_GRASP = False
     args.COMPUTE_GRASP_SWITCHES = True
+
+    assert args.ONLINE_PLANNING != args.UNIFORM_GRASP
 
     args.scene_fnm = "scene.yaml"
     args.scene_config = yaml.load(open(args.scene_fnm))
@@ -121,8 +124,8 @@ def can_grasp(grasp_pose, object_pose, eef_pose, d_gpos_threshold=None, d_target
     # TODO shall I give constraint on quaternion as well?
     d_target = np.linalg.norm(np.array(target_position) - np.array(eef_position))
     d_gpos = np.linalg.norm(np.array(grasp_position) - np.array(eef_position))
-    rospy.loginfo("distance to target: {}".format(d_target))
-    rospy.loginfo("distance to g_position: {}".format(d_gpos))
+    # rospy.loginfo("distance to target: {}".format(d_target))
+    # rospy.loginfo("distance to g_position: {}".format(d_gpos))
 
     if d_gpos_threshold is not None and d_target_threshold is None:
         can = d_gpos < d_gpos_threshold
@@ -260,7 +263,7 @@ if __name__ == "__main__":
     starting_x = -0.6
     if args.ONLINE_PLANNING:
         # need to make sure seed grasp is good!
-        grasp_filepath = "grasps_online_" + str(args.conveyor_distance) + '.pk'
+        grasp_filepath = os.path.join(args.mesh_dir, args.object_name, "grasps_online_"+ str(args.conveyor_distance) + "_" + str(args.object_name) + '.pk')
         object_pose_init = Pose(
             Point(starting_x, args.conveyor_distance, ut.get_body_pose(args.target_object_id)[0][2]),
             Quaternion(0, 0, 0, 1))
@@ -274,7 +277,7 @@ if __name__ == "__main__":
     grasp_results = generate_grasps(load_fnm=grasp_filepath, save_fnm=grasp_filepath,
                                     object_mesh=args.object_mesh_filepath_ply,
                                     object_pose=object_pose_init, floor_offset=args.target_mesh_bounds.min(0)[2],
-                                    max_steps=max_steps, search_energy=search_energy, seed_grasp=None)
+                                    max_steps=max_steps, search_energy=search_energy, seed_grasp=None, uniform_grasp=args.UNIFORM_GRASP)
     graspit_grasps, graspit_grasp_poses_in_world, graspit_grasp_poses_in_object = grasp_results
     rospy.loginfo("number of initial grasps: {}".format(len(graspit_grasps)))
 
@@ -290,10 +293,9 @@ if __name__ == "__main__":
     pre_position_trajectory = None
 
     video_fname = '{}-{}.mp4'.format(args.object_name, time.strftime('%Y-%m-%d-%H-%M-%S'))
-    logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, video_fname))
+    # logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, video_fname))
 
     #############################################################################################
-    current_grasp_idx = None # previous grasp pose index
     original_height = ut.get_body_pose(args.target_object_id)[0][2]
     old_ee_to_new_ee_translation_rotation = get_transform("m1n6s200_link_6", "m1n6s200_end_effector")
     new_ee_to_old_ee_translation_rotation = get_transform("m1n6s200_end_effector", "m1n6s200_link_6")
@@ -331,19 +333,26 @@ if __name__ == "__main__":
             ee_in_world, pre_g_pose = convert_graspit_pose_in_object_to_moveit_grasp_pose(graspit_grasp_poses_in_object[0],
                                                                                           future_pose,
                                                                                           old_ee_to_new_ee_translation_rotation)
-            j = mc.get_arm_ik(pre_g_pose)
+            j = mc.get_arm_ik(ut.pose_2_list(pre_g_pose))
             if j is not None: # previous grasp after conversion is still reachabale
                 rospy.loginfo("the previous pre-grasp is still reachabale")
                 pre_g_joint_values = j
             else:
                 rospy.loginfo("online planning... finding new grasps")
                 seed_grasp = Grasp()
-                seed_grasp.pose = graspit_grasp_poses_in_world[0]
+                # seed_grasp.pose = graspit_grasp_poses_in_world[0]
+                seed_grasp.pose = tf_conversions.toMsg(tf_conversions.fromMsg(future_pose) *
+                                       tf_conversions.fromMsg(graspit_grasp_poses_in_object[0]))
+                # seed_grasp.dofs = graspit_grasps[0].dofs
                 grasp_results = generate_grasps(object_mesh=args.object_mesh_filepath_ply,
                                                 object_pose=future_pose, floor_offset=args.target_mesh_bounds.min(0)[2],
-                                                max_steps=30000 + 50, seed_grasp=seed_grasp,
-                                                search_energy='REACHABLE_FIRST_HYBRID_GRASP_ENERGY')
-                graspit_grasps, graspit_grasp_poses_in_world, graspit_grasp_poses_in_object = grasp_results
+                                                max_steps=30000 + 1000, seed_grasp=seed_grasp,
+                                                search_energy='REACHABLE_FIRST_HYBRID_GRASP_ENERGY',
+                                                uniform_grasp=args.UNIFORM_GRASP)
+                if len(grasp_results[0]):
+                    graspit_grasps, graspit_grasp_poses_in_world, graspit_grasp_poses_in_object = grasp_results
+                ut.print_loop_end(loop_start)
+                continue
         else:
             pre_grasps_in_world, ees_in_world = [], []
             for g in graspit_grasp_poses_in_object:
@@ -382,12 +391,12 @@ if __name__ == "__main__":
             else:
                 ee_in_world, pre_g_pose = ees_in_world[current_grasp_idx], pre_grasps_in_world[current_grasp_idx]
                 ut.create_arrow_marker(pre_g_pose, color_index=current_grasp_idx % 20)
+            rospy.loginfo("choosing {}-th pre-grasp pose".format(current_grasp_idx))
         rospy.loginfo("grasp planning takes {}".format(time.time()-grasp_planning_start))
 
         #### move to pre-grasp pose
         looking_ahead = 3
         planning_time = 0.25
-        rospy.loginfo("trying to reach {}-th pre-grasp pose".format(current_grasp_idx))
         motion_start = time.time()
         rospy.loginfo("previous trajectory is reaching: {}".format(mc.seq))
 

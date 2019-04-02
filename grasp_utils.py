@@ -98,10 +98,11 @@ def get_grasps(robot_name='MicoGripper', object_mesh='cube', object_pose=Pose(Po
     # keep only good grasps
     good_grasps = [g for g in grasps if g.volume_quality > 0]
 
+    # import ipdb; ipdb.set_trace()
     # import time
     # for g in good_grasps:
     #     gc.setRobotPose(g.pose)
-    #     time.sleep(3)
+    #     time.sleep(1)
     # import ipdb; ipdb.set_trace()
     print('Number of good grasps: \t {} out of {}'.format(len(good_grasps), len(grasps)))
 
@@ -121,7 +122,7 @@ def extract_grasp_poses_from_graspit_grasps(graspit_grasps, object_pose=Pose(Poi
 
 
 def generate_grasps(load_fnm=None, save_fnm=None, object_mesh="cube", object_pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
-                    floor_offset=0, max_steps=35000, search_energy='GUIDED_POTENTIAL_QUALITY_ENERGY', seed_grasp=None):
+                    floor_offset=0, max_steps=35000, search_energy='GUIDED_POTENTIAL_QUALITY_ENERGY', seed_grasp=None, uniform_grasp=True):
     """
     :return grasps: a list of graspit Grasps
     :return grasp_poses_in_world: a list of ROS poses, poses of graspit end-effector in graspit world frame
@@ -133,7 +134,8 @@ def generate_grasps(load_fnm=None, save_fnm=None, object_mesh="cube", object_pos
                                                                                               object_pose=object_pose)
     else:
         grasp_results = get_grasps(object_mesh=object_mesh, object_pose=object_pose, floor_offset=floor_offset,
-                                   max_steps=max_steps, search_energy=search_energy, seed_grasp=seed_grasp)
+                                   max_steps=max_steps, search_energy=search_energy, seed_grasp=seed_grasp,
+                                   uniform_grasp=uniform_grasp)
         grasps, grasp_poses_in_world, grasp_poses_in_object = grasp_results
         if save_fnm:
             pickle.dump(grasps, open(save_fnm, "wb"))
