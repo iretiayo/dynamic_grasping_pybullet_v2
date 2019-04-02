@@ -275,7 +275,7 @@ class MicoController(object):
             return self.plan_arm_eef_pose(goal_eef_pose, start_joint_values, maximum_planning_time)
 
 
-    def plan(self, goal_eef_pose, start_joint_values=None, maximum_planning_time=0.5):
+    def hybrid_plan(self, goal_eef_pose, start_joint_values=None, maximum_planning_time=0.5):
         """
         hybrid planner
         :param goal_eef_pose: ros pose
@@ -285,22 +285,21 @@ class MicoController(object):
         # plan straight line is fast enough
         straight_trajectory, straight_plan, fraction = self.plan_straight_line(goal_eef_pose, start_joint_values)
 
-        # TODO speed the straight part maybe?
-        if fraction == 1:
+        if fraction == 1: # pure straight plan
             rospy.loginfo(
                 "Generate a trajectory with {} waypoint ({} straight + {} rrt)".format(len(straight_trajectory),
                                                                                        len(straight_trajectory), 0))
             return straight_trajectory, straight_plan
         else:
-            if straight_trajectory is None:
-                # TODO if plan_straight returns 0 waypoint, does it mean the start point is in collision, so that rrt will return None as well? Seems not...
-                rrt_trajectory, rrt_plan = self.plan_arm_eef_pose(goal_eef_pose, start_joint_values, maximum_planning_time)
+            rrt_trajectory, rrt_plan = self.plan_arm_eef_pose(goal_eef_pose, start_joint_values, maximum_planning_time)
+            if rrt_trajectory is None: # no plan
+                return None, None
+            if straight_trajectory is None: # pure rrt plan
                 rospy.loginfo(
                     "Generate a trajectory with {} waypoint ({} straight + {} rrt)".format(len(rrt_trajectory),
                                                                                            0, len(rrt_trajectory)))
                 return rrt_trajectory, rrt_plan
-
-            rrt_trajectory, rrt_plan = self.plan_arm_eef_pose(goal_eef_pose, straight_trajectory[-1], maximum_planning_time)
+            # hybrid plan
             plan = self.combine_motion_plan(straight_plan, rrt_plan)
             position_trajectory, _, _ = self.extract_plan(plan)
             rospy.loginfo(

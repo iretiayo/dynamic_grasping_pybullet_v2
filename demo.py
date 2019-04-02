@@ -293,7 +293,7 @@ if __name__ == "__main__":
     pre_position_trajectory = None
 
     video_fname = '{}-{}.mp4'.format(args.object_name, time.strftime('%Y-%m-%d-%H-%M-%S'))
-    # logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, video_fname))
+    logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, video_fname))
 
     #############################################################################################
     original_height = ut.get_body_pose(args.target_object_id)[0][2]
@@ -406,7 +406,7 @@ if __name__ == "__main__":
             # position_trajectory, motion_plan = mc.hierarchical_plan(goal_eef_pose=pre_g_pose,
             #                                                         target_id=args.target_object_id,
             #                                                         maximum_planning_time=planning_time)
-            position_trajectory, motion_plan = mc.plan(goal_eef_pose=pre_g_pose, maximum_planning_time=planning_time)
+            position_trajectory, motion_plan = mc.hybrid_plan(goal_eef_pose=pre_g_pose, maximum_planning_time=planning_time)
         else:
             # lazy replan
             if np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])) > 0.5:
@@ -431,7 +431,7 @@ if __name__ == "__main__":
                 #                                                         target_id=args.target_object_id,
                 #                                                         start_joint_values=start_joint_values,
                 #                                                         maximum_planning_time=planning_time)
-                position_trajectory, motion_plan = mc.plan(goal_eef_pose=pre_g_pose,
+                position_trajectory, motion_plan = mc.hybrid_plan(goal_eef_pose=pre_g_pose,
                                                             start_joint_values=start_joint_values,
                                                             maximum_planning_time=planning_time)
                 sleep_time = planning_time - (rospy.Time.now() - planning_start_time).to_sec()
