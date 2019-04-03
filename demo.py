@@ -24,7 +24,7 @@ from collections import OrderedDict
 
 from grasp_utils import load_reachability_params, get_transform, get_reachability_of_grasps_pose, generate_grasps, \
     create_occupancy_grid_from_obstacles, convert_graspit_pose_in_object_to_moveit_grasp_pose
-from stats_utils import get_grasp_switch_idxs, get_grasp_distance
+from stats_utils import get_grasp_switch_idxs, get_grasp_distance, get_grasp_distance_online
 
 
 def get_args():
@@ -38,11 +38,12 @@ def get_args():
                         help="Distance of conveyor belt to robot base")
     args = parser.parse_args()
 
-    args.video_dir = 'videos'
+    args.video_dir = 'grasp_online_videos'
     if not os.path.exists(args.video_dir):
         os.makedirs(args.video_dir)
 
-    args.result_dir = 'results'
+    # args.result_dir = 'results'
+    args.result_dir = 'grasp_online_results'
     if not os.path.exists(args.result_dir):
         os.makedirs(args.result_dir)
 
@@ -86,9 +87,9 @@ def get_args():
     args.KEEP_PREVIOUS_GRASP = True
     args.RANK_BY_REACHABILITY = True
     args.LOAD_OBSTACLES = True
-    args.ONLINE_PLANNING = False
-    args.UNIFORM_GRASP = True
-    args.COMPUTE_GRASP_SWITCHES = True
+    args.ONLINE_PLANNING = True
+    args.UNIFORM_GRASP = False
+    args.COMPUTE_GRASP_SWITCHES = False
 
     assert not (args.ONLINE_PLANNING and args.UNIFORM_GRASP)
 
@@ -312,6 +313,7 @@ if __name__ == "__main__":
         pass
     start_time = time.time()    # enter workspace
     selected_grasp_indexes = []
+    grasp_pose_history = []
 
     while True:
         loop_start = time.time()
@@ -341,6 +343,8 @@ if __name__ == "__main__":
             if j is not None: # previous grasp after conversion is still reachabale
                 rospy.loginfo("the previous pre-grasp is still reachabale")
                 pre_g_joint_values = j
+                ut.create_arrow_marker(pre_g_pose, color_index=len(grasp_pose_history) % 20)
+                grasp_pose_history.append(graspit_grasp_poses_in_object[0])
             else:
                 rospy.loginfo("online planning... finding new grasps")
                 seed_grasp = Grasp()
@@ -397,6 +401,12 @@ if __name__ == "__main__":
                 ut.create_arrow_marker(pre_g_pose, color_index=current_grasp_idx % 20)
             rospy.loginfo("choosing {}-th pre-grasp pose".format(current_grasp_idx))
         rospy.loginfo("grasp planning takes {}".format(time.time()-grasp_planning_start))
+
+        #### test switches
+        # time.sleep(0.3)
+        # rospy.loginfo("just test grasp switches..")
+        # ut.print_loop_end(loop_start)
+        # continue
 
         #### move to pre-grasp pose
         looking_ahead = 3
@@ -526,8 +536,12 @@ if __name__ == "__main__":
 
     # get grasp switch stats
     if args.COMPUTE_GRASP_SWITCHES:
-        num_grasp_switches, grasp_switch_indices = get_grasp_switch_idxs(selected_grasp_indexes)
-        position_distances, orientation_distances = get_grasp_distance(graspit_grasp_poses_in_object, grasp_switch_indices)
+        if args.ONLINE_PLANNING:
+            num_grasp_switches = len(grasp_pose_history)
+            position_distances, orientation_distances = get_grasp_distance_online(grasp_pose_history)
+        else:
+            num_grasp_switches, grasp_switch_indices = get_grasp_switch_idxs(selected_grasp_indexes)
+            position_distances, orientation_distances = get_grasp_distance(graspit_grasp_poses_in_object, grasp_switch_indices)
 
         grasp_switch_stats = [
                   ('num_grasp_switches', num_grasp_switches),
