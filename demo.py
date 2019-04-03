@@ -30,11 +30,11 @@ from stats_utils import get_grasp_switch_idxs, get_grasp_distance, get_grasp_dis
 def get_args():
     parser = argparse.ArgumentParser(description='Run Dynamic Grasping Experiment')
 
-    parser.add_argument('-o', '--object_name', type=str, default= 'tomato_soup_can',
+    parser.add_argument('-o', '--object_name', type=str, default= 'sugar_box',
                         help="Target object to be grasped. Ex: cube")
-    parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.05,
+    parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.01,
                         help='Velocity of conveyor belt')
-    parser.add_argument('-d', '--conveyor_distance', type=float, default=0.5,
+    parser.add_argument('-d', '--conveyor_distance', type=float, default=0.4,
                         help="Distance of conveyor belt to robot base")
     args = parser.parse_args()
 
@@ -336,6 +336,7 @@ if __name__ == "__main__":
         pre_g_pose, g_pose, pre_g_joint_values, current_grasp_idx = None, None, None, None
 
         if args.ONLINE_PLANNING:
+
             ee_in_world, pre_g_pose = convert_graspit_pose_in_object_to_moveit_grasp_pose(graspit_grasp_poses_in_object[0],
                                                                                           future_pose,
                                                                                           old_ee_to_new_ee_translation_rotation)
@@ -548,8 +549,8 @@ if __name__ == "__main__":
                   ('grasp_switches_position_distances', position_distances),
                   ('grasp_switches_orientation_distances', orientation_distances)]
         result += grasp_switch_stats
-        result = OrderedDict(result)
 
+    result = OrderedDict(result)
     result_file_path = os.path.join(args.result_dir, '{}.csv'.format(args.object_name))
     file_exists = os.path.exists(result_file_path)
     with open(result_file_path, 'a') as csv_file:
