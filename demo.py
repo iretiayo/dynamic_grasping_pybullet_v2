@@ -38,12 +38,13 @@ def get_args():
                         help="Distance of conveyor belt to robot base")
     args = parser.parse_args()
 
-    args.video_dir = 'grasp_online_videos'
+    args.video_dir = 'videos'
+    # args.video_dir = 'grasp_online_videos'
     if not os.path.exists(args.video_dir):
         os.makedirs(args.video_dir)
 
-    # args.result_dir = 'results'
-    args.result_dir = 'grasp_online_results'
+    args.result_dir = 'results'
+    # args.result_dir = 'grasp_online_results'
     if not os.path.exists(args.result_dir):
         os.makedirs(args.result_dir)
 
@@ -561,7 +562,7 @@ if __name__ == "__main__":
 
     p.stopStateLogging(logging)
     # kill all other things
-    # os.system("kill -9 $(pgrep -f move_conveyor)")
+    os.system("kill -9 $(pgrep -f reachability_energy_plugin)")
     os.system("kill -9 $(pgrep -f trajectory_execution_server)")
     os.system("kill -9 $(pgrep -f motion_prediction_server)")
 
