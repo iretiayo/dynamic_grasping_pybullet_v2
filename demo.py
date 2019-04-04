@@ -30,7 +30,7 @@ from stats_utils import get_grasp_switch_idxs, get_grasp_distance, get_grasp_dis
 def get_args():
     parser = argparse.ArgumentParser(description='Run Dynamic Grasping Experiment')
 
-    parser.add_argument('-o', '--object_name', type=str, default= 'sugar_box',
+    parser.add_argument('-o', '--object_name', type=str, default= 'master_chef_can',
                         help="Target object to be grasped. Ex: cube")
     parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.01,
                         help='Velocity of conveyor belt')
@@ -38,13 +38,13 @@ def get_args():
                         help="Distance of conveyor belt to robot base")
     args = parser.parse_args()
 
-    args.video_dir = 'videos'
-    # args.video_dir = 'grasp_online_videos'
+    # args.video_dir = 'videos'
+    args.video_dir = 'grasp_online_videos'
     if not os.path.exists(args.video_dir):
         os.makedirs(args.video_dir)
 
-    args.result_dir = 'results'
-    # args.result_dir = 'grasp_online_results'
+    # args.result_dir = 'results'
+    args.result_dir = 'grasp_online_results'
     if not os.path.exists(args.result_dir):
         os.makedirs(args.result_dir)
 
@@ -271,7 +271,7 @@ if __name__ == "__main__":
             Point(starting_x, args.conveyor_distance, ut.get_body_pose(args.target_object_id)[0][2]),
             Quaternion(0, 0, 0, 1))
         search_energy = 'REACHABLE_FIRST_HYBRID_GRASP_ENERGY'
-        max_steps = 35000
+        max_steps = 70000
     else:
         if args.UNIFORM_GRASP:
             grasp_filepath = os.path.join(args.mesh_dir, args.object_name, "grasps_uniform_" + str(args.object_name) + '.pk')

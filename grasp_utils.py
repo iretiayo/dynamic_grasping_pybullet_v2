@@ -79,7 +79,7 @@ def get_grasps(robot_name='MicoGripper', object_mesh='cube', object_pose=Pose(Po
     gc.importGraspableBody(object_mesh, object_pose)
     if floor_offset:
         floor_offset -= 0.01
-        if 'cube' in object_mesh:
+        if 'cube' in object_mesh and uniform_grasp:
             floor_offset -= 0.02
         gc.importObstacle('floor', Pose(Point(-1, -1, floor_offset + object_pose.position.z), Quaternion(0, 0, 0, 1)))
 
@@ -89,14 +89,13 @@ def get_grasps(robot_name='MicoGripper', object_mesh='cube', object_pose=Pose(Po
         pre_grasps.extend(grid_sample_client.GridSampleClient.computePreGrasps(resolution=25, sampling_type=0).grasps)
         pre_grasps.extend(grid_sample_client.GridSampleClient.computePreGrasps(resolution=4, sampling_type=1).grasps)
         grasps = grid_sample_client.GridSampleClient.evaluatePreGrasps(pre_grasps)
+        good_grasps = [g for g in grasps if g.volume_quality > 0]
     else:
         # simulated annealling
         grasps = gc.planGrasps(max_steps=max_steps, search_energy=search_energy,
                                use_seed_grasp=seed_grasp is not None, seed_grasp=seed_grasp)
         grasps = grasps.grasps
-
-    # keep only good grasps
-    good_grasps = [g for g in grasps if g.volume_quality > 0]
+        good_grasps = grasps
 
     # import ipdb; ipdb.set_trace()
     # import time
