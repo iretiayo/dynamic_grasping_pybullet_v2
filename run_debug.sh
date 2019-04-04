@@ -10,19 +10,16 @@ mkdir -p log
 gnome-terminal -e "bash -ci '\
     source ../../devel/setup.bash && \
     python demo.py -o $object_name -v $conveyor_velocity -d $conveyor_distance;$SHELL'"
-demo_pid=$!
 sleep 3
 
 gnome-terminal -e "bash -ci '\
     source ../../devel/setup.bash && \
     roscd motion_prediction/scripts && \
     python motion_prediction_server.py;$SHELL'"
-kalman_pid=$!
 sleep 1
 
 gnome-terminal -e "bash -ci '\
     source ../../devel/setup.bash && \
     roscd pybullet_trajectory_execution/scripts && \
     python trajectory_execution_server.py;$SHELL'"
-execution_pid=$!
 sleep 1

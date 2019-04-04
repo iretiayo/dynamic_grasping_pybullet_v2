@@ -13,6 +13,7 @@ do
 	echo "iteration: $i"
 	log_file_name="log/$(date '+%Y-%m-%d-%H-%M-%S').log"
 	echo "$log_file_name"
+
 	gnome-terminal -e "bash -ci '\
 	    source ../../devel/setup.bash && \
 	    python demo.py -o $object_name -v $conveyor_velocity -d $conveyor_distance > $log_file_name;'"
@@ -43,6 +44,11 @@ do
 	echo "finished"
 
 	# make sure everything is closed
+	if [ ! -z "$(pgrep -f reachability_energy_plugin)" ]
+	then
+		kill -9 $(pgrep -f reachability_energy_plugin)
+	fi
+
 	if [ ! -z "$(pgrep -f trajectory_execution_server.py)" ]
 	then
 		kill -9 $(pgrep -f trajectory_execution_server.py)
