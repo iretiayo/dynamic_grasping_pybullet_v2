@@ -26,7 +26,7 @@ if [  "$online_planning" = true  ]
 then
     gnome-terminal -e "bash -ci '\
     source ../../devel/setup.bash && \
-    roslaunch mico_reachability_config reachability_energy_plugin.launch'"
+    roslaunch mico_reachability_config reachability_energy_plugin.launch;$SHELL'"
     sleep 3
 fi
 
