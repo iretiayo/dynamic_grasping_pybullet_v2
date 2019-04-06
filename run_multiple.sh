@@ -2,9 +2,11 @@
 
 iter=1
 online_planning=true
-#bowl, cracker_box, power_drill  blocked
+# all
 #for object_name in cube bleach_cleanser bowl cracker_box master_chef_can mug mustard_bottle potted_meat_can power_drill pudding_box sugar_box tomato_soup_can
-#for object_name in sugar_box tomato_soup_can master_chef_can mug mustard_bottle potted_meat_can pudding_box cube
+#bowl, cracker_box blocked, pudding box weird starting pose
+# worshop objects set
+#for object_name in bleach_cleanser mug mustard_bottle potted_meat_can sugar_box tomato_soup_can cube power_drill
 for object_name in sugar_box
 do
     for conveyor_distance in 0.4

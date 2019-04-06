@@ -21,6 +21,7 @@ import yaml
 from geometry_msgs.msg import Pose, Point, Quaternion
 from graspit_interface.msg import Grasp
 from collections import OrderedDict
+import math
 
 from grasp_utils import load_reachability_params, get_transform, get_reachability_of_grasps_pose, generate_grasps, \
     create_occupancy_grid_from_obstacles, convert_graspit_pose_in_object_to_moveit_grasp_pose
@@ -30,7 +31,7 @@ from stats_utils import get_grasp_switch_idxs, get_grasp_distance, get_grasp_dis
 def get_args():
     parser = argparse.ArgumentParser(description='Run Dynamic Grasping Experiment')
 
-    parser.add_argument('-o', '--object_name', type=str, default= 'master_chef_can',
+    parser.add_argument('-o', '--object_name', type=str, default= 'power_drill',
                         help="Target object to be grasped. Ex: cube")
     parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.01,
                         help='Velocity of conveyor belt')
@@ -38,13 +39,13 @@ def get_args():
                         help="Distance of conveyor belt to robot base")
     args = parser.parse_args()
 
-    # args.video_dir = 'videos'
-    args.video_dir = 'grasp_online_videos'
+    args.video_dir = 'videos'
+    # args.video_dir = 'grasp_online_no_kf_videos'
     if not os.path.exists(args.video_dir):
         os.makedirs(args.video_dir)
 
-    # args.result_dir = 'results'
-    args.result_dir = 'grasp_online_results'
+    args.result_dir = 'results'
+    # args.result_dir = 'grasp_online_no_kf_results'
     if not os.path.exists(args.result_dir):
         os.makedirs(args.result_dir)
 
@@ -91,6 +92,7 @@ def get_args():
     args.ONLINE_PLANNING = True
     args.UNIFORM_GRASP = False
     args.COMPUTE_GRASP_SWITCHES = False
+    args.USE_KF = True # further speed up when not using kf
 
     assert not (args.ONLINE_PLANNING and args.UNIFORM_GRASP)
 
@@ -149,7 +151,7 @@ def is_success(target_object, original_height):
         return False
 
 
-def create_scence(args):
+def create_scene(args):
 
     p.connect(p.GUI_SERVER)
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
@@ -160,7 +162,9 @@ def create_scence(args):
 
     # load plane, conveyor and target
     p.loadURDF("plane.urdf")
-    target_object_id = p.loadURDF(args.urdf_target_object_filepath, [args.min_x, -args.conveyor_distance, args.target_extents[2]/2 + 0.01])
+    target_position = [args.min_x, -args.conveyor_distance, -args.target_mesh_bounds.min(0)[2] + 0.01]
+    target_orientation = [0, 0, 0, 1]
+    target_object_id = p.loadURDF(args.urdf_target_object_filepath, target_position, target_orientation)
     conveyor_id = p.loadURDF("model/conveyor.urdf", [args.min_x, -args.conveyor_distance, 0.01])
 
     # draw lines
@@ -191,7 +195,7 @@ def create_scence(args):
     rospy.set_param('conveyor_id', args.conveyor_id)
 
 
-def create_scence_moveit(args, mc):
+def create_scene_moveit(args, mc):
     mc.mico_moveit.clear_scene()
 
     mc.mico_moveit.add_mesh(args.object_name, ut.get_body_pose(args.target_object_id), args.object_mesh_filepath)
@@ -248,7 +252,7 @@ def compute_duration(distance):
 if __name__ == "__main__":
     args = get_args()
     rospy.set_param("start_moving", False)
-    create_scence(args)
+    create_scene(args)
 
     rospy.init_node("demo")
 
@@ -260,7 +264,7 @@ if __name__ == "__main__":
     mc.move_arm_joint_values(mc.HOME, plan=False)
     mc.open_gripper()
 
-    create_scence_moveit(args, mc)
+    create_scene_moveit(args, mc)
 
     # load grasps
     starting_x = -0.6
@@ -269,7 +273,7 @@ if __name__ == "__main__":
         grasp_filepath = os.path.join(args.mesh_dir, args.object_name, "grasps_online_"+ str(args.conveyor_distance) + "_" + str(args.object_name) + '.pk')
         object_pose_init = Pose(
             Point(starting_x, args.conveyor_distance, ut.get_body_pose(args.target_object_id)[0][2]),
-            Quaternion(0, 0, 0, 1))
+            Quaternion(*ut.get_body_pose(args.target_object_id)[1]))
         search_energy = 'REACHABLE_FIRST_HYBRID_GRASP_ENERGY'
         max_steps = 70000
     else:
@@ -331,7 +335,7 @@ if __name__ == "__main__":
 
         #### grasp planning
         grasp_planning_start = time.time()
-        future_pose = motion_predict_svr(duration=duration).prediction.pose
+        future_pose = motion_predict_svr(duration=duration).prediction.pose if args.USE_KF else ut.list_2_pose(ut.get_body_pose(args.target_object_id))
 
         # information about the current grasp
         pre_g_pose, g_pose, pre_g_joint_values, current_grasp_idx = None, None, None, None
@@ -487,7 +491,7 @@ if __name__ == "__main__":
                 if args.DYNAMIC:
                     rospy.loginfo("start grasping")
                     # predicted_pose = predict(1, target_object)
-                    predicted_pose = motion_predict_svr(duration=1).prediction.pose
+                    predicted_pose = motion_predict_svr(duration=1).prediction.pose if args.USE_KF else ut.list_2_pose(ut.get_body_pose(args.target_object_id))
                     if args.ONLINE_PLANNING:
                         ee_idx = 0
                     else:

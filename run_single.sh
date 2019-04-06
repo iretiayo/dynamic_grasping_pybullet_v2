@@ -34,14 +34,14 @@ do
         gnome-terminal -e "bash -ci '\
         source ../../devel/setup.bash && \
         roslaunch mico_reachability_config reachability_energy_plugin.launch'"
-        sleep 3
+        sleep 5
     fi
 
 
 	gnome-terminal -e "bash -ci '\
 	    source ../../devel/setup.bash && \
 	    python demo.py -o $object_name -v $conveyor_velocity -d $conveyor_distance > $log_file_name;'"
-	sleep 3
+	sleep 5
 
 	gnome-terminal -e "bash -ci '\
 	    source ../../devel/setup.bash && \
