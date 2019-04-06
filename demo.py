@@ -505,13 +505,17 @@ if __name__ == "__main__":
                         rospy.loginfo("the predicted g_pose is actually not reachable, will continue")
                         ut.print_loop_end(loop_start)
                         continue
-                    mc.move_arm_joint_values(j, plan=False) # TODO sometimes this motion is werid? rarely
-                    if args.conveyor_velocity == 0.01:
-                        time.sleep(1)
-                    else:
-                        time.sleep(0.8) # NOTE give sometime to move before closing - this is IMPORTANT, increase success rate!
+
+                    position_trajectory, motion_plan,fraction = mc.plan_straight_line(ee_in_world, ee_step=0.02, avoid_collisions=False)
+                    if fraction!=1:
+                        rospy.loginfo("no full (fraction: {}) cartesian path found to reach predicted g_pose, will continue")
+                        ut.print_loop_end(loop_start)
+                        continue
+                    mc.execute_arm_trajectory(position_trajectory, motion_plan)
+                    # mc.move_arm_joint_values(j, plan=False) # TODO sometimes this motion is werid? rarely
+                    time.sleep(1) # NOTE give sometime to move before closing - this is IMPORTANT, increase success rate!
                     mc.close_gripper()
-                    mc.cartesian_control(z=0.05)
+                    mc.cartesian_control(z=0.07) # todo change this to use compute cartesian path
                     # NOTE: The trajectory returned by this will have a far away first waypoint to jump to
                     # and I assume it is because the initial position is not interpreted as valid by moveit
                     # or the good first waypoint is blocked by a instantly updated block scene
@@ -524,7 +528,7 @@ if __name__ == "__main__":
         ut.print_loop_end(loop_start)
 
     #### end while
-    rospy.sleep(1)  # give some time for lift to finish before get time
+    rospy.sleep(2)  # give some time for lift to finish before get time
     time_spent = time.time() - start_time
     rospy.loginfo("time spent: {}".format(time_spent))
 

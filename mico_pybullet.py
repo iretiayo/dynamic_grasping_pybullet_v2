@@ -131,7 +131,7 @@ class MicoController(object):
 
     def cartesian_control(self, x=0.0, y=0.0, z=0.0, frame="world"):
         """
-        Only for small motion
+        Only for small motion, do not check fraction
         :param frame: "eef" or "world"
         """
         if frame == "eef":
@@ -140,15 +140,16 @@ class MicoController(object):
             old_T_new = tf_conversions.toMatrix(tf_conversions.fromTf(((x, y, z), (0, 0, 0, 1))))
             world_T_new = world_T_old.dot(old_T_new)
             pose_2d_new = tf_conversions.toTf(tf_conversions.fromMatrix(world_T_new))
-            self.move_arm_eef_pose(pose_2d_new, plan=False)
         elif frame == "world":
             pose_2d_new = self.get_arm_eef_pose()
             pose_2d_new[0][0] += x
             pose_2d_new[0][1] += y
             pose_2d_new[0][2] += z
-            self.move_arm_eef_pose(pose_2d_new, plan=False)
         else:
             raise TypeError("not supported frame: {}".format(frame))
+        position_trajectory, motion_plan, fraction = self.plan_straight_line(ut.list_2_pose(pose_2d_new), ee_step=0.01,
+                                                                             avoid_collisions=False)
+        self.execute_arm_trajectory(position_trajectory, motion_plan)
 
     def grasp(self, pre_g_pose, dynamic):
         if not dynamic:
@@ -345,12 +346,12 @@ class MicoController(object):
         position_trajectory, plan = MicoController.process_plan(plan, start_joint_values)
         return position_trajectory, plan
 
-    def plan_straight_line(self, goal_eef_pose, start_joint_values=None):
+    def plan_straight_line(self, goal_eef_pose, start_joint_values=None, ee_step=0.05, jump_threshold=3.0, avoid_collisions=True):
         if start_joint_values is None:
             start_joint_values = self.get_arm_joint_values()
 
         # moveit will do the conversion internally
-        plan, fraction = self.mico_moveit.plan_straight_line(start_joint_values, goal_eef_pose)
+        plan, fraction = self.mico_moveit.plan_straight_line(start_joint_values, goal_eef_pose, ee_step=ee_step, jump_threshold=jump_threshold, avoid_collisions=avoid_collisions)
 
         # print("plan length: {}, fraction: {}".format(len(plan.joint_trajectory.points), fraction))
 
