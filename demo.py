@@ -415,8 +415,9 @@ if __name__ == "__main__":
         # continue
 
         #### move to pre-grasp pose
-        looking_ahead = 3
-        planning_time = 0.25
+        # TODO the reason that the motion speeds up at the end is either interpolate too lone or do not sleep after sending the goal
+        planning_time = 0.4
+        moveit_planning_time = 0.25
         motion_start = time.time()
         rospy.loginfo("previous trajectory is reaching: {}".format(mc.seq))
 
@@ -425,8 +426,8 @@ if __name__ == "__main__":
             # position_trajectory, motion_plan = mc.plan_arm_eef_pose(ee_pose=pre_g_pose)
             # position_trajectory, motion_plan = mc.hierarchical_plan(goal_eef_pose=pre_g_pose,
             #                                                         target_id=args.target_object_id,
-            #                                                         maximum_planning_time=planning_time)
-            position_trajectory, motion_plan = mc.hybrid_plan(goal_eef_pose=pre_g_pose, maximum_planning_time=planning_time)
+            #                                                         maximum_planning_time=moveit_planning_time)
+            position_trajectory, motion_plan = mc.hybrid_plan(goal_eef_pose=pre_g_pose, maximum_planning_time=moveit_planning_time)
         else:
             # lazy replan
             if np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])) > 0.5:
@@ -435,29 +436,26 @@ if __name__ == "__main__":
                 ut.print_loop_end(loop_start)
                 continue
             else:
-                # start_index = min(mc.seq + looking_ahead, len(pre_position_trajectory) - 1)
-                # start_joint_values = pre_position_trajectory[start_index]
-                # start_joint_values = mc.get_arm_joint_values()
                 planning_start_time = rospy.Time.now()
                 time_since_start = (planning_start_time - mc.start_time_stamp).to_sec()
                 start_joint_values = mc.interpolate_plan_at_time(old_motion_plan, time_since_start + planning_time)
                 # TODO the maximum planning time is the not the actual time we get a plan
                 # position_trajectory, motion_plan = mc.plan_arm_joint_values(goal_joint_values=pre_g_joint_values,
                 #                                                             start_joint_values=start_joint_values,
-                #                                                             maximum_planning_time=planning_time)
+                #                                                             maximum_planning_time=moveit_planning_time)
                 # position_trajectory, motion_plan = mc.plan_arm_eef_pose(ee_pose=pre_g_pose,
                 #                                                         start_joint_values=start_joint_values)
                 # position_trajectory, motion_plan = mc.hierarchical_plan(goal_eef_pose=pre_g_pose,
                 #                                                         target_id=args.target_object_id,
                 #                                                         start_joint_values=start_joint_values,
-                #                                                         maximum_planning_time=planning_time)
+                #                                                         maximum_planning_time=moveit_planning_time)
                 position_trajectory, motion_plan = mc.hybrid_plan(goal_eef_pose=pre_g_pose,
                                                             start_joint_values=start_joint_values,
-                                                            maximum_planning_time=planning_time)
+                                                            maximum_planning_time=moveit_planning_time)
                 sleep_time = planning_time - (rospy.Time.now() - planning_start_time).to_sec()
                 rospy.loginfo(('Sleep after planning: {}'.format(sleep_time)))
                 rospy.sleep(max(0, sleep_time))
-        rospy.loginfo("planning takes {}".format(time.time()-motion_start))
+        rospy.loginfo("motion planning takes {}".format(time.time()-motion_start))
 
         if position_trajectory is None:
             rospy.loginfo("No plans found within {}".format(planning_time))
