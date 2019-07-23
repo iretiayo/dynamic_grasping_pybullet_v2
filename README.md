@@ -1,3 +1,17 @@
+## TODO 
+- Tier 1
+    - [ ] Real robot calibration
+    - [ ] Pose evaluation
+    - [ ] Grasp static object
+- Tier 2
+    - [ ] Motion prediction
+- Tier 3
+    - [ ] Dynamic grasping
+- Tier 4
+    - [ ] Simulation results
+- Tier 5
+    - [ ] Writing
+
 ## Dependencies
 numpy-1.16.2
 
