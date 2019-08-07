@@ -511,7 +511,7 @@ if __name__ == "__main__":
                         continue
                     mc.execute_arm_trajectory(position_trajectory, motion_plan)
                     # mc.move_arm_joint_values(j, plan=False) # TODO sometimes this motion is werid? rarely
-                    time.sleep(1) # NOTE give sometime to move before closing - this is IMPORTANT, increase success rate!
+                    time.sleep(1.5) # NOTE give sometime to move before closing - this is IMPORTANT, increase success rate!
                     mc.close_gripper()
                     mc.cartesian_control(z=0.07) # todo change this to use compute cartesian path
                     # NOTE: The trajectory returned by this will have a far away first waypoint to jump to
