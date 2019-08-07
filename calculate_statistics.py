@@ -18,10 +18,22 @@ def get_args():
     return args
 
 
+def get_success_rate(df, object_name=None, conveyor_velocity=None, conveyor_distance=None):
+    """ return success rate """
+    index = [True] * df.shape[0]
+    if object_name is not None:
+        index = index & (df['object_name'] == object_name)
+    if conveyor_velocity is not None:
+        index = index & (df['conveyor_velocity'] == conveyor_velocity)
+    if conveyor_distance is not None:
+        index = index & (df['conveyor_distance'] == conveyor_distance)
+    selected = df.loc[index]
+    return np.mean(selected['success'])
+
+
 def process_grasp_switch_stats(dfs):
     # data['grasp_switches_position_distances'] = data['grasp_switches_position_distances'].apply(
     #     lambda x: ast.literal_eval(x))
-
     stats_key = 'grasp_switches_position_distances'
     gs_dist_p = dfs[stats_key].apply(lambda x: ast.literal_eval(x))
     gs_dist_p = [dist for dist_list in gs_dist_p for dist in dist_list]
@@ -44,7 +56,6 @@ if __name__ == '__main__':
     # data = data[data['object_name'] == 'cube']
 
     # process_grasp_switch_stats(data)
-
     avg_time_spent = np.mean(data['time_spent'])
     time_spent_stats = data.groupby(['success']).agg({'time_spent': 'mean'})
     success_rate = np.mean(data['success'])
@@ -58,4 +69,3 @@ if __name__ == '__main__':
     success_rate_stats = data.groupby(['object_name']).agg({'success': 'mean'})
     print('success_rate_stats: \n {} \n'.format(success_rate_stats))
 
-    import ipdb; ipdb.set_trace()
