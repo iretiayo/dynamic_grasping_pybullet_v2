@@ -59,14 +59,15 @@ class MicoController(object):
 
     HOME = [4.80469, 2.92482, 1.002, 4.20319, 1.4458, 1.3233]
 
-    def __init__(self, mico_id):
+    def __init__(self, mico_id, use_trajectory_execution_service=True):
         self.id = mico_id
         self.num_joints = p.getNumJoints(self.id)
         self.mico_moveit = MicoMoveit()
 
-        self.client = actionlib.SimpleActionClient('trajectory_execution',
-                                                   pybullet_trajectory_execution.msg.TrajectoryAction)
-        self.client.wait_for_server()
+        if use_trajectory_execution_service:
+            self.client = actionlib.SimpleActionClient('trajectory_execution',
+                                                    pybullet_trajectory_execution.msg.TrajectoryAction)
+            self.client.wait_for_server()
         self.goal_id = 0
         self.seq = None
         self.start_time_stamp = None

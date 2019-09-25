@@ -37,15 +37,17 @@ def get_args():
                         help='Velocity of conveyor belt')
     parser.add_argument('-d', '--conveyor_distance', type=float, default=0.4,
                         help="Distance of conveyor belt to robot base")
+    parser.add_argument('-e', '--experiment_params_fname', type=str, default= 'configs/experiment_params_default.yaml',
+                        help="Config file for experiment params. Ex: configs/experiment_params.yaml")
+    parser.add_argument('-vd', '--video_dir', type=str, default='videos',
+                        help="Directory to store videos. Ex: video_dir")
+    parser.add_argument('-rd', '--result_dir', type=str, default='results',
+                        help="Directory to store results. Ex: result_dir")
     args = parser.parse_args()
 
-    args.video_dir = 'videos'
-    # args.video_dir = 'grasp_online_no_kf_videos'
     if not os.path.exists(args.video_dir):
         os.makedirs(args.video_dir)
 
-    args.result_dir = 'results'
-    # args.result_dir = 'grasp_online_no_kf_results'
     if not os.path.exists(args.result_dir):
         os.makedirs(args.result_dir)
 
@@ -64,12 +66,6 @@ def get_args():
     rospy.set_param('object_name', args.object_name)
     rospy.set_param('object_mesh_filepath', args.object_mesh_filepath)
     rospy.set_param('target_extents', args.target_extents)
-    if args.conveyor_velocity == 0.01:
-        conveyor_extent = [-0.6, 0.6]
-    else:
-        conveyor_extent = [-0.8, 0.8]
-    rospy.set_param('conveyor_extent', conveyor_extent)
-    args.min_x, args.max_x = conveyor_extent
 
     # set_up urdf
     urdf_template_filepath = 'model/object_template.urdf'
@@ -84,20 +80,18 @@ def get_args():
     args.reachability_data_dir = os.path.join(rospkg.RosPack().get_path('mico_reachability_config'), 'data')
     args.step_size, args.mins, args.dims = load_reachability_params(args.reachability_data_dir)
 
-    args.ONLY_TRACKING = False
-    args.DYNAMIC = True
-    args.KEEP_PREVIOUS_GRASP = True
-    args.RANK_BY_REACHABILITY = True
-    args.LOAD_OBSTACLES = True
-    args.ONLINE_PLANNING = True
-    args.UNIFORM_GRASP = False
-    args.COMPUTE_GRASP_SWITCHES = False
-    args.USE_KF = True # further speed up when not using kf
-
-    assert not (args.ONLINE_PLANNING and args.UNIFORM_GRASP)
-
     args.scene_fnm = "scene.yaml"
     args.scene_config = yaml.load(open(args.scene_fnm))
+
+    experiment_params = yaml.load(open(args.experiment_params_fname))
+    for k, v in experiment_params.items():
+        args.__dict__[k] = v
+    assert not (args.ONLINE_PLANNING and args.UNIFORM_GRASP)
+
+    if args.conveyor_velocity == 0.01:
+        args.conveyor_extent = [-0.6, 0.6]
+    rospy.set_param('conveyor_extent', args.conveyor_extent)
+    args.min_x, args.max_x = args.conveyor_extent
 
     return args
 

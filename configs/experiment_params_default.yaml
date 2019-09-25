@@ -1,0 +1,16 @@
+
+
+ONLY_TRACKING: False
+DYNAMIC: True
+KEEP_PREVIOUS_GRASP: True
+RANK_BY_REACHABILITY: True
+LOAD_OBSTACLES: True
+ONLINE_PLANNING: True
+UNIFORM_GRASP: False
+COMPUTE_GRASP_SWITCHES: False
+USE_KF: True # further speed up when not using kf
+
+
+
+conveyor_extent: [-0.8, 0.8]
+# conveyor_extent: [-0.01, 0.01]
