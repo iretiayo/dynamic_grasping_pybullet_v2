@@ -37,13 +37,12 @@ def get_args():
                         help="grasp planning type. Ex: 0")
     parser.add_argument('-e', '--experiment_params_fname', type=str, default='experiment_params.yaml',
                         help="Config file for experiment params. Ex: experiment_params.yaml")
-    parser.add_argument('-vd', '--video_dir', type=str, default='video_dir',
-                        help="Directory to store videos. Ex: video_dir")
     parser.add_argument('-rd', '--result_dir', type=str, default='result_dir',
                         help="Directory to store results. Ex: result_dir")
     args = parser.parse_args()
 
     experiment_id = '{}_{}'.format(args.object_name, time.strftime('%Y-%m-%d-%H-%M-%S'))
+    args.video_dir = os.path.join(args.result_dir, 'videos')
     if not os.path.exists(args.video_dir):
         os.makedirs(args.video_dir)
     args.video_filepath = os.path.join(args.video_dir, '{}.mp4'.format(experiment_id))
@@ -53,7 +52,7 @@ def get_args():
     args.result_filepath = os.path.join(args.result_dir, 'result.csv')
     args.grasp_poses_filepath = os.path.join(args.result_dir, '{}_grasps.pk'.format(experiment_id))
 
-    args.mesh_dir = os.path.abspath('model')
+    args.mesh_dir = os.path.abspath('dynamic_grasping_assets/models')
     return args
 
 
@@ -203,6 +202,7 @@ def execute_grasp(mc, mico_moveit, pre_grasp_pose, grasp_pose):
     if motion_plan is None:
         return False
     mc.execute_arm_motion_plan(motion_plan)
+    return True
 
 
 if __name__ == "__main__":
@@ -247,6 +247,7 @@ if __name__ == "__main__":
     # evaluate grasps
     logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, args.video_filepath)
     grasp_lift_results = []
+    lift_motion_found = []
     stateId = p.saveState()
     for grasp_idx in range(len(graspit_grasps)):
         mc.set_arm_joint_values(joint_values=mc.HOME)
@@ -257,7 +258,7 @@ if __name__ == "__main__":
             graspit_grasp_poses_in_object[grasp_idx], object_pose,
             old_ee_to_new_ee_translation_rotation)
 
-        execute_grasp(mc, mico_moveit, pre_grasp_pose, grasp_pose)
+        lift_executed = execute_grasp(mc, mico_moveit, pre_grasp_pose, grasp_pose)
         rospy.sleep(2)
 
         # check lift success
@@ -265,6 +266,7 @@ if __name__ == "__main__":
         success = (final_object_pos_ori[0][2] - target_object_pos_ori[0][2]) > 0.02
 
         grasp_lift_results.append(success)
+        lift_motion_found.append(lift_executed)
     p.stopStateLogging(logging)
 
     # collate results
@@ -272,6 +274,8 @@ if __name__ == "__main__":
               ('object_location_x', args.object_location_x),
               ('object_location_y', args.object_location_y),
               ('mean_lift_success', np.mean(grasp_lift_results)),
+              ('mean_lift_motion_found', np.mean(lift_motion_found)),
+              ('mean_lift_motion_found_and_success', np.mean(mean_lift_success)/np.mean(lift_motion_found)),
               ('num_grasps', len(grasp_lift_results)),
               ('num_lift_success', np.sum(grasp_lift_results)),
               ('grasp_poses_filename', args.grasp_poses_filepath),
