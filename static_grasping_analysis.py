@@ -275,7 +275,7 @@ if __name__ == "__main__":
               ('object_location_y', args.object_location_y),
               ('mean_lift_success', np.mean(grasp_lift_results)),
               ('mean_lift_motion_found', np.mean(lift_motion_found)),
-              ('mean_lift_motion_found_and_success', np.mean(mean_lift_success)/np.mean(lift_motion_found)),
+              ('mean_lift_motion_found_and_success', np.mean(grasp_lift_results)/np.mean(lift_motion_found)),
               ('num_grasps', len(grasp_lift_results)),
               ('num_lift_success', np.sum(grasp_lift_results)),
               ('grasp_poses_filename', args.grasp_poses_filepath),

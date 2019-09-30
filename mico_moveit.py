@@ -49,6 +49,7 @@ class MicoMoveit(object):
         # self.arm_commander_group.set_goal_position_tolerance(0.5)
         self.robot = mc.RobotCommander()
         self.scene = mc.PlanningSceneInterface()
+        rospy.sleep(2)
         self.display_trajectory_publisher = rospy.Publisher('/move_group/display_planned_path',
                                                             DisplayTrajectory,
                                                             queue_size=20)
