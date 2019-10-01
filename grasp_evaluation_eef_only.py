@@ -1,8 +1,37 @@
-
+import os
 import numpy as np
 import pybullet as p
 import pybullet_data
 import time
+import trimesh
+import argparse
+
+
+def get_args():
+    parser = argparse.ArgumentParser(description='Run Dynamic Grasping Experiment')
+
+    parser.add_argument('-o', '--object_name', type=str, default='bleach_cleanser',
+                        help="Target object to be grasped. Ex: cube")
+    parser.add_argument('-e', '--experiment_params_fname', type=str, default='experiment_params.yaml',
+                        help="Config file for experiment params. Ex: experiment_params.yaml")
+    parser.add_argument('-rd', '--result_dir', type=str, default='result_dir',
+                        help="Directory to store results. Ex: result_dir")
+    args = parser.parse_args()
+
+    args.mesh_dir = os.path.abspath('dynamic_grasping_assets/models')
+    return args
+
+
+def create_object_urdf(object_mesh_filepath, object_name,
+                       urdf_template_filepath='model/object_template.urdf',
+                       urdf_target_object_filepath='model/target_object.urdf'):
+    # set_up urdf
+    os.system('cp {} {}'.format(urdf_template_filepath, urdf_target_object_filepath))
+    sed_cmd = "sed -i 's|{}|{}|g' {}".format('object_name.obj', object_mesh_filepath, urdf_target_object_filepath)
+    os.system(sed_cmd)
+    sed_cmd = "sed -i 's|{}|{}|g' {}".format('object_name', object_name, urdf_target_object_filepath)
+    os.system(sed_cmd)
+    return urdf_target_object_filepath
 
 
 def step(duration=1):
@@ -52,14 +81,15 @@ class Controller:
 
 class World:
 
-    def __init__(self, target_initial_pose, gripper_initial_pose, gripper_urdf):
+    def __init__(self, target_initial_pose, gripper_initial_pose, gripper_urdf, target_urdf):
         self.target_initial_pose = target_initial_pose
         self.gripper_initial_pose = gripper_initial_pose
         self.gripper_urdf = gripper_urdf
+        self.target_urdf = target_urdf
 
         self.plane = p.loadURDF("plane.urdf")
-        self.target = p.loadURDF("cube_small.urdf", self.target_initial_pose[0], self.target_initial_pose[1])
-        self.robot = p.loadURDF(self.gripper_urdf, self.gripper_initial_pose[0], self.gripper_initial_pose[1])
+        self.target = p.loadURDF(target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
+        self.robot = p.loadURDF(self.gripper_urdf, self.gripper_initial_pose[0], self.gripper_initial_pose[1], flags=p.URDF_USE_SELF_COLLISION)
 
         self.controller = Controller(self.robot)
 
@@ -70,6 +100,7 @@ class World:
 
 
 if __name__ == "__main__":
+    args = get_args()
     p.connect(p.GUI_SERVER)
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
@@ -78,11 +109,15 @@ if __name__ == "__main__":
     # p.resetDebugVisualizerCamera(cameraDistance=0.9, cameraYaw=-24.4, cameraPitch=-47.0,
     #                              cameraTargetPosition=(-0.2, -0.30, 0.0))
 
-    target_initial_pose = [[0, 0, 0], [0, 0, 0, 1]]
-    gripper_initial_pose = [[0, 0, 0.5], [0, 0, 0, 1]]
-    gripper_urdf = "mico_hand/mico_hand.urdf"
 
-    world = World(target_initial_pose, gripper_initial_pose, gripper_urdf)
+    gripper_urdf = "mico_hand/mico_hand.urdf"
+    object_mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(args.object_name), '{}.obj'.format(args.object_name))
+    target_urdf = create_object_urdf(object_mesh_filepath, args.object_name)
+    target_mesh = trimesh.load_mesh(object_mesh_filepath)
+    target_initial_pose = [[0, 0, -target_mesh.bounds.min(0)[2] + 0.01], [0, 0, 0, 1]]
+    gripper_initial_pose = [[0, 0, 0.5], [0, 0, 0, 1]]
+
+    world = World(target_initial_pose, gripper_initial_pose, gripper_urdf, target_urdf)
 
     for i in range(100):
         # start iterating grasps and evaluate
