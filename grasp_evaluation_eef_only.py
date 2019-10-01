@@ -19,6 +19,7 @@ def get_args():
     args = parser.parse_args()
 
     args.mesh_dir = os.path.abspath('dynamic_grasping_assets/models')
+    args.gripper_urdf = os.path.abspath('dynamic_grasping_assets/mico_hand/mico_hand.urdf')
     return args
 
 
@@ -109,15 +110,13 @@ if __name__ == "__main__":
     # p.resetDebugVisualizerCamera(cameraDistance=0.9, cameraYaw=-24.4, cameraPitch=-47.0,
     #                              cameraTargetPosition=(-0.2, -0.30, 0.0))
 
-
-    gripper_urdf = "mico_hand/mico_hand.urdf"
     object_mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(args.object_name), '{}.obj'.format(args.object_name))
     target_urdf = create_object_urdf(object_mesh_filepath, args.object_name)
     target_mesh = trimesh.load_mesh(object_mesh_filepath)
     target_initial_pose = [[0, 0, -target_mesh.bounds.min(0)[2] + 0.01], [0, 0, 0, 1]]
     gripper_initial_pose = [[0, 0, 0.5], [0, 0, 0, 1]]
 
-    world = World(target_initial_pose, gripper_initial_pose, gripper_urdf, target_urdf)
+    world = World(target_initial_pose, gripper_initial_pose, args.gripper_urdf, target_urdf)
 
     for i in range(100):
         # start iterating grasps and evaluate
