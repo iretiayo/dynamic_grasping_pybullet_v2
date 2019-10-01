@@ -5,6 +5,8 @@ import pybullet_data
 import time
 import trimesh
 import argparse
+import grasp_utils as gu
+import pybullet_helper as ph
 
 
 def get_args():
@@ -111,6 +113,7 @@ if __name__ == "__main__":
     #                              cameraTargetPosition=(-0.2, -0.30, 0.0))
 
     object_mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(args.object_name), '{}.obj'.format(args.object_name))
+    object_mesh_filepath_ply = object_mesh_filepath.replace('.obj', '.ply')
     target_urdf = create_object_urdf(object_mesh_filepath, args.object_name)
     target_mesh = trimesh.load_mesh(object_mesh_filepath)
     target_initial_pose = [[0, 0, -target_mesh.bounds.min(0)[2] + 0.01], [0, 0, 0, 1]]
@@ -121,6 +124,8 @@ if __name__ == "__main__":
     for i in range(100):
         # start iterating grasps and evaluate
         world.reset()
+        object_pose_msg = ph.list_2_pose(p.getBasePositionAndOrientation())
+        grasps, grasp_poses_in_world, grasp_poses_in_object = gu.generate_grasps(object_mesh=object_mesh_filepath_ply, object_pose=object_pose_msg)
         pass
 
     print("here")
