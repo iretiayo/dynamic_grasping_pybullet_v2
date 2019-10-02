@@ -7,6 +7,8 @@ import trimesh
 import argparse
 import grasp_utils as gu
 import pybullet_helper as ph
+from collections import OrderedDict
+import csv
 
 
 def get_args():
@@ -16,13 +18,31 @@ def get_args():
                         help="Target object to be grasped. Ex: cube")
     parser.add_argument('-e', '--experiment_params_fname', type=str, default='experiment_params.yaml',
                         help="Config file for experiment params. Ex: experiment_params.yaml")
-    parser.add_argument('-rd', '--result_dir', type=str, default='result_dir',
-                        help="Directory to store results. Ex: result_dir")
+    parser.add_argument('-rd', '--grasp_dir', type=str, default='grasp_dir',
+                        help="Directory to store grasps and results. Ex: grasps_dir")
     args = parser.parse_args()
 
     args.mesh_dir = os.path.abspath('dynamic_grasping_assets/models')
     args.gripper_urdf = os.path.abspath('dynamic_grasping_assets/mico_hand/mico_hand.urdf')
+
+    args.grasp_dir = os.path.join(args.grasp_dir, args.object_name)
+    args.result_file_path = os.path.join(args.grasp_dir, 'result.csv')
+    if not os.path.exists(args.grasp_dir):
+        os.makedirs(args.grasp_dir)
     return args
+
+
+def write_csv_line(index, num_trials, success_rate, result_file_path):
+    result = [('index', index),
+              ('num_trials', num_trials),
+              ('success_rate', success_rate)]
+    result = OrderedDict(result)
+    file_exists = os.path.exists(result_file_path)
+    with open(result_file_path, 'a') as csv_file:
+        writer = csv.DictWriter(csv_file, result.keys())
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(result)
 
 
 def create_object_urdf(object_mesh_filepath, object_name,
@@ -60,18 +80,24 @@ class Controller:
         self.cid = None
 
     def reset_to(self, pose):
-        "the pose is for the link6 center of mass"
+        """ the pose is for the link6 center of mass """
         p.resetBasePositionAndOrientation(self.robot_id, pose[0], pose[1])
         self.move_to(pose)
 
     def move_to(self, pose):
-        "the pose is for the link6 center of mass"
+        """ the pose is for the link6 center of mass """
+        num_steps = 240
+        current_pose = self.get_pose()
+        positions = np.linspace(current_pose[0], pose[0], num_steps)
+        angles = np.linspace(p.getEulerFromQuaternion(current_pose[1]), p.getEulerFromQuaternion(pose[1]), num_steps)
+        quaternions = np.array([p.getQuaternionFromEuler(angle) for angle in angles])
         if self.cid is None:
             self.cid = p.createConstraint(parentBodyUniqueId=self.robot_id, parentLinkIndex=-1, childBodyUniqueId=-1,
                                      childLinkIndex=-1, jointType=p.JOINT_FIXED, jointAxis=[0, 0, 0],
-                                     parentFramePosition=[0, 0, 0], childFramePosition=pose[0], childFrameOrientation=pose[1])
-        else:
-            p.changeConstraint(self.cid, jointChildPivot=pose[0], jointChildFrameOrientation=pose[1])
+                                     parentFramePosition=[0, 0, 0], childFramePosition=current_pose[0], childFrameOrientation=current_pose[1])
+        for pos, ori in zip(positions, quaternions):
+            p.changeConstraint(self.cid, jointChildPivot=pos, jointChildFrameOrientation=ori)
+            p.stepSimulation()
         step()
 
     def close_gripper(self):
@@ -87,6 +113,13 @@ class Controller:
             p.stepSimulation()
         step()
 
+    def execute_grasp(self, graspit_pose_msp):
+        """ High level grasp interface using graspit pose in world frame (link6_reference_frame)"""
+        link6_com_pose_msg = gu.change_end_effector_link(graspit_pose_msp, link6_reference_to_link6_com)
+        self.reset_to(ph.pose_2_list(link6_com_pose_msg))
+        self.close_gripper()
+        self.lift()
+
     def open_gripper(self):
         p.setJointMotorControlArray(bodyUniqueId=self.robot_id,
                                     jointIndices=self.GRIPPER_INDICES,
@@ -95,9 +128,13 @@ class Controller:
         step()
 
     def lift(self, z=0.2):
-        target_pose = p.getBasePositionAndOrientation()
+        target_pose = self.get_pose()
         target_pose[0][2] += z
         self.move_to(target_pose)
+
+    def get_pose(self):
+        "the pose is for the link6 center of mass"
+        return [list(p.getBasePositionAndOrientation(self.robot_id)[0]), list(p.getBasePositionAndOrientation(self.robot_id)[1])]
 
 
 class World:
@@ -118,6 +155,7 @@ class World:
         p.resetBasePositionAndOrientation(self.target, target_initial_pose[0], target_initial_pose[1])
         p.resetBasePositionAndOrientation(self.robot, gripper_initial_pose[0], gripper_initial_pose[1])
         self.controller.move_to(gripper_initial_pose)
+        self.controller.open_gripper()
 
 
 if __name__ == "__main__":
@@ -144,7 +182,7 @@ if __name__ == "__main__":
     link6_reference_to_link6_com = (world.controller.LINK6_COM, [0.0, 0.0, 0.0, 1.0])
 
     for i in range(1000):
-        # start iterating grasps and evaluate
+        # start sampling grasps and evaluate
         world.reset()
         object_pose = p.getBasePositionAndOrientation(world.target)
         object_pose_msg = ph.list_2_pose(object_pose)
@@ -157,8 +195,11 @@ if __name__ == "__main__":
                                  save_fnm='grasps.pk',
                                  load_fnm='grasps.pk')
         for g_pose_msg in graspit_grasp_poses_in_world:
-            link6_com_pose_msg = gu.change_end_effector_link(g_pose_msg, link6_reference_to_link6_com)
-            world.controller.reset_to(ph.pose_2_list(link6_com_pose_msg))
-
+            num_trials = 10
+            for _ in range(num_trials):  # test a single grasp
+                world.controller.execute_grasp(g_pose_msg)
+                success = p.getBasePositionAndOrientation(world.target)[0][2] > 0.1
+                print(success)
+                world.reset()
     print("here")
 
