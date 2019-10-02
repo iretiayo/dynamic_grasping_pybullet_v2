@@ -53,14 +53,21 @@ class Controller:
     GRIPPER_INDICES = [1, 3]
     OPEN_POSITION = [0.0, 0.0]
     CLOSED_POSITION = [1.1, 1.1]
+    LINK6_COM = [-0.002216, -0.000001, -0.058489]
 
     def __init__(self, robot_id):
         self.robot_id = robot_id
         self.cid = None
 
+    def reset_to(self, pose):
+        "the pose is for the link6 center of mass"
+        p.resetBasePositionAndOrientation(self.robot_id, pose[0], pose[1])
+        self.move_to(pose)
+
     def move_to(self, pose):
+        "the pose is for the link6 center of mass"
         if self.cid is None:
-            self.cid = p.createConstraint(parentBodyUniqueId=self.robot_id, parentLinkIndex=self.EEF_LINK_INDEX, childBodyUniqueId=-1,
+            self.cid = p.createConstraint(parentBodyUniqueId=self.robot_id, parentLinkIndex=-1, childBodyUniqueId=-1,
                                      childLinkIndex=-1, jointType=p.JOINT_FIXED, jointAxis=[0, 0, 0],
                                      parentFramePosition=[0, 0, 0], childFramePosition=pose[0], childFrameOrientation=pose[1])
         else:
@@ -68,10 +75,16 @@ class Controller:
         step()
 
     def close_gripper(self):
-        p.setJointMotorControlArray(bodyUniqueId=self.robot_id,
-                                    jointIndices=self.GRIPPER_INDICES,
-                                    controlMode=p.POSITION_CONTROL,
-                                    targetPositions=self.CLOSED_POSITION)
+        num_steps = 240
+        waypoints = np.linspace(self.OPEN_POSITION, self.CLOSED_POSITION, num_steps)
+        for wp in waypoints:
+            p.setJointMotorControlArray(bodyUniqueId=self.robot_id,
+                                        jointIndices=self.GRIPPER_INDICES,
+                                        controlMode=p.POSITION_CONTROL,
+                                        targetPositions=wp,
+                                        forces=[10, 10]
+                                        )
+            p.stepSimulation()
         step()
 
     def open_gripper(self):
@@ -80,6 +93,11 @@ class Controller:
                                     controlMode=p.POSITION_CONTROL,
                                     targetPositions=self.OPEN_POSITION)
         step()
+
+    def lift(self, z=0.2):
+        target_pose = p.getBasePositionAndOrientation()
+        target_pose[0][2] += z
+        self.move_to(target_pose)
 
 
 class World:
@@ -116,17 +134,31 @@ if __name__ == "__main__":
     object_mesh_filepath_ply = object_mesh_filepath.replace('.obj', '.ply')
     target_urdf = create_object_urdf(object_mesh_filepath, args.object_name)
     target_mesh = trimesh.load_mesh(object_mesh_filepath)
+    floor_offset = target_mesh.bounds.min(0)[2]
     target_initial_pose = [[0, 0, -target_mesh.bounds.min(0)[2] + 0.01], [0, 0, 0, 1]]
     gripper_initial_pose = [[0, 0, 0.5], [0, 0, 0, 1]]
 
     world = World(target_initial_pose, gripper_initial_pose, args.gripper_urdf, target_urdf)
+    link6_reference_to_ee = ([0.0, 0.0, -0.16], [1.0, 0.0, 0.0, 0])
+    ee_to_link6_reference = ([0.0, -3.3091697137634315e-14, -0.16], [-1.0, 0.0, 0.0, -1.0341155355510722e-13])
+    link6_reference_to_link6_com = (world.controller.LINK6_COM, [0.0, 0.0, 0.0, 1.0])
 
-    for i in range(100):
+    for i in range(1000):
         # start iterating grasps and evaluate
         world.reset()
-        object_pose_msg = ph.list_2_pose(p.getBasePositionAndOrientation())
-        grasps, grasp_poses_in_world, grasp_poses_in_object = gu.generate_grasps(object_mesh=object_mesh_filepath_ply, object_pose=object_pose_msg)
-        pass
+        object_pose = p.getBasePositionAndOrientation(world.target)
+        object_pose_msg = ph.list_2_pose(object_pose)
+        graspit_grasps, graspit_grasp_poses_in_world, graspit_grasp_poses_in_object \
+            = gu.generate_grasps(object_mesh=object_mesh_filepath_ply,
+                                 object_pose=object_pose_msg,
+                                 uniform_grasp=False,
+                                 floor_offset=floor_offset,
+                                 max_steps=70000,
+                                 save_fnm='grasps.pk',
+                                 load_fnm='grasps.pk')
+        for g_pose_msg in graspit_grasp_poses_in_world:
+            link6_com_pose_msg = gu.change_end_effector_link(g_pose_msg, link6_reference_to_link6_com)
+            world.controller.reset_to(ph.pose_2_list(link6_com_pose_msg))
 
     print("here")
 
