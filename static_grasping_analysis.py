@@ -17,6 +17,7 @@ import pybullet_data
 from mico_pybullet_simple import MicoControllerSimple
 from mico_moveit import MicoMoveit
 from grasp_utils import generate_grasps, get_transform, convert_graspit_pose_in_object_to_moveit_grasp_pose
+from grasp_evaluation_eef_only import Controller
 
 
 UNIFORM_GRASP_PLANNER = 0
@@ -53,6 +54,7 @@ def get_args():
     args.grasp_poses_filepath = os.path.join(args.result_dir, '{}_grasps.pk'.format(experiment_id))
 
     args.mesh_dir = os.path.abspath('dynamic_grasping_assets/models')
+    args.gripper_urdf = os.path.abspath('dynamic_grasping_assets/mico_hand/mico_hand.urdf')
     return args
 
 
@@ -267,12 +269,29 @@ if __name__ == "__main__":
 
         grasp_lift_results.append(success)
         lift_motion_found.append(lift_executed)
+
+    # evaluate grasp using hand only
+    p.setRealTimeSimulation(0)
+    p.restoreState(stateId)
+    p.removeBody(pybullet_object_ids_ALL['robot_id'])
+    gripper_initial_pose = [[0, 0, 0.5], [0, 0, 0, 1]]
+    hand = p.loadURDF(args.gripper_urdf, gripper_initial_pose[0], gripper_initial_pose[1], flags=p.URDF_USE_SELF_COLLISION)
+    hand_controller = Controller(hand)
+    eef_only_lift_results = []
+    stateId = p.saveState()
+    for grasp_idx in range(len(graspit_grasps)):
+        p.restoreState(stateId)
+        hand_controller.open_gripper()
+        hand_controller.execute_grasp(graspit_grasp_poses_in_world[grasp_idx])
+        success = (final_object_pos_ori[0][2] - target_object_pos_ori[0][2]) > 0.01
+        eef_only_lift_results.append(success)
     p.stopStateLogging(logging)
 
     # collate results
     result = [('object_name', args.object_name),
               ('object_location_x', args.object_location_x),
               ('object_location_y', args.object_location_y),
+              ('eef_only_lift_results', np.mean(eef_only_lift_results)),
               ('mean_lift_success', np.mean(grasp_lift_results)),
               ('mean_lift_motion_found', np.mean(lift_motion_found)),
               ('mean_lift_motion_found_and_success', np.mean(grasp_lift_results)/np.mean(lift_motion_found)),
@@ -289,5 +308,6 @@ if __name__ == "__main__":
             writer.writeheader()
         writer.writerow(result)
 
-    pickle.dump({'grasps': graspit_grasp_poses_in_object, 'lift_success': grasp_lift_results},
+    pickle.dump({'grasps': graspit_grasp_poses_in_object, 'lift_success': grasp_lift_results,
+                 'eef_only_lift_results': eef_only_lift_results},
                 open(args.grasp_poses_filepath, "wb"))
