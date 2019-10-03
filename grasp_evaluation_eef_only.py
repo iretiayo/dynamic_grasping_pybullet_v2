@@ -115,6 +115,7 @@ class Controller:
 
     def execute_grasp(self, graspit_pose_msp):
         """ High level grasp interface using graspit pose in world frame (link6_reference_frame)"""
+        link6_reference_to_link6_com = (self.LINK6_COM, [0.0, 0.0, 0.0, 1.0])
         link6_com_pose_msg = gu.change_end_effector_link(graspit_pose_msp, link6_reference_to_link6_com)
         self.reset_to(ph.pose_2_list(link6_com_pose_msg))
         self.close_gripper()
@@ -179,7 +180,6 @@ if __name__ == "__main__":
     world = World(target_initial_pose, gripper_initial_pose, args.gripper_urdf, target_urdf)
     link6_reference_to_ee = ([0.0, 0.0, -0.16], [1.0, 0.0, 0.0, 0])
     ee_to_link6_reference = ([0.0, -3.3091697137634315e-14, -0.16], [-1.0, 0.0, 0.0, -1.0341155355510722e-13])
-    link6_reference_to_link6_com = (world.controller.LINK6_COM, [0.0, 0.0, 0.0, 1.0])
 
     for i in range(1000):
         # start sampling grasps and evaluate
