@@ -103,7 +103,7 @@ def get_grasps(robot_name='MicoGripper', object_mesh='cube', object_pose=Pose(Po
     #     gc.setRobotPose(g.pose)
     #     time.sleep(1)
     # import ipdb; ipdb.set_trace()
-    print('Number of good grasps: \t {} out of {}'.format(len(good_grasps), len(grasps)))
+    # print('Number of good grasps: \t {} out of {}'.format(len(good_grasps), len(grasps)))
 
     # return grasp_poses_in_world and grasp_poses_in_object
     grasp_poses_in_world, grasp_poses_in_object = extract_grasp_poses_from_graspit_grasps(graspit_grasps=good_grasps,

@@ -9,17 +9,18 @@ import grasp_utils as gu
 import pybullet_helper as ph
 from collections import OrderedDict
 import csv
-
+import tqdm
 
 def get_args():
     parser = argparse.ArgumentParser(description='Run Dynamic Grasping Experiment')
 
     parser.add_argument('-o', '--object_name', type=str, default='bleach_cleanser',
                         help="Target object to be grasped. Ex: cube")
-    parser.add_argument('-e', '--experiment_params_fname', type=str, default='experiment_params.yaml',
-                        help="Config file for experiment params. Ex: experiment_params.yaml")
     parser.add_argument('-rd', '--grasp_dir', type=str, default='grasp_dir',
                         help="Directory to store grasps and results. Ex: grasps_dir")
+    parser.add_argument('--num_grasps', type=int, default=1000)
+    parser.add_argument('--num_trials', type=int, default=10)
+    parser.add_argument('--disable_gui', action='store_true', default=False)
     args = parser.parse_args()
 
     args.mesh_dir = os.path.abspath('dynamic_grasping_assets/models')
@@ -32,10 +33,13 @@ def get_args():
     return args
 
 
-def write_csv_line(index, num_trials, success_rate, result_file_path):
+def write_csv_line(result_file_path, index, num_trials, num_successes, volume_quality, epsilon_quality, grasp_fnm):
     result = [('index', index),
               ('num_trials', num_trials),
-              ('success_rate', success_rate)]
+              ('num_successes', num_successes),
+              ('volume_quality', volume_quality),
+              ('epsilon_quality', epsilon_quality),
+              ('grasp_fnm', grasp_fnm)]
     result = OrderedDict(result)
     file_exists = os.path.exists(result_file_path)
     with open(result_file_path, 'a') as csv_file:
@@ -74,6 +78,7 @@ class Controller:
     OPEN_POSITION = [0.0, 0.0]
     CLOSED_POSITION = [1.1, 1.1]
     LINK6_COM = [-0.002216, -0.000001, -0.058489]
+    LIFT_VALUE = 0.2
 
     def __init__(self, robot_id):
         self.robot_id = robot_id
@@ -127,7 +132,7 @@ class Controller:
                                     targetPositions=self.OPEN_POSITION)
         step()
 
-    def lift(self, z=0.2):
+    def lift(self, z=LIFT_VALUE):
         target_pose = self.get_pose()
         target_pose[0][2] += z
         self.move_to(target_pose)
@@ -160,7 +165,10 @@ class World:
 
 if __name__ == "__main__":
     args = get_args()
-    p.connect(p.GUI_SERVER)
+    if args.disable_gui:
+        p.connect(p.DIRECT)
+    else:
+        p.connect(p.GUI_SERVER)
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
     p.resetSimulation()
@@ -181,25 +189,44 @@ if __name__ == "__main__":
     ee_to_link6_reference = ([0.0, -3.3091697137634315e-14, -0.16], [-1.0, 0.0, 0.0, -1.0341155355510722e-13])
     link6_reference_to_link6_com = (world.controller.LINK6_COM, [0.0, 0.0, 0.0, 1.0])
 
-    for i in range(1000):
+    num_grasps = 0 if not os.path.exists(args.result_file_path) else len(os.listdir(args.grasp_dir)) - 1
+    progressbar = tqdm.tqdm(initial=num_grasps, total=args.num_grasps)
+    while num_grasps < args.num_grasps:
         # start sampling grasps and evaluate
         world.reset()
         object_pose = p.getBasePositionAndOrientation(world.target)
+        success_threshold = object_pose[0][2] + world.controller.LIFT_VALUE - 0.05
         object_pose_msg = ph.list_2_pose(object_pose)
         graspit_grasps, graspit_grasp_poses_in_world, graspit_grasp_poses_in_object \
             = gu.generate_grasps(object_mesh=object_mesh_filepath_ply,
                                  object_pose=object_pose_msg,
                                  uniform_grasp=False,
                                  floor_offset=floor_offset,
-                                 max_steps=70000,
-                                 save_fnm='grasps.pk',
-                                 load_fnm='grasps.pk')
-        for g_pose_msg in graspit_grasp_poses_in_world:
-            num_trials = 10
-            for _ in range(num_trials):  # test a single grasp
+                                 max_steps=40000)
+        volume_qualities = [g.volume_quality for g in graspit_grasps]
+        epsilon_qualities = [g.epsilon_quality for g in graspit_grasps]
+        for g_pose_msg, g_pose_object_msg, vq, eq in zip(graspit_grasp_poses_in_world, graspit_grasp_poses_in_object, volume_qualities, epsilon_qualities):
+            successes = []
+            for t in range(args.num_trials):  # test a single grasp
                 world.controller.execute_grasp(g_pose_msg)
-                success = p.getBasePositionAndOrientation(world.target)[0][2] > 0.1
-                print(success)
+                success = p.getBasePositionAndOrientation(world.target)[0][2] > 0.2
+                successes.append(success)
+                # print(success)    # the place to put a break point
                 world.reset()
-    print("here")
+            # write results
+            grasp_file_name = "grasp"+"_"+"{:04d}".format(num_grasps)+".npy"
+            num_successes = np.count_nonzero(successes)
+            write_csv_line(result_file_path=args.result_file_path,
+                           index=num_grasps,
+                           num_trials=args.num_trials,
+                           num_successes=num_successes,
+                           volume_quality=vq,
+                           epsilon_quality=eq,
+                           grasp_fnm=grasp_file_name)
+            np.save(os.path.join(args.grasp_dir, grasp_file_name), ph.pose_2_list(g_pose_object_msg))
+            progressbar.update(1)
+            progressbar.set_description("grasp index: {} | success rate {}/{}".format(num_grasps, num_successes, args.num_trials))
+            num_grasps += 1
+    progressbar.close()
+    print("finished")
 
