@@ -10,6 +10,8 @@ import pybullet_helper as ph
 from collections import OrderedDict
 import csv
 import tqdm
+import tf_conversions
+
 
 def get_args():
     parser = argparse.ArgumentParser(description='Run Dynamic Grasping Experiment')
@@ -59,6 +61,24 @@ def create_object_urdf(object_mesh_filepath, object_name,
     sed_cmd = "sed -i 's|{}|{}|g' {}".format('object_name', object_name, urdf_target_object_filepath)
     os.system(sed_cmd)
     return urdf_target_object_filepath
+
+
+def convert_grasp_in_object_to_world(object_pose, grasp_in_object):
+    object_T_grasp = tf_conversions.toMatrix(tf_conversions.fromTf(grasp_in_object))
+    world_T_object = tf_conversions.toMatrix(tf_conversions.fromTf(object_pose))
+    world_T_grasp = world_T_object.dot(object_T_grasp)
+    grasp_in_world = tf_conversions.toTf(tf_conversions.fromMatrix(world_T_grasp))
+    return grasp_in_world
+
+
+def convert_grasp_in_world_to_object(object_pose, grasp_in_world):
+    world_T_object = tf_conversions.fromTf(object_pose)
+    object_T_world = world_T_object.Inverse()
+    object_T_world = tf_conversions.toMatrix(object_T_world)
+    world_T_grasp = tf_conversions.fromTf(grasp_in_world)
+    object_T_grasp = object_T_world.dot(world_T_grasp)
+    grasp_in_object = object_T_grasp.toTf()
+    return grasp_in_object
 
 
 def step(duration=1):
@@ -122,6 +142,10 @@ class Controller:
         """ High level grasp interface using graspit pose in world frame (link6_reference_frame)"""
         link6_reference_to_link6_com = (self.LINK6_COM, [0.0, 0.0, 0.0, 1.0])
         link6_com_pose_msg = gu.change_end_effector_link(graspit_pose_msp, link6_reference_to_link6_com)
+        # grasp_in_object = np.load(
+        #     '/home/jxu/dynamic_grasping_ws/src/dynamic_grasping_pybullet/grasp_dir/bleach_cleanser/grasp_0001.npy',
+        #     allow_pickle=True)
+        # grasp_in_world = convert_grasp_in_object_to_world(p.getBasePositionAndOrientation(world.target), grasp_in_object)
         self.reset_to(ph.pose_2_list(link6_com_pose_msg))
         self.close_gripper()
         self.lift()
@@ -227,6 +251,8 @@ if __name__ == "__main__":
             progressbar.update(1)
             progressbar.set_description("grasp index: {} | success rate {}/{}".format(num_grasps, num_successes, args.num_trials))
             num_grasps += 1
+            if num_grasps == args.num_grasps:
+                break
     progressbar.close()
     print("finished")
 
