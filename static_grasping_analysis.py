@@ -283,6 +283,8 @@ if __name__ == "__main__":
         p.restoreState(stateId)
         hand_controller.open_gripper()
         hand_controller.execute_grasp(graspit_grasp_poses_in_world[grasp_idx])
+
+        final_object_pos_ori = p.getBasePositionAndOrientation(pybullet_object_ids_ALL['target_object_id'])
         success = (final_object_pos_ori[0][2] - target_object_pos_ori[0][2]) > 0.01
         eef_only_lift_results.append(success)
     p.stopStateLogging(logging)
