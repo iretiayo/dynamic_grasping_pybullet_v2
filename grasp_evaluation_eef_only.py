@@ -146,6 +146,7 @@ class Controller:
         #     '/home/jxu/dynamic_grasping_ws/src/dynamic_grasping_pybullet/grasp_dir/bleach_cleanser/grasp_0001.npy',
         #     allow_pickle=True)
         # grasp_in_world = convert_grasp_in_object_to_world(p.getBasePositionAndOrientation(world.target), grasp_in_object)
+        # grasp_in_world = gu.change_end_effector_link(ph.list_2_pose(grasp_in_world), link6_reference_to_link6_com)
         self.reset_to(ph.pose_2_list(link6_com_pose_msg))
         self.close_gripper()
         self.lift()
