@@ -13,12 +13,16 @@ import tqdm
 import tf_conversions
 
 
+""" Use Graspit as backend to generate grasps and test in pybullet,
+    saved as pose lists in link6 reference link"""
+
+
 def get_args():
     parser = argparse.ArgumentParser(description='Run Dynamic Grasping Experiment')
 
-    parser.add_argument('-o', '--object_name', type=str, default='bleach_cleanser',
+    parser.add_argument('--object_name', type=str, default='bleach_cleanser',
                         help="Target object to be grasped. Ex: cube")
-    parser.add_argument('-rd', '--grasp_dir', type=str, default='grasp_dir',
+    parser.add_argument('--grasp_folder_path', type=str, default='grasp_dir',
                         help="Directory to store grasps and results. Ex: grasps_dir")
     parser.add_argument('--num_grasps', type=int, default=1000)
     parser.add_argument('--num_trials', type=int, default=10)
@@ -28,10 +32,11 @@ def get_args():
     args.mesh_dir = os.path.abspath('dynamic_grasping_assets/models')
     args.gripper_urdf = os.path.abspath('dynamic_grasping_assets/mico_hand/mico_hand.urdf')
 
-    args.grasp_dir = os.path.join(args.grasp_dir, args.object_name)
-    args.result_file_path = os.path.join(args.grasp_dir, 'result.csv')
-    if not os.path.exists(args.grasp_dir):
-        os.makedirs(args.grasp_dir)
+    args.grasp_folder_path = os.path.join(args.grasp_folder_path, args.object_name)
+    args.result_file_path = os.path.join(args.grasp_folder_path, 'result.csv')
+    if not os.path.exists(args.grasp_folder_path):
+        os.makedirs(args.grasp_folder_path)
+
     return args
 
 
@@ -64,6 +69,10 @@ def create_object_urdf(object_mesh_filepath, object_name,
 
 
 def convert_grasp_in_object_to_world(object_pose, grasp_in_object):
+    """
+    :param object_pose: 2d list
+    :param grasp_in_object: 2d list
+    """
     object_T_grasp = tf_conversions.toMatrix(tf_conversions.fromTf(grasp_in_object))
     world_T_object = tf_conversions.toMatrix(tf_conversions.fromTf(object_pose))
     world_T_grasp = world_T_object.dot(object_T_grasp)
@@ -72,6 +81,10 @@ def convert_grasp_in_object_to_world(object_pose, grasp_in_object):
 
 
 def convert_grasp_in_world_to_object(object_pose, grasp_in_world):
+    """
+    :param object_pose: 2d list
+    :param grasp_in_world: 2d list
+    """
     world_T_object = tf_conversions.fromTf(object_pose)
     object_T_world = world_T_object.Inverse()
     object_T_world = tf_conversions.toMatrix(object_T_world)
@@ -142,11 +155,6 @@ class Controller:
         """ High level grasp interface using graspit pose in world frame (link6_reference_frame)"""
         link6_reference_to_link6_com = (self.LINK6_COM, [0.0, 0.0, 0.0, 1.0])
         link6_com_pose_msg = gu.change_end_effector_link(graspit_pose_msp, link6_reference_to_link6_com)
-        # grasp_in_object = np.load(
-        #     '/home/jxu/dynamic_grasping_ws/src/dynamic_grasping_pybullet/grasp_dir/bleach_cleanser/grasp_0001.npy',
-        #     allow_pickle=True)
-        # grasp_in_world = convert_grasp_in_object_to_world(p.getBasePositionAndOrientation(world.target), grasp_in_object)
-        # grasp_in_world = gu.change_end_effector_link(ph.list_2_pose(grasp_in_world), link6_reference_to_link6_com)
         self.reset_to(ph.pose_2_list(link6_com_pose_msg))
         self.close_gripper()
         self.lift()
@@ -177,15 +185,15 @@ class World:
         self.target_urdf = target_urdf
 
         self.plane = p.loadURDF("plane.urdf")
-        self.target = p.loadURDF(target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
+        self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
         self.robot = p.loadURDF(self.gripper_urdf, self.gripper_initial_pose[0], self.gripper_initial_pose[1], flags=p.URDF_USE_SELF_COLLISION)
 
         self.controller = Controller(self.robot)
 
     def reset(self):
-        p.resetBasePositionAndOrientation(self.target, target_initial_pose[0], target_initial_pose[1])
-        p.resetBasePositionAndOrientation(self.robot, gripper_initial_pose[0], gripper_initial_pose[1])
-        self.controller.move_to(gripper_initial_pose)
+        p.resetBasePositionAndOrientation(self.target, self.target_initial_pose[0], self.target_initial_pose[1])
+        p.resetBasePositionAndOrientation(self.robot, self.gripper_initial_pose[0], self.gripper_initial_pose[1])
+        self.controller.move_to(self.gripper_initial_pose)
         self.controller.open_gripper()
 
 
@@ -214,7 +222,7 @@ if __name__ == "__main__":
     link6_reference_to_ee = ([0.0, 0.0, -0.16], [1.0, 0.0, 0.0, 0])
     ee_to_link6_reference = ([0.0, -3.3091697137634315e-14, -0.16], [-1.0, 0.0, 0.0, -1.0341155355510722e-13])
 
-    num_grasps = 0 if not os.path.exists(args.result_file_path) else len(os.listdir(args.grasp_dir)) - 1
+    num_grasps = 0 if not os.path.exists(args.result_file_path) else len(os.listdir(args.grasp_folder_path)) - 1
     progressbar = tqdm.tqdm(initial=num_grasps, total=args.num_grasps)
     while num_grasps < args.num_grasps:
         # start sampling grasps and evaluate
@@ -248,7 +256,7 @@ if __name__ == "__main__":
                            volume_quality=vq,
                            epsilon_quality=eq,
                            grasp_fnm=grasp_file_name)
-            np.save(os.path.join(args.grasp_dir, grasp_file_name), ph.pose_2_list(g_pose_object_msg))
+            np.save(os.path.join(args.grasp_folder_path, grasp_file_name), ph.pose_2_list(g_pose_object_msg))
             progressbar.update(1)
             progressbar.set_description("grasp index: {} | success rate {}/{}".format(num_grasps, num_successes, args.num_trials))
             num_grasps += 1
