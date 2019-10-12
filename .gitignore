@@ -121,5 +121,5 @@ src/
 video
 videos
 results
-target_object.urdf
+assets/
 grasps_*.pk
