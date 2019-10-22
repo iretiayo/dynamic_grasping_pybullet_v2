@@ -114,11 +114,11 @@ class Controller:
             p.stepSimulation()
         pu.step()
 
-    def execute_grasp(self, graspit_pose_msp):
+    def execute_grasp(self, graspit_pose_msg):
         """ High level grasp interface using graspit pose in world frame (link6_reference_frame)"""
         link6_reference_to_link6_com = (self.LINK6_COM, [0.0, 0.0, 0.0, 1.0])
-        link6_com_pose_msg = gu.change_end_effector_link(graspit_pose_msp, link6_reference_to_link6_com)
-        self.reset_to(pu.pose_2_list(link6_com_pose_msg))
+        link6_com_pose_msg = gu.change_end_effector_link(graspit_pose_msg, link6_reference_to_link6_com)
+        self.reset_to(gu.pose_2_list(link6_com_pose_msg))
         self.close_gripper()
         self.lift()
 
@@ -192,7 +192,7 @@ if __name__ == "__main__":
         world.reset()
         object_pose = p.getBasePositionAndOrientation(world.target)
         success_threshold = object_pose[0][2] + world.controller.LIFT_VALUE - 0.05
-        object_pose_msg = pu.list_2_pose(object_pose)
+        object_pose_msg = gu.list_2_pose(object_pose)
         graspit_grasps, graspit_grasp_poses_in_world, graspit_grasp_poses_in_object \
             = gu.generate_grasps(object_mesh=object_mesh_filepath_ply,
                                  object_pose=object_pose_msg,
@@ -219,7 +219,7 @@ if __name__ == "__main__":
                            volume_quality=vq,
                            epsilon_quality=eq,
                            grasp_fnm=grasp_file_name)
-            grasp_list = pu.pose_2_list(g_pose_object_msg)
+            grasp_list = gu.pose_2_list(g_pose_object_msg)
             grasp_array = np.array(grasp_list[0] + grasp_list[1])
             np.save(os.path.join(args.grasp_folder_path, grasp_file_name), grasp_array)
             progressbar.update(1)
