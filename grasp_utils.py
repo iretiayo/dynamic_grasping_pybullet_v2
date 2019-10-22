@@ -6,6 +6,7 @@ import rospy
 import os
 import pickle
 import numpy as np
+import pybullet_utils as pu
 
 import graspit_commander
 import grid_sample_client
@@ -64,6 +65,22 @@ def back_off(grasp_pose, offset=-.05):
     pre_grasp_pose = tf_conversions.toMsg(
         tf_conversions.fromMsg(grasp_pose) * tf_conversions.fromTf(((0, 0, offset), (0, 0, 0, 1))))
     return pre_grasp_pose
+
+
+def change_end_effector_link_pose_2d(grasp_pose, old_link_to_new_link=link6_reference_to_ee):
+    """
+
+    :param grasp_pose: pose 2d
+    :param old_link_to_new_link: pose 2d
+    :return:
+    """
+    graspit_grasp_pose_for_old_link_matrix = tf_conversions.toMatrix(tf_conversions.fromTf(grasp_pose))
+    old_link_to_new_link_matrix = tf_conversions.toMatrix(tf_conversions.fromTf(old_link_to_new_link))
+    graspit_grasp_pose_for_new_link_matrix = np.dot(graspit_grasp_pose_for_old_link_matrix,
+                                                    old_link_to_new_link_matrix)
+    graspit_grasp_pose_for_new_link = tf_conversions.toTf(
+        tf_conversions.fromMatrix(graspit_grasp_pose_for_new_link_matrix))
+    return graspit_grasp_pose_for_new_link
 
 
 def change_end_effector_link(graspit_grasp_msg_pose, old_link_to_new_link_translation_rotation):
@@ -355,3 +372,23 @@ def convert_grasp_in_world_to_object(object_pose, grasp_in_world):
     object_T_grasp = object_T_world.dot(world_T_grasp)
     grasp_in_object = tf_conversions.toTf(tf_conversions.fromMatrix(object_T_grasp))
     return grasp_in_object
+
+
+def visualize_grasps_with_reachability(grasp_poses, sdf_values, use_cmap_from_mpl=True, cmap_name='viridis'):
+    """
+
+    :param grasp_poses: a list of pose 2d
+    :param sdf_values: a list of their corresponding sdf values
+    """
+    maximum = max(sdf_values)
+    minimum = min(sdf_values)
+    if use_cmap_from_mpl:
+        cmap = pu.MplColorHelper(unicode(cmap_name), minimum, maximum)
+        pu.plot_heatmap_bar(unicode(cmap_name), minimum, maximum)
+    i = 1
+    for g, r in zip(grasp_poses, sdf_values):
+        if use_cmap_from_mpl:
+            pu.create_arrow_marker(g, raw_color=cmap.get_rgb(r))
+            i += 1
+        else:
+            pu.create_arrow_marker(g, raw_color=pu.rgb(r, maximum=maximum, minimum=minimum))

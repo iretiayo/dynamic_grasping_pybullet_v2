@@ -2,6 +2,8 @@ from collections import namedtuple
 import pybullet as p
 import numpy as np
 import time
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 
 INF = np.inf
 PI = np.pi
@@ -398,6 +400,7 @@ def create_arrow_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
                         arrow_width=6,
                         life_time=0,
                         color_index=0,
+                        raw_color=None,
                         replace_frame_id=None):
     """
     Create an arrow marker that identifies the z-axis of the end effector frame. Add a dot towards the positive direction.
@@ -405,6 +408,7 @@ def create_arrow_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
 
     position = np.array(pose[0])
     orientation = np.array(pose[1])
+    color = raw_color if raw_color is not None else rgb_colors_1[color_index]
 
     pts = np.array([[0, 0, 0], [line_length, 0, 0], [0, line_length, 0], [0, 0, line_length]])
     z_extend = [0, 0, line_length + arrow_length]
@@ -414,15 +418,48 @@ def create_arrow_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
     pz_extend, _ = p.multiplyTransforms(position, orientation, z_extend, rotIdentity)
 
     if replace_frame_id is not None:
-        z_id = p.addUserDebugLine(po, pz, rgb_colors_1[color_index], line_width, life_time,
+        z_id = p.addUserDebugLine(po, pz, color, line_width, life_time,
                                   replaceItemUniqueId=replace_frame_id[2])
-        z_extend_id = p.addUserDebugLine(pz, pz_extend, rgb_colors_1[color_index], arrow_width, life_time,
+        z_extend_id = p.addUserDebugLine(pz, pz_extend, color, arrow_width, life_time,
                                          replaceItemUniqueId=replace_frame_id[2])
     else:
-        z_id = p.addUserDebugLine(po, pz, rgb_colors_1[color_index], line_width, life_time)
-        z_extend_id = p.addUserDebugLine(pz, pz_extend, rgb_colors_1[color_index], arrow_width, life_time)
+        z_id = p.addUserDebugLine(po, pz, color, line_width, life_time)
+        z_extend_id = p.addUserDebugLine(pz, pz_extend, color, arrow_width, life_time)
     frame_id = (z_id, z_extend_id)
     return frame_id
+
+
+class MplColorHelper:
+    def __init__(self, cmap_name, start_val, stop_val):
+        self.cmap_name = cmap_name
+        self.cmap = plt.get_cmap(cmap_name)
+        self.norm = mpl.colors.Normalize(vmin=start_val, vmax=stop_val)
+
+    def get_rgb(self, val):
+        return self.cmap(self.norm(val))[:3]
+
+
+def rgb(value, minimum=-1, maximum=1):
+    """ for the color map https://stackoverflow.com/questions/20792445/calculate-rgb-value-for-a-range-of-values-to-create-heat-map """
+    assert minimum <= value <= maximum
+    minimum, maximum = float(minimum), float(maximum)
+    ratio = 2 * (value-minimum) / (maximum - minimum)
+    b = int(max(0, 255*(1 - ratio)))
+    r = int(max(0, 255*(ratio - 1)))
+    g = 255 - b - r
+    return r/255., g/255., b/255.
+
+
+def plot_heatmap_bar(cmap_name, vmin=-1, vmax=-1):
+    fig = plt.figure(figsize=(10, 2))
+    cmap = plt.get_cmap(cmap_name)
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+
+    cb = mpl.colorbar.ColorbarBase(plt.gca(), cmap=cmap,
+                                   norm=norm,
+                                   orientation='horizontal')
+    cb.set_label('Heatmap bar')
+    plt.show()
 
 
 # https://sashat.me/2017/01/11/list-of-20-simple-distinct-colors/

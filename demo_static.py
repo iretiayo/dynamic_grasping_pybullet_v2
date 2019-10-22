@@ -103,7 +103,7 @@ class DynamicGrasping:
 
     def plan_grasp(self, target_pose):
         start_time = time.time()
-        grasps_in_world = [gu.convert_grasp_in_object_to_world(pu.split_7d(g), target_pose) for g in self.grasp_database]
+        grasps_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in self.grasp_database]
         sdf_values = gu.get_reachability_of_grasps_pose_2d(grasps_in_world,
                                                            self.sdf_reachability_space,
                                                            self.mins,
@@ -113,9 +113,14 @@ class DynamicGrasping:
         planned_grasp = grasps_in_world[grasp_order_idxs[0]]
         # planned_grasp = gu.change_end_effector_link(gu.list_2_pose(planned_grasp), gu.link6_reference_to_ee)
         planning_time = time.time() - start_time
-
         print("Planning a grasp takes {:.6f}".format(planning_time))
+
+        # grasps_in_world_ee = [gu.pose_2_list(gu.change_end_effector_link(gu.list_2_pose(g), gu.link6_reference_to_ee)) for g in grasps_in_world]
+        grasps_in_world_ee = [gu.change_end_effector_link_pose_2d(g) for g in grasps_in_world]
+        gu.visualize_grasps_with_reachability(grasps_in_world_ee, sdf_values)
+
         return planning_time, planned_grasp
+
 
 
 class World:
@@ -160,9 +165,9 @@ if __name__ == "__main__":
     target_urdf = create_object_urdf(object_mesh_filepath, args.object_name)
     target_mesh = trimesh.load_mesh(object_mesh_filepath)
     floor_offset = target_mesh.bounds.min(0)[2]
-    target_initial_pose = [[0.3, 0, -target_mesh.bounds.min(0)[2] + 0.02], [0, 0, 0, 1]]
+    target_initial_pose = [[0.3, 0.3, -target_mesh.bounds.min(0)[2] + 0.02], [0, 0, 0, 1]]
     robot_initial_pose = [[0, 0, 0], [0, 0, 0, 1]]
-    conveyor_initial_pose = [[0.3, 0, 0.01], [0, 0, 0, 1]]
+    conveyor_initial_pose = [[0.3, 0.3, 0.01], [0, 0, 0, 1]]
 
     world = World(target_initial_pose, robot_initial_pose, conveyor_initial_pose, args.robot_urdf, target_urdf)
     dynamic_grasping_controller = DynamicGrasping(target_id=world.target,
