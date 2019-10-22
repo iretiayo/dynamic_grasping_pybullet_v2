@@ -1,8 +1,6 @@
 from collections import namedtuple
 import pybullet as p
-from geometry_msgs.msg import Pose, Point, Quaternion
 import numpy as np
-import rospy
 import time
 
 INF = np.inf
@@ -11,33 +9,14 @@ CIRCULAR_LIMITS = -PI, PI
 
 
 def step(duration=1):
-    for i in range(duration*240):
+    for i in range(duration * 240):
         p.stepSimulation()
 
 
 def step_real(duration=1):
-    for i in range(duration*240):
+    for i in range(duration * 240):
         p.stepSimulation()
-        time.sleep(1.0/240.0)
-
-
-def pose_2_list(pose):
-    """
-
-    :param pose: geometry_msgs.msg.Pose
-    :return: pose_2d: [[x, y, z], [x, y, z, w]]
-    """
-    position = [pose.position.x, pose.position.y, pose.position.z]
-    orientation = [pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
-    return [position, orientation]
-
-def list_2_pose(pose_2d):
-    """
-
-    :param pose_2d: [[x, y, z], [x, y, z, w]]
-    :return: pose: geometry_msgs.msg.Pose
-    """
-    return Pose(Point(*pose_2d[0]), Quaternion(*pose_2d[1]))
+        time.sleep(1.0 / 240.0)
 
 
 # Constraints
@@ -45,7 +24,8 @@ def list_2_pose(pose_2d):
 ConstraintInfo = namedtuple('ConstraintInfo', ['parentBodyUniqueId', 'parentJointIndex',
                                                'childBodyUniqueId', 'childLinkIndex', 'constraintType',
                                                'jointAxis', 'jointPivotInParent', 'jointPivotInChild',
-                                               'jointFrameOrientationParent', 'jointFrameOrientationChild', 'maxAppliedForce'])
+                                               'jointFrameOrientationParent', 'jointFrameOrientationChild',
+                                               'maxAppliedForce'])
 
 
 def remove_all_constraints():
@@ -69,13 +49,13 @@ def get_constraint_info(constraint):
 # Joints
 
 JOINT_TYPES = {
-    p.JOINT_REVOLUTE: 'revolute', # 0
-    p.JOINT_PRISMATIC: 'prismatic', # 1
-    p.JOINT_SPHERICAL: 'spherical', # 2
-    p.JOINT_PLANAR: 'planar', # 3
-    p.JOINT_FIXED: 'fixed', # 4
-    p.JOINT_POINT2POINT: 'point2point', # 5
-    p.JOINT_GEAR: 'gear', # 6
+    p.JOINT_REVOLUTE: 'revolute',  # 0
+    p.JOINT_PRISMATIC: 'prismatic',  # 1
+    p.JOINT_SPHERICAL: 'spherical',  # 2
+    p.JOINT_PLANAR: 'planar',  # 3
+    p.JOINT_FIXED: 'fixed',  # 4
+    p.JOINT_POINT2POINT: 'point2point',  # 5
+    p.JOINT_GEAR: 'gear',  # 6
 }
 
 
@@ -136,7 +116,7 @@ def joints_from_names(body, names):
 
 
 JointState = namedtuple('JointState', ['jointPosition', 'jointVelocity',
-                                     'jointReactionForces', 'appliedJointMotorTorque'])
+                                       'jointReactionForces', 'appliedJointMotorTorque'])
 
 
 def get_joint_state(body, joint):
@@ -186,7 +166,7 @@ def is_movable(body, joint):
     return get_joint_type(body, joint) != p.JOINT_FIXED
 
 
-def get_movable_joints(body): # 45 / 87 on pr2
+def get_movable_joints(body):  # 45 / 87 on pr2
     return [joint for joint in get_joints(body) if is_movable(body, joint)]
 
 
@@ -359,9 +339,9 @@ def control_joints(body, joints, positions):
 # Camera
 
 CameraInfo = namedtuple('CameraInfo', ['width', 'height',
-                                               'viewMatrix', 'projectionMatrix', 'cameraUp',
-                                               'cameraForward', 'horizontal', 'vertical',
-                                               'yaw', 'pitch', 'dist', 'target'])
+                                       'viewMatrix', 'projectionMatrix', 'cameraUp',
+                                       'cameraForward', 'horizontal', 'vertical',
+                                       'yaw', 'pitch', 'dist', 'target'])
 
 
 def reset_camera(yaw=50.0, pitch=-35.0, dist=5.0, target=(0.0, 0.0, 0.0)):
@@ -374,7 +354,7 @@ def get_camera():
 
 # Visualization
 
-def create_frame_marker(pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
+def create_frame_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
                         x_color=np.array([1, 0, 0]),
                         y_color=np.array([0, 1, 0]),
                         z_color=np.array([0, 0, 1]),
@@ -385,16 +365,15 @@ def create_frame_marker(pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
     """
     Create a pose marker that identifies a position and orientation in space with 3 colored lines.
     """
-    pose_2d = pose_2_list(pose)
-    position = np.array(pose_2d[0])
-    orientation = np.array(pose_2d[1])
+    position = np.array(pose[0])
+    orientation = np.array(pose[1])
 
-    pts = np.array([[0,0,0],[line_length,0,0],[0,line_length,0],[0,0,line_length]])
-    rotIdentity = np.array([0,0,0,1])
-    po, _ = p.multiplyTransforms(position, orientation, pts[0,:], rotIdentity)
-    px, _ = p.multiplyTransforms(position, orientation, pts[1,:], rotIdentity)
-    py, _ = p.multiplyTransforms(position, orientation, pts[2,:], rotIdentity)
-    pz, _ = p.multiplyTransforms(position, orientation, pts[3,:], rotIdentity)
+    pts = np.array([[0, 0, 0], [line_length, 0, 0], [0, line_length, 0], [0, 0, line_length]])
+    rotIdentity = np.array([0, 0, 0, 1])
+    po, _ = p.multiplyTransforms(position, orientation, pts[0, :], rotIdentity)
+    px, _ = p.multiplyTransforms(position, orientation, pts[1, :], rotIdentity)
+    py, _ = p.multiplyTransforms(position, orientation, pts[2, :], rotIdentity)
+    pz, _ = p.multiplyTransforms(position, orientation, pts[3, :], rotIdentity)
 
     if replace_frame_id is not None:
         x_id = p.addUserDebugLine(po, px, x_color, line_width, life_time, replaceItemUniqueId=replace_frame_id[0])
@@ -408,32 +387,33 @@ def create_frame_marker(pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
     return frame_id
 
 
-def create_arrow_marker(pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
+def create_arrow_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
                         line_length=0.1,
                         arrow_length=0.01,
                         line_width=2,
                         arrow_width=6,
                         life_time=0,
-                        color_index = 0,
+                        color_index=0,
                         replace_frame_id=None):
     """
-    Create an arrow marker that identifies the z-axis of the end effector frame.
+    Create an arrow marker that identifies the z-axis of the end effector frame. Add a dot towards the positive direction.
     """
 
-    pose_2d = pose_2_list(pose)
-    position = np.array(pose_2d[0])
-    orientation = np.array(pose_2d[1])
+    position = np.array(pose[0])
+    orientation = np.array(pose[1])
 
-    pts = np.array([[0,0,0],[line_length,0,0],[0,line_length,0],[0,0,line_length]])
-    z_extend = [0,0,line_length + arrow_length]
+    pts = np.array([[0, 0, 0], [line_length, 0, 0], [0, line_length, 0], [0, 0, line_length]])
+    z_extend = [0, 0, line_length + arrow_length]
     rotIdentity = np.array([0, 0, 0, 1])
     po, _ = p.multiplyTransforms(position, orientation, pts[0, :], rotIdentity)
-    pz, _ = p.multiplyTransforms(position, orientation, pts[3,:], rotIdentity)
+    pz, _ = p.multiplyTransforms(position, orientation, pts[3, :], rotIdentity)
     pz_extend, _ = p.multiplyTransforms(position, orientation, z_extend, rotIdentity)
 
     if replace_frame_id is not None:
-        z_id = p.addUserDebugLine(po, pz, rgb_colors_1[color_index], line_width, life_time, replaceItemUniqueId=replace_frame_id[2])
-        z_extend_id = p.addUserDebugLine(pz, pz_extend, rgb_colors_1[color_index], arrow_width, life_time, replaceItemUniqueId=replace_frame_id[2])
+        z_id = p.addUserDebugLine(po, pz, rgb_colors_1[color_index], line_width, life_time,
+                                  replaceItemUniqueId=replace_frame_id[2])
+        z_extend_id = p.addUserDebugLine(pz, pz_extend, rgb_colors_1[color_index], arrow_width, life_time,
+                                         replaceItemUniqueId=replace_frame_id[2])
     else:
         z_id = p.addUserDebugLine(po, pz, rgb_colors_1[color_index], line_width, life_time)
         z_extend_id = p.addUserDebugLine(pz, pz_extend, rgb_colors_1[color_index], arrow_width, life_time)
@@ -442,27 +422,27 @@ def create_arrow_marker(pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
 
 
 # https://sashat.me/2017/01/11/list-of-20-simple-distinct-colors/
-rgb_colors_255 = [(230, 25, 75),    # red
-                  (60, 180, 75),    # green
-                  (255, 225, 25),   # yello
-                  (0, 130, 200),    # blue
-                  (245, 130, 48),   # orange
-                  (145, 30, 180),   # purple
-                  (70, 240, 240),   # cyan
-                  (240, 50, 230),   # magenta
-                  (210, 245, 60),   # lime
+rgb_colors_255 = [(230, 25, 75),  # red
+                  (60, 180, 75),  # green
+                  (255, 225, 25),  # yello
+                  (0, 130, 200),  # blue
+                  (245, 130, 48),  # orange
+                  (145, 30, 180),  # purple
+                  (70, 240, 240),  # cyan
+                  (240, 50, 230),  # magenta
+                  (210, 245, 60),  # lime
                   (250, 190, 190),  # pink
-                  (0, 128, 128),    # teal
+                  (0, 128, 128),  # teal
                   (230, 190, 255),  # lavender
-                  (170, 110, 40),   # brown
+                  (170, 110, 40),  # brown
                   (255, 250, 200),  # beige
-                  (128, 0, 0),      # maroon
+                  (128, 0, 0),  # maroon
                   (170, 255, 195),  # lavender
-                  (128, 128, 0),    # olive
+                  (128, 128, 0),  # olive
                   (255, 215, 180),  # apricot
-                  (0, 0, 128),      # navy
+                  (0, 0, 128),  # navy
                   (128, 128, 128),  # grey
-                  (0, 0, 0),        # white
+                  (0, 0, 0),  # white
                   (255, 255, 255)]  # black
 
 rgb_colors_1 = np.array(rgb_colors_255) / 255.
