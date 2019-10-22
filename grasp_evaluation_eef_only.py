@@ -6,7 +6,7 @@ import time
 import trimesh
 import argparse
 import grasp_utils as gu
-import pybullet_helper as ph
+import pybullet_utils as pu
 from collections import OrderedDict
 import csv
 import tqdm
@@ -29,8 +29,8 @@ def get_args():
     parser.add_argument('--disable_gui', action='store_true', default=False)
     args = parser.parse_args()
 
-    args.mesh_dir = os.path.abspath('dynamic_grasping_assets/models')
-    args.gripper_urdf = os.path.abspath('dynamic_grasping_assets/mico_hand/mico_hand.urdf')
+    args.mesh_dir = os.path.abspath('assets/models')
+    args.gripper_urdf = os.path.abspath('assets/mico_hand/mico_hand.urdf')
 
     args.grasp_folder_path = os.path.join(args.grasp_folder_path, args.object_name)
     args.result_file_path = os.path.join(args.grasp_folder_path, 'result.csv')
@@ -57,8 +57,8 @@ def write_csv_line(result_file_path, index, num_trials, num_successes, volume_qu
 
 
 def create_object_urdf(object_mesh_filepath, object_name,
-                       urdf_template_filepath='model/object_template.urdf',
-                       urdf_target_object_filepath='model/target_object.urdf'):
+                       urdf_template_filepath='assets/object_template.urdf',
+                       urdf_target_object_filepath='assets/target_object.urdf'):
     # set_up urdf
     os.system('cp {} {}'.format(urdf_template_filepath, urdf_target_object_filepath))
     sed_cmd = "sed -i 's|{}|{}|g' {}".format('object_name.obj', object_mesh_filepath, urdf_target_object_filepath)
@@ -66,43 +66,6 @@ def create_object_urdf(object_mesh_filepath, object_name,
     sed_cmd = "sed -i 's|{}|{}|g' {}".format('object_name', object_name, urdf_target_object_filepath)
     os.system(sed_cmd)
     return urdf_target_object_filepath
-
-
-def convert_grasp_in_object_to_world(object_pose, grasp_in_object):
-    """
-    :param object_pose: 2d list
-    :param grasp_in_object: 2d list
-    """
-    object_T_grasp = tf_conversions.toMatrix(tf_conversions.fromTf(grasp_in_object))
-    world_T_object = tf_conversions.toMatrix(tf_conversions.fromTf(object_pose))
-    world_T_grasp = world_T_object.dot(object_T_grasp)
-    grasp_in_world = tf_conversions.toTf(tf_conversions.fromMatrix(world_T_grasp))
-    return grasp_in_world
-
-
-def convert_grasp_in_world_to_object(object_pose, grasp_in_world):
-    """
-    :param object_pose: 2d list
-    :param grasp_in_world: 2d list
-    """
-    world_T_object = tf_conversions.fromTf(object_pose)
-    object_T_world = world_T_object.Inverse()
-    object_T_world = tf_conversions.toMatrix(object_T_world)
-    world_T_grasp = tf_conversions.fromTf(grasp_in_world)
-    object_T_grasp = object_T_world.dot(world_T_grasp)
-    grasp_in_object = object_T_grasp.toTf()
-    return grasp_in_object
-
-
-def step(duration=1):
-    for i in range(duration*240):
-        p.stepSimulation()
-
-
-def step_real(duration=1):
-    for i in range(duration*240):
-        p.stepSimulation()
-        time.sleep(1.0/240.0)
 
 
 class Controller:
@@ -136,7 +99,7 @@ class Controller:
         for pos, ori in zip(positions, quaternions):
             p.changeConstraint(self.cid, jointChildPivot=pos, jointChildFrameOrientation=ori)
             p.stepSimulation()
-        step()
+        pu.step()
 
     def close_gripper(self):
         num_steps = 240
@@ -149,13 +112,13 @@ class Controller:
                                         forces=[10, 10]
                                         )
             p.stepSimulation()
-        step()
+        pu.step()
 
     def execute_grasp(self, graspit_pose_msp):
         """ High level grasp interface using graspit pose in world frame (link6_reference_frame)"""
         link6_reference_to_link6_com = (self.LINK6_COM, [0.0, 0.0, 0.0, 1.0])
         link6_com_pose_msg = gu.change_end_effector_link(graspit_pose_msp, link6_reference_to_link6_com)
-        self.reset_to(ph.pose_2_list(link6_com_pose_msg))
+        self.reset_to(pu.pose_2_list(link6_com_pose_msg))
         self.close_gripper()
         self.lift()
 
@@ -164,7 +127,7 @@ class Controller:
                                     jointIndices=self.GRIPPER_INDICES,
                                     controlMode=p.POSITION_CONTROL,
                                     targetPositions=self.OPEN_POSITION)
-        step()
+        pu.step()
 
     def lift(self, z=LIFT_VALUE):
         target_pose = self.get_pose()
@@ -229,7 +192,7 @@ if __name__ == "__main__":
         world.reset()
         object_pose = p.getBasePositionAndOrientation(world.target)
         success_threshold = object_pose[0][2] + world.controller.LIFT_VALUE - 0.05
-        object_pose_msg = ph.list_2_pose(object_pose)
+        object_pose_msg = pu.list_2_pose(object_pose)
         graspit_grasps, graspit_grasp_poses_in_world, graspit_grasp_poses_in_object \
             = gu.generate_grasps(object_mesh=object_mesh_filepath_ply,
                                  object_pose=object_pose_msg,
@@ -256,7 +219,9 @@ if __name__ == "__main__":
                            volume_quality=vq,
                            epsilon_quality=eq,
                            grasp_fnm=grasp_file_name)
-            np.save(os.path.join(args.grasp_folder_path, grasp_file_name), ph.pose_2_list(g_pose_object_msg))
+            grasp_list = pu.pose_2_list(g_pose_object_msg)
+            grasp_array = np.array(grasp_list[0] + grasp_list[1])
+            np.save(os.path.join(args.grasp_folder_path, grasp_file_name), grasp_array)
             progressbar.update(1)
             progressbar.set_description("grasp index: {} | success rate {}/{}".format(num_grasps, num_successes, args.num_trials))
             num_grasps += 1

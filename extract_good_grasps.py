@@ -2,6 +2,7 @@ import os
 import argparse
 import pandas as pd
 import tqdm
+import numpy as np
 
 
 """
@@ -17,10 +18,8 @@ grasp_folder_path
     - ...
     
 output_folder_path
-    - cube
-        - grasp_0001.npy
-        - ...
-    - bleach_cleanser
+    - cube.npy
+    - bleach_cleanser.npy
     - ...
 """
 
@@ -33,6 +32,9 @@ def get_args():
     parser.add_argument('--num_grasps', type=int, help='number of good grasps to extract')
     args = parser.parse_args()
 
+    if not os.path.exists(args.output_folder_path):
+        os.makedirs(args.output_folder_path)
+
     return args
 
 
@@ -41,10 +43,9 @@ if __name__ == "__main__":
 
     object_names = os.listdir(args.grasp_folder_path)
     for obj in object_names:
+        grasps = []
         source_folder_path = os.path.join(args.grasp_folder_path, obj)
-        dest_folder_path = os.path.join(args.output_folder_path, obj)
-        if not os.path.exists(dest_folder_path):
-            os.makedirs(dest_folder_path)
+        dest_file_path = os.path.join(args.output_folder_path, obj+'.npy')
         result_file_path = os.path.join(source_folder_path, 'result.csv')
         df = pd.read_csv(result_file_path, index_col=0)
         df_success = df.loc[df['num_successes'] / df['num_trials'] >= 1]
@@ -53,8 +54,10 @@ if __name__ == "__main__":
         bar = tqdm.tqdm(total=num_grasps, desc=obj)
         for index in range(num_grasps):
             row = df_success.iloc[index]
-            command = 'cp '+os.path.join(source_folder_path, row['grasp_fnm'])+' '+dest_folder_path
-            os.system(command)
+            # command = 'cp '+os.path.join(source_folder_path, row['grasp_fnm'])+' '+dest_folder_path
+            # os.system(command)
+            grasps.append(np.load(os.path.join(source_folder_path, row['grasp_fnm']), allow_pickle=True))
             bar.update(1)
             bar.set_description(obj + ' | ' + row['grasp_fnm'])
         bar.close()
+        np.save(dest_file_path, np.array(grasps))

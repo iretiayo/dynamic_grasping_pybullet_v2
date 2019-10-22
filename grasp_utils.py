@@ -306,3 +306,29 @@ def create_occupancy_grid_from_obstacles(obstacle_mesh_filepaths, obstacle_poses
                                                                dims_xyz)
     voxel_grid[np.where(voxel_grid > 0)] = 1
     return voxel_grid
+
+
+def convert_grasp_in_object_to_world(object_pose, grasp_in_object):
+    """
+    :param object_pose: 2d list
+    :param grasp_in_object: 2d list
+    """
+    object_T_grasp = tf_conversions.toMatrix(tf_conversions.fromTf(grasp_in_object))
+    world_T_object = tf_conversions.toMatrix(tf_conversions.fromTf(object_pose))
+    world_T_grasp = world_T_object.dot(object_T_grasp)
+    grasp_in_world = tf_conversions.toTf(tf_conversions.fromMatrix(world_T_grasp))
+    return grasp_in_world
+
+
+def convert_grasp_in_world_to_object(object_pose, grasp_in_world):
+    """
+    :param object_pose: 2d list
+    :param grasp_in_world: 2d list
+    """
+    world_T_object = tf_conversions.fromTf(object_pose)
+    object_T_world = world_T_object.Inverse()
+    object_T_world = tf_conversions.toMatrix(object_T_world)
+    world_T_grasp = tf_conversions.toMatrix(tf_conversions.fromTf(grasp_in_world))
+    object_T_grasp = object_T_world.dot(world_T_grasp)
+    grasp_in_object = tf_conversions.toTf(tf_conversions.fromMatrix(object_T_grasp))
+    return grasp_in_object
