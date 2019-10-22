@@ -12,10 +12,10 @@ import csv
 import tqdm
 import tf_conversions
 from mico_controller import MicoController
+import rospy
+import rospkg
 
-
-""" Use Graspit as backend to generate grasps and test in pybullet,
-    saved as pose lists in link6 reference link"""
+from reachability_utils.process_reachability_data_from_csv import load_reachability_data_from_dir
 
 
 def get_args():
@@ -23,22 +23,24 @@ def get_args():
 
     parser.add_argument('--object_name', type=str, default='bleach_cleanser',
                         help="Target object to be grasped. Ex: cube")
-    parser.add_argument('--grasp_folder_path', type=str, default='grasp_dir',
-                        help="Directory to store grasps and results. Ex: grasps_dir")
-    parser.add_argument('--num_grasps', type=int, default=1000)
-    parser.add_argument('--num_trials', type=int, default=10)
+    parser.add_argument('--grasp_database_path', type=str, default='yeah')
     parser.add_argument('--disable_gui', action='store_true', default=False)
     args = parser.parse_args()
 
     args.mesh_dir = os.path.abspath('assets/models')
     args.robot_urdf = os.path.abspath('assets/mico/mico.urdf')
 
-    args.grasp_folder_path = os.path.join(args.grasp_folder_path, args.object_name)
-    args.result_file_path = os.path.join(args.grasp_folder_path, 'result.csv')
-    if not os.path.exists(args.grasp_folder_path):
-        os.makedirs(args.grasp_folder_path)
+    args.reachability_data_dir = os.path.join(rospkg.RosPack().get_path('mico_reachability_config'), 'data')
 
     return args
+
+
+def get_reachability_space(reachability_data_dir):
+    rospy.loginfo("start creating sdf reachability space...")
+    start_time = time.time()
+    _, mins, step_size, dims, sdf_reachability_space = load_reachability_data_from_dir(reachability_data_dir)
+    rospy.loginfo("sdf reachability space created, which takes {}".format(time.time()-start_time))
+    return sdf_reachability_space, mins, step_size, dims
 
 
 def configure_pybullet(disable_gui=False):
@@ -81,34 +83,39 @@ def create_object_urdf(object_mesh_filepath, object_name,
     return urdf_target_object_filepath
 
 
-def convert_grasp_in_object_to_world(object_pose, grasp_in_object):
-    """
-    :param object_pose: 2d list
-    :param grasp_in_object: 2d list
-    """
-    object_T_grasp = tf_conversions.toMatrix(tf_conversions.fromTf(grasp_in_object))
-    world_T_object = tf_conversions.toMatrix(tf_conversions.fromTf(object_pose))
-    world_T_grasp = world_T_object.dot(object_T_grasp)
-    grasp_in_world = tf_conversions.toTf(tf_conversions.fromMatrix(world_T_grasp))
-    return grasp_in_world
+class DynamicGrasping:
+    def __init__(self, target_id, target_name, grasp_database_path, reachability_data_dir):
+        self.target_name = target_name
+        self.target_id = target_id
+        self.grasp_database_path = grasp_database_path
+        self.grasp_database = np.load(os.path.join(self.grasp_database_path, self.target_name + '.npy'))
+        self.reachability_data_dir = reachability_data_dir
+        self.sdf_reachability_space, self.mins, self.step_size, self.dims = get_reachability_space(self.reachability_data_dir)
 
+        print('here')
 
-def convert_grasp_in_world_to_object(object_pose, grasp_in_world):
-    """
-    :param object_pose: 2d list
-    :param grasp_in_world: 2d list
-    """
-    world_T_object = tf_conversions.fromTf(object_pose)
-    object_T_world = world_T_object.Inverse()
-    object_T_world = tf_conversions.toMatrix(object_T_world)
-    world_T_grasp = tf_conversions.fromTf(grasp_in_world)
-    object_T_grasp = object_T_world.dot(world_T_grasp)
-    grasp_in_object = object_T_grasp.toTf()
-    return grasp_in_object
+    def dynamic_grasp(self):
+        while not False:
+            target_pose = pu.get_body_pose(self.target_id)
+            predicted_pose = target_pose
+            planning_time, grasp = self.plan_grasp(target_pose)
+            # plan_motion_time, motion =
 
+    def plan_grasp(self, target_pose):
+        start_time = time.time()
+        grasps_in_world = [gu.convert_grasp_in_object_to_world(pu.split_7d(g), target_pose) for g in self.grasp_database]
+        sdf_values = gu.get_reachability_of_grasps_pose_2d(grasps_in_world,
+                                                           self.sdf_reachability_space,
+                                                           self.mins,
+                                                           self.step_size,
+                                                           self.dims)
+        grasp_order_idxs = np.argsort(sdf_values)[::-1]
+        planned_grasp = grasps_in_world[grasp_order_idxs[0]]
+        # planned_grasp = gu.change_end_effector_link(gu.list_2_pose(planned_grasp), gu.link6_reference_to_ee)
+        planning_time = time.time() - start_time
 
-def dynamic_grasp():
-    pass
+        print("Planning a grasp takes {:.6f}".format(planning_time))
+        return planning_time, planned_grasp
 
 
 class World:
@@ -137,10 +144,10 @@ class World:
         self.controller.control_arm_joints(MicoController.HOME)
         pu.step(2)
 
-    def step(self):
-        """ proceed the world by 1/240 second """
+    def step(self, time, arm_motion):
         # calculate conveyor pose, change constraint
         # calculate arm pose, control array
+        self.robot.step(time, arm_motion)
         p.stepSimulation()
 
 
@@ -158,8 +165,11 @@ if __name__ == "__main__":
     conveyor_initial_pose = [[0.3, 0, 0.01], [0, 0, 0, 1]]
 
     world = World(target_initial_pose, robot_initial_pose, conveyor_initial_pose, args.robot_urdf, target_urdf)
-    link6_reference_to_ee = ([0.0, 0.0, -0.16], [1.0, 0.0, 0.0, 0])
-    ee_to_link6_reference = ([0.0, -3.3091697137634315e-14, -0.16], [-1.0, 0.0, 0.0, -1.0341155355510722e-13])
+    dynamic_grasping_controller = DynamicGrasping(target_id=world.target,
+                                                  target_name=args.object_name,
+                                                  grasp_database_path=args.grasp_database_path,
+                                                  reachability_data_dir=args.reachability_data_dir)
+    dynamic_grasping_controller.dynamic_grasp()
 
     print("finished")
 

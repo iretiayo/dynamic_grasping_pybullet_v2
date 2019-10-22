@@ -67,6 +67,9 @@ class MicoController:
         rospy.sleep(2)
 
         self.eef_link = self.arm_commander_group.get_end_effector_link()
+        self.kf = None
+        self.freeze_time = 0
+        self.current_plan = None
 
     def set_arm_joints(self, joint_values):
         pu.set_joint_positions(self.robot_id, self.GROUP_INDEX['arm'], joint_values)
@@ -83,7 +86,7 @@ class MicoController:
             make circular joints within [-pi, pi] """
         # setup moveit_start_state
         start_robot_state = self.robot.get_current_state()
-        start_robot_state.joint_state.name = self.ARM_JOINT_NAMES
+        start_robot_state.joint_state.name = self.GROUPS['arm']
         start_robot_state.joint_state.position = start_joint_values
 
         self.arm_commander_group.set_start_state(start_robot_state)
@@ -93,7 +96,12 @@ class MicoController:
         plan = self.arm_commander_group.plan()
         return plan
 
+    def compute_next_action(self, object_pose, ):
+        pass
+
     def step(self):
         """ step the robot for 1/240 second """
         # calculate the latest conf and control array
         pass
+
+

@@ -19,6 +19,10 @@ def step_real(duration=1):
         time.sleep(1.0 / 240.0)
 
 
+def split_7d(pose):
+    return [list(pose[:3]), list(pose[3:])]
+
+
 # Constraints
 
 ConstraintInfo = namedtuple('ConstraintInfo', ['parentBodyUniqueId', 'parentJointIndex',

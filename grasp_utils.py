@@ -14,6 +14,9 @@ from geometry_msgs.msg import Pose, Point, Quaternion
 from reachability_utils.reachability_resolution_analysis import interpolate_pose_in_reachability_space_grid
 import plyfile
 
+link6_reference_to_ee = ([0.0, 0.0, -0.16], [1.0, 0.0, 0.0, 0])
+ee_to_link6_reference = ([0.0, -3.3091697137634315e-14, -0.16], [-1.0, 0.0, 0.0, -1.0341155355510722e-13])
+
 
 def pose_2_list(pose):
     """
