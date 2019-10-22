@@ -13,7 +13,7 @@ np.set_printoptions(suppress=True)
 
 def get_args():
     parser = argparse.ArgumentParser(description='Analyse results.')
-    parser.add_argument('--result_file_path', type=str, required=True,
+    parser.add_argument('--grasp_dir', type=str, required=True,
                         help='File path to the result csv file')
     args = parser.parse_args()
     return args
@@ -32,10 +32,14 @@ def evaluate_results(df, success_rate_threshold):
 if __name__ == '__main__':
     args = get_args()
 
-    df = pd.read_csv(args.result_file_path, index_col=0)
-    stats = evaluate_results(df, success_rate_threshold=1.0)
+    object_names = os.listdir(args.grasp_dir)
+    for n in object_names:
+        result_file_path = os.path.join(args.grasp_dir, n, 'result.csv')
+        df = pd.read_csv(result_file_path, index_col=0)
+        stats = evaluate_results(df, success_rate_threshold=1.0)
 
-    print('')
-    print("Statistics:")
-    pp = pprint.PrettyPrinter(indent=4)
-    pp.pprint(stats)
+        print('')
+        print(n)
+        print("Statistics:")
+        pp = pprint.PrettyPrinter(indent=4)
+        pp.pprint(stats)
