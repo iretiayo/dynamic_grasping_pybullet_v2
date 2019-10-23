@@ -123,7 +123,8 @@ class DynamicGrasping:
 
     def plan_motion(self, grasp):
         # check ik
-        self.robot_controller.get_arm_ik(grasp)
+        joint_values = self.robot_controller.get_arm_ik(grasp)
+        self.robot_controller.set_arm_joints(joint_values)
         print('here')
         # plan motion
 

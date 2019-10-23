@@ -86,6 +86,7 @@ class MicoController:
 
     def set_arm_joints(self, joint_values):
         pu.set_joint_positions(self.robot_id, self.GROUP_INDEX['arm'], joint_values)
+        pu.control_joints(self.robot_id, self.GROUP_INDEX['arm'], joint_values)
 
     def control_arm_joints(self, joint_values):
         pu.control_joints(self.robot_id, self.GROUP_INDEX['arm'], joint_values)
@@ -204,4 +205,11 @@ class MicoController:
         d = {n: v for (n, v) in zip(joint_state.name, joint_state.position)}
         return [d[n] for n in self.GROUPS['arm']]
 
+    def close_gripper(self):
+        num_steps = 240
+        waypoints = np.linspace(self.OPEN_POSITION, self.CLOSED_POSITION, num_steps)
+        for wp in waypoints:
+            pu.control_joints(self.robot_id, self.GROUP_INDEX['gripper'], wp)
+            p.stepSimulation()
+        pu.step()
 

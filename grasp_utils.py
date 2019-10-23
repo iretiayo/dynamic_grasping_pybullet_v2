@@ -15,8 +15,18 @@ from geometry_msgs.msg import Pose, Point, Quaternion
 from reachability_utils.reachability_resolution_analysis import interpolate_pose_in_reachability_space_grid
 import plyfile
 
-link6_reference_to_ee = ([0.0, 0.0, -0.16], [1.0, 0.0, 0.0, 0])
-ee_to_link6_reference = ([0.0, -3.3091697137634315e-14, -0.16], [-1.0, 0.0, 0.0, -1.0341155355510722e-13])
+# link6_reference_to_ee = ([0.0, 0.0, -0.16], [1.0, 0.0, 0.0, 0])
+# ee_to_link6_reference = ([0.0, -3.3091697137634315e-14, -0.16], [-1.0, 0.0, 0.0, -1.0341155355510722e-13])
+ee_to_link6_reference = ([-3.1554436208840472e-30, -3.309169713763431e-14, -0.15999999999999998],
+                         [-0.7071067811882787,
+                          -0.7071067811848163,
+                          7.312301077167311e-14,
+                          -7.312301077203115e-14])
+link6_reference_to_ee = ([0.0, 0.0, -0.16],
+                         [0.7071067811882787,
+                          0.7071067811848163,
+                          -7.312301077167311e-14,
+                          -7.312301077203115e-14])
 link6_reference_to_link6_com = ([-0.002216, -0.000001, -0.058489], [0.0, 0.0, 0.0, 1.0])
 
 
@@ -153,7 +163,6 @@ def get_grasps(robot_name='MicoGripper', object_mesh='cube', object_pose=Pose(Po
 
 
 def extract_grasp_poses_from_graspit_grasps(graspit_grasps, object_pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1))):
-
     grasp_poses_in_world = [g.pose for g in graspit_grasps]
     world_in_object_transform = tf_conversions.fromMsg(object_pose).Inverse()
     grasp_poses_in_object = [tf_conversions.toMsg(world_in_object_transform * tf_conversions.fromMsg(g)) for g in
@@ -161,8 +170,10 @@ def extract_grasp_poses_from_graspit_grasps(graspit_grasps, object_pose=Pose(Poi
     return grasp_poses_in_world, grasp_poses_in_object
 
 
-def generate_grasps(load_fnm=None, save_fnm=None, object_mesh="cube", object_pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
-                    floor_offset=0, max_steps=35000, search_energy='GUIDED_POTENTIAL_QUALITY_ENERGY', seed_grasp=None, uniform_grasp=True):
+def generate_grasps(load_fnm=None, save_fnm=None, object_mesh="cube",
+                    object_pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
+                    floor_offset=0, max_steps=35000, search_energy='GUIDED_POTENTIAL_QUALITY_ENERGY', seed_grasp=None,
+                    uniform_grasp=True):
     """
     :return grasps: a list of graspit Grasps
     :return grasp_poses_in_world: a list of ROS poses, poses of graspit end-effector in graspit world frame
@@ -393,7 +404,8 @@ def visualize_grasps_with_reachability(grasp_poses, sdf_values, use_cmap_from_mp
             pu.create_arrow_marker(g, raw_color=pu.rgb(r, maximum=maximum, minimum=minimum))
 
 
-def visualize_grasp_with_reachability(grasp_pose, sdf_value, maximum, minimum, use_cmap_from_mpl=True, cmap_name='viridis'):
+def visualize_grasp_with_reachability(grasp_pose, sdf_value, maximum, minimum, use_cmap_from_mpl=True,
+                                      cmap_name='viridis'):
     """
 
     :param grasp_poses: a pose 2d
