@@ -84,22 +84,22 @@ def create_object_urdf(object_mesh_filepath, object_name,
 
 
 class DynamicGrasping:
-    def __init__(self, target_id, target_name, grasp_database_path, reachability_data_dir):
+    def __init__(self, target_id, target_name, grasp_database_path, reachability_data_dir, robot_controller):
         self.target_name = target_name
         self.target_id = target_id
         self.grasp_database_path = grasp_database_path
         self.grasp_database = np.load(os.path.join(self.grasp_database_path, self.target_name + '.npy'))
         self.reachability_data_dir = reachability_data_dir
         self.sdf_reachability_space, self.mins, self.step_size, self.dims = get_reachability_space(self.reachability_data_dir)
+        self.robot_controller = robot_controller
 
-        print('here')
 
     def dynamic_grasp(self):
         while not False:
             target_pose = pu.get_body_pose(self.target_id)
             predicted_pose = target_pose
             planning_time, grasp = self.plan_grasp(target_pose)
-            # plan_motion_time, motion =
+            plan_motion_time, motion = self.plan_motion(grasp)
 
     def plan_grasp(self, target_pose):
         start_time = time.time()
@@ -110,16 +110,22 @@ class DynamicGrasping:
                                                            self.step_size,
                                                            self.dims)
         grasp_order_idxs = np.argsort(sdf_values)[::-1]
-        planned_grasp = grasps_in_world[grasp_order_idxs[0]]
-        # planned_grasp = gu.change_end_effector_link(gu.list_2_pose(planned_grasp), gu.link6_reference_to_ee)
         planning_time = time.time() - start_time
         print("Planning a grasp takes {:.6f}".format(planning_time))
 
         # grasps_in_world_ee = [gu.pose_2_list(gu.change_end_effector_link(gu.list_2_pose(g), gu.link6_reference_to_ee)) for g in grasps_in_world]
         grasps_in_world_ee = [gu.change_end_effector_link_pose_2d(g) for g in grasps_in_world]
+        planned_grasp = grasps_in_world_ee[grasp_order_idxs[0]]
         gu.visualize_grasps_with_reachability(grasps_in_world_ee, sdf_values)
+        # gu.visualize_grasp_with_reachability(planned_grasp, sdf_values[grasp_order_idxs[0]], maximum=max(sdf_values), minimum=min(sdf_values))
 
         return planning_time, planned_grasp
+
+    def plan_motion(self, grasp):
+        # check ik
+        self.robot_controller.get_arm_ik(grasp)
+        print('here')
+        # plan motion
 
 
 
@@ -159,6 +165,7 @@ class World:
 if __name__ == "__main__":
     args = get_args()
     configure_pybullet(args.disable_gui)
+    rospy.init_node('dynamic_grasping')
 
     object_mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(args.object_name), '{}.obj'.format(args.object_name))
     object_mesh_filepath_ply = object_mesh_filepath.replace('.obj', '.ply')
@@ -173,7 +180,8 @@ if __name__ == "__main__":
     dynamic_grasping_controller = DynamicGrasping(target_id=world.target,
                                                   target_name=args.object_name,
                                                   grasp_database_path=args.grasp_database_path,
-                                                  reachability_data_dir=args.reachability_data_dir)
+                                                  reachability_data_dir=args.reachability_data_dir,
+                                                  robot_controller=world.controller)
     dynamic_grasping_controller.dynamic_grasp()
 
     print("finished")

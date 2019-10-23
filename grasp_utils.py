@@ -17,6 +17,7 @@ import plyfile
 
 link6_reference_to_ee = ([0.0, 0.0, -0.16], [1.0, 0.0, 0.0, 0])
 ee_to_link6_reference = ([0.0, -3.3091697137634315e-14, -0.16], [-1.0, 0.0, 0.0, -1.0341155355510722e-13])
+link6_reference_to_link6_com = ([-0.002216, -0.000001, -0.058489], [0.0, 0.0, 0.0, 1.0])
 
 
 def pose_2_list(pose):
@@ -385,10 +386,22 @@ def visualize_grasps_with_reachability(grasp_poses, sdf_values, use_cmap_from_mp
     if use_cmap_from_mpl:
         cmap = pu.MplColorHelper(unicode(cmap_name), minimum, maximum)
         pu.plot_heatmap_bar(unicode(cmap_name), minimum, maximum)
-    i = 1
     for g, r in zip(grasp_poses, sdf_values):
         if use_cmap_from_mpl:
             pu.create_arrow_marker(g, raw_color=cmap.get_rgb(r))
-            i += 1
         else:
             pu.create_arrow_marker(g, raw_color=pu.rgb(r, maximum=maximum, minimum=minimum))
+
+
+def visualize_grasp_with_reachability(grasp_pose, sdf_value, maximum, minimum, use_cmap_from_mpl=True, cmap_name='viridis'):
+    """
+
+    :param grasp_poses: a pose 2d
+    :param sdf_values: the corresponding sdf values
+    """
+    if use_cmap_from_mpl:
+        cmap = pu.MplColorHelper(unicode(cmap_name), minimum, maximum)
+        pu.plot_heatmap_bar(unicode(cmap_name), minimum, maximum)
+        pu.create_arrow_marker(grasp_pose, raw_color=cmap.get_rgb(sdf_value), line_length=0.2, line_width=3)
+    else:
+        pu.create_arrow_marker(grasp_pose, raw_color=pu.rgb(sdf_value, maximum=maximum, minimum=minimum))

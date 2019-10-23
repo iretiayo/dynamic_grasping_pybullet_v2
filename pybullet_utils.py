@@ -4,6 +4,8 @@ import numpy as np
 import time
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from collections import defaultdict, deque, namedtuple
+from itertools import product, combinations, count
 
 INF = np.inf
 PI = np.pi
@@ -276,13 +278,113 @@ def wrap_joint(body, joint, value):
 BodyInfo = namedtuple('BodyInfo', ['base_name', 'body_name'])
 
 
+# Bodies
+
+def get_bodies():
+    return [p.getBodyUniqueId(i)
+            for i in range(p.getNumBodies())]
+
+
+def get_body_info(body):
+    return BodyInfo(*p.getBodyInfo(body))
+
+
+def get_base_name(body):
+    return get_body_info(body).base_name.decode(encoding='UTF-8')
+
+
+def get_body_name(body):
+    return get_body_info(body).body_name.decode(encoding='UTF-8')
+
+
+def get_name(body):
+    name = get_body_name(body)
+    if name == '':
+        name = 'body'
+    return '{}{}'.format(name, int(body))
+
+
+def has_body(name):
+    try:
+        body_from_name(name)
+    except ValueError:
+        return False
+    return True
+
+
+def body_from_name(name):
+    for body in get_bodies():
+        if get_body_name(body) == name:
+            return body
+    raise ValueError(name)
+
+
+def remove_body(body):
+    return p.removeBody(body)
+
+
+def get_body_pos(body):
+    return get_body_pose(body)[0]
+
+
+def get_body_quat(body):
+    return get_body_pose(body)[1]  # [x,y,z,w]
+
+
+def set_pose(body, pose):
+    (point, quat) = pose
+    p.resetBasePositionAndOrientation(body, point, quat)
+
+
+def set_point(body, point):
+    set_pose(body, (point, get_body_quat(body)))
+
+
+def set_quat(body, quat):
+    set_pose(body, (get_body_pos(body), quat))
+
+
+def is_rigid_body(body):
+    for joint in get_joints(body):
+        if is_movable(body, joint):
+            return False
+    return True
+
+
+def is_fixed_base(body):
+    return get_mass(body) == STATIC_MASS
+
+
+def dump_body(body):
+    print('Body id: {} | Name: {} | Rigid: {} | Fixed: {}'.format(
+        body, get_body_name(body), is_rigid_body(body), is_fixed_base(body)))
+    for joint in get_joints(body):
+        print('Joint id: {} | Name: {} | Type: {} | Circular: {} | Limits: {}'.format(
+            joint, get_joint_name(body, joint), JOINT_TYPES[get_joint_type(body, joint)],
+            is_circular(body, joint), get_joint_limits(body, joint)))
+    print('Link id: {} | Name: {} | Mass: {}'.format(-1, get_base_name(body), get_mass(body)))
+    for link in get_links(body):
+        print('Link id: {} | Name: {} | Parent: {} | Mass: {}'.format(
+            link, get_link_name(body, link), get_link_name(body, get_link_parent(body, link)),
+            get_mass(body, link)))
+        # print(get_joint_parent_frame(body, link))
+        # print(map(get_data_geometry, get_visual_data(body, link)))
+        # print(map(get_data_geometry, get_collision_data(body, link)))
+
+
+def dump_world():
+    for body in get_bodies():
+        dump_body(body)
+        print()
+
+
 def remove_all_bodies():
     for i in get_body_ids():
         p.removeBody(i)
 
 
-def reset_body_base(body, pose_2d):
-    p.resetBasePositionAndOrientation(body, pose_2d[0], pose_2d[1])
+def reset_body_base(body, pose):
+    p.resetBasePositionAndOrientation(body, pose[0], pose[1])
 
 
 def get_body_infos():
@@ -303,20 +405,7 @@ def get_body_ids():
     return sorted([p.getBodyUniqueId(i) for i in range(p.getNumBodies())])
 
 
-def get_body_info(body):
-    return BodyInfo(*p.getBodyInfo(body))
-
-
-def get_base_name(body):
-    return get_body_info(body).base_name.decode(encoding='UTF-8')
-
-
-def get_body_name(body):
-    return get_body_info(body).body_name.decode(encoding='UTF-8')
-
-
 def get_body_pose(body):
-    """ return pose_2d """
     raw = p.getBasePositionAndOrientation(body)
     position = list(raw[0])
     orn = list(raw[1])
@@ -340,6 +429,173 @@ def control_joints(body, joints, positions):
                                        targetPositions=positions,
                                        targetVelocities=[0.0] * len(joints),
                                        forces=[get_max_force(body, joint) for joint in joints])
+
+
+# Links
+
+BASE_LINK = -1
+STATIC_MASS = 0
+
+get_num_links = get_num_joints
+get_links = get_joints
+
+
+def get_link_name(body, link):
+    if link == BASE_LINK:
+        return get_base_name(body)
+    return get_joint_info(body, link).linkName.decode('UTF-8')
+
+
+def get_link_parent(body, link):
+    if link == BASE_LINK:
+        return None
+    return get_joint_info(body, link).parentIndex
+
+
+def link_from_name(body, name):
+    if name == get_base_name(body):
+        return BASE_LINK
+    for link in get_joints(body):
+        if get_link_name(body, link) == name:
+            return link
+    raise ValueError(body, name)
+
+
+def has_link(body, name):
+    try:
+        link_from_name(body, name)
+    except ValueError:
+        return False
+    return True
+
+
+LinkState = namedtuple('LinkState', ['linkWorldPosition', 'linkWorldOrientation',
+                                     'localInertialFramePosition', 'localInertialFrameOrientation',
+                                     'worldLinkFramePosition', 'worldLinkFrameOrientation'])
+
+
+def get_link_state(body, link):
+    return LinkState(*p.getLinkState(body, link))
+
+
+def get_com_pose(body, link):  # COM = center of mass
+    link_state = get_link_state(body, link)
+    return link_state.linkWorldPosition, link_state.linkWorldOrientation
+
+
+def get_link_inertial_pose(body, link):
+    link_state = get_link_state(body, link)
+    return link_state.localInertialFramePosition, link_state.localInertialFrameOrientation
+
+
+def get_link_pose(body, link):
+    if link == BASE_LINK:
+        return get_body_pose(body)
+    # if set to 1 (or True), the Cartesian world position/orientation will be recomputed using forward kinematics.
+    link_state = get_link_state(body, link)
+    return link_state.worldLinkFramePosition, link_state.worldLinkFrameOrientation
+
+
+def get_all_link_parents(body):
+    return {link: get_link_parent(body, link) for link in get_links(body)}
+
+
+def get_all_link_children(body):
+    children = {}
+    for child, parent in get_all_link_parents(body).items():
+        if parent not in children:
+            children[parent] = []
+        children[parent].append(child)
+    return children
+
+
+def get_link_children(body, link):
+    children = get_all_link_children(body)
+    return children.get(link, [])
+
+
+def get_link_ancestors(body, link):
+    parent = get_link_parent(body, link)
+    if parent is None:
+        return []
+    return get_link_ancestors(body, parent) + [parent]
+
+
+def get_joint_ancestors(body, link):
+    return get_link_ancestors(body, link) + [link]
+
+
+def get_movable_joint_ancestors(body, link):
+    return list(filter(lambda j: is_movable(body, j), get_joint_ancestors(body, link)))
+
+
+def get_link_descendants(body, link):
+    descendants = []
+    for child in get_link_children(body, link):
+        descendants.append(child)
+        descendants += get_link_descendants(body, child)
+    return descendants
+
+
+def are_links_adjacent(body, link1, link2):
+    return (get_link_parent(body, link1) == link2) or \
+           (get_link_parent(body, link2) == link1)
+
+
+def get_adjacent_links(body):
+    adjacent = set()
+    for link in get_links(body):
+        parent = get_link_parent(body, link)
+        adjacent.add((link, parent))
+        # adjacent.add((parent, link))
+    return adjacent
+
+
+def get_adjacent_fixed_links(body):
+    return list(filter(lambda item: not is_movable(body, item[0]),
+                       get_adjacent_links(body)))
+
+
+def get_fixed_links(body):
+    edges = defaultdict(list)
+    for link, parent in get_adjacent_fixed_links(body):
+        edges[link].append(parent)
+        edges[parent].append(link)
+    visited = set()
+    fixed = set()
+    for initial_link in get_links(body):
+        if initial_link in visited:
+            continue
+        cluster = [initial_link]
+        queue = deque([initial_link])
+        visited.add(initial_link)
+        while queue:
+            for next_link in edges[queue.popleft()]:
+                if next_link not in visited:
+                    cluster.append(next_link)
+                    queue.append(next_link)
+                    visited.add(next_link)
+        fixed.update(product(cluster, cluster))
+    return fixed
+
+
+DynamicsInfo = namedtuple('DynamicsInfo', ['mass', 'lateral_friction',
+                                           'local_inertia_diagonal', 'local_inertial_pos', 'local_inertial_orn',
+                                           'restitution', 'rolling_friction', 'spinning_friction',
+                                           'contact_damping', 'contact_stiffness'])
+
+
+def get_dynamics_info(body, link=BASE_LINK):
+    return DynamicsInfo(*p.getDynamicsInfo(body, link))
+
+
+def get_mass(body, link=BASE_LINK):
+    return get_dynamics_info(body, link).mass
+
+
+def get_joint_inertial_pose(body, joint):
+    dynamics_info = get_dynamics_info(body, joint)
+    return dynamics_info.local_inertial_pos, dynamics_info.local_inertial_orn
 
 
 # Camera
@@ -443,11 +699,11 @@ def rgb(value, minimum=-1, maximum=1):
     """ for the color map https://stackoverflow.com/questions/20792445/calculate-rgb-value-for-a-range-of-values-to-create-heat-map """
     assert minimum <= value <= maximum
     minimum, maximum = float(minimum), float(maximum)
-    ratio = 2 * (value-minimum) / (maximum - minimum)
-    b = int(max(0, 255*(1 - ratio)))
-    r = int(max(0, 255*(ratio - 1)))
+    ratio = 2 * (value - minimum) / (maximum - minimum)
+    b = int(max(0, 255 * (1 - ratio)))
+    r = int(max(0, 255 * (ratio - 1)))
     g = 255 - b - r
-    return r/255., g/255., b/255.
+    return r / 255., g / 255., b / 255.
 
 
 def plot_heatmap_bar(cmap_name, vmin=-1, vmax=-1):
@@ -459,7 +715,7 @@ def plot_heatmap_bar(cmap_name, vmin=-1, vmax=-1):
                                    norm=norm,
                                    orientation='horizontal')
     cb.set_label('Heatmap bar')
-    plt.show()
+    plt.pause(0.001)
 
 
 # https://sashat.me/2017/01/11/list-of-20-simple-distinct-colors/
