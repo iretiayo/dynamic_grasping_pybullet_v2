@@ -21,6 +21,9 @@ from moveit_msgs.srv import GetPositionIK, GetPositionFK
 
 from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
 from std_msgs.msg import Header
+from collections import namedtuple
+
+Motion = namedtuple('Motion', ['position_trajectory', 'time_trajectory', 'velocity_trajectory'])
 
 
 class MicoController:
@@ -75,14 +78,12 @@ class MicoController:
         self.scene = mc.PlanningSceneInterface()
         rospy.sleep(2)
 
-        self.eef_link = self.arm_commander_group.get_end_effector_link()
-        self.kf = None
-        self.freeze_time = 0
-        self.current_plan = None
-
         # the service names have to be this
         self.arm_ik_svr = rospy.ServiceProxy('compute_ik', GetPositionIK)
         self.arm_fk_svr = rospy.ServiceProxy('compute_fk', GetPositionFK)
+
+        # for stepping the robot
+        self.motion_plan = None
 
     def set_arm_joints(self, joint_values):
         pu.set_joint_positions(self.robot_id, self.GROUP_INDEX['arm'], joint_values)
@@ -91,28 +92,21 @@ class MicoController:
     def control_arm_joints(self, joint_values):
         pu.control_joints(self.robot_id, self.GROUP_INDEX['arm'], joint_values)
 
-    def plan(self, start_joint_values, goal_joint_values, maximum_planning_time=0.5):
-        """ No matter what start and goal are, the returned plan start and goal will
-            make circular joints within [-pi, pi] """
-        # setup moveit_start_state
-        start_robot_state = self.robot.get_current_state()
-        start_robot_state.joint_state.name = self.GROUPS['arm']
-        start_robot_state.joint_state.position = start_joint_values
-
-        self.arm_commander_group.set_start_state(start_robot_state)
-        self.arm_commander_group.set_joint_value_target(goal_joint_values)
-        self.arm_commander_group.set_planning_time(maximum_planning_time)
-        # takes around 0.11 second
-        plan = self.arm_commander_group.plan()
-        return plan
-
     def compute_next_action(self, object_pose, ):
         pass
 
     def step(self):
         """ step the robot for 1/240 second """
         # calculate the latest conf and control array
-        pass
+        if self.motion_plan is None:
+            pass
+        else:
+            pass
+
+    def update_motion_plan(self, motion_plan):
+        self.motion_plan = motion_plan
+        ## TODO make a step motion plan for each 1/240 time step
+        self.target_waypoint = self.motion_plan[0]
 
     def get_arm_joint_values(self):
         return pu.get_joint_positions(self.robot_id, self.GROUP_INDEX['arm'])
@@ -205,6 +199,49 @@ class MicoController:
         d = {n: v for (n, v) in zip(joint_state.name, joint_state.position)}
         return [d[n] for n in self.GROUPS['arm']]
 
+    @staticmethod
+    def convert_range(joint_values):
+        """ Convert continuous joint to range [-pi, pi] """
+        circular_idx = [0, 3, 4, 5]
+        new_joint_values = []
+        for i, v in enumerate(joint_values):
+            if v > np.pi and i in circular_idx:
+                new_joint_values.append(v - 2 * np.pi)
+            elif v < -np.pi and i in circular_idx:
+                new_joint_values.append(v + 2 * np.pi)
+            else:
+                new_joint_values.append(v)
+        return new_joint_values
+
+    @staticmethod
+    def process_plan(moveit_plan, start_joint_values):
+        """
+        convert position trajectory to work with current joint values
+        :param plan: MoveIt plan
+        :return plan: Motion
+        """
+        diff = np.array(start_joint_values) - np.array(moveit_plan.joint_trajectory.points[0].positions)
+        for p in moveit_plan.joint_trajectory.points:
+            p.positions = (np.array(p.positions) + diff).tolist()
+        plan = MicoController.extract_plan(moveit_plan)
+        return plan
+
+    @staticmethod
+    def extract_plan(moveit_plan):
+        """
+        Extract numpy arrays of position, velocity and time trajectories from moveit plan,
+        and return Motion object
+        """
+        points = moveit_plan.joint_trajectory.points
+        position_trajectory = []
+        velocity_trajectory = []
+        time_trajectory = []
+        for p in points:
+            position_trajectory.append(list(p.positions))
+            velocity_trajectory.append(list(p.velocities))
+            time_trajectory.append(p.time_from_start.to_sec())
+        return Motion(np.array(position_trajectory), np.array(time_trajectory), np.array(velocity_trajectory))
+
     def close_gripper(self):
         num_steps = 240
         waypoints = np.linspace(self.OPEN_POSITION, self.CLOSED_POSITION, num_steps)
@@ -213,3 +250,104 @@ class MicoController:
             p.stepSimulation()
         pu.step()
 
+    def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None, maximum_planning_time=0.5):
+        """
+        Plan a trajectory from current joint values to goal joint values
+        :param goal_joint_values: a list of goal joint values
+        :param start_joint_values: a list of start joint values; if None, use current values
+        :return plan: Motion
+        """
+        if start_joint_values is None:
+            start_joint_values = self.get_arm_joint_values()
+
+        start_joint_values_converted = self.convert_range(start_joint_values)
+        goal_joint_values_converted = self.convert_range(goal_joint_values)
+
+        moveit_plan = self.plan_arm_joint_values_ros(start_joint_values_converted, goal_joint_values_converted,
+                                                     maximum_planning_time=maximum_planning_time)  # STOMP does not convert goal joint values
+        # check if there exists a plan
+        if len(moveit_plan.joint_trajectory.points) == 0:
+            return None, None
+
+        plan = MicoController.process_plan(moveit_plan, start_joint_values)
+        return plan
+
+    def plan_arm_joint_values_ros(self, start_joint_values, goal_joint_values, maximum_planning_time=0.5):
+        """ No matter what start and goal are, the returned plan start and goal will
+            make circular joints within [-pi, pi] """
+        # setup moveit_start_state
+        start_robot_state = self.robot.get_current_state()
+        start_robot_state.joint_state.name = self.GROUPS['arm']
+        start_robot_state.joint_state.position = start_joint_values
+
+        self.arm_commander_group.set_start_state(start_robot_state)
+        self.arm_commander_group.set_joint_value_target(goal_joint_values)
+        self.arm_commander_group.set_planning_time(maximum_planning_time)
+        # takes around 0.11 second
+        plan = self.arm_commander_group.plan()
+        return plan
+
+    def plan_straight_line(self, goal_eef_pose, start_joint_values=None, ee_step=0.05, jump_threshold=3.0,
+                           avoid_collisions=True):
+        if start_joint_values is None:
+            start_joint_values = self.get_arm_joint_values()
+
+        # moveit will do the conversion internally
+        plan, fraction = self.mico_moveit.plan_straight_line(start_joint_values, goal_eef_pose, ee_step=ee_step,
+                                                             jump_threshold=jump_threshold,
+                                                             avoid_collisions=avoid_collisions)
+
+        # print("plan length: {}, fraction: {}".format(len(plan.joint_trajectory.points), fraction))
+
+        # check if there exists a plan
+        if len(plan.joint_trajectory.points) == 0:
+            return None, None, fraction
+
+        position_trajectory, plan = MicoController.process_plan(plan, start_joint_values)
+        return position_trajectory, plan, fraction
+
+    def plan_straight_line_ros(self, start_joint_values, end_eef_pose, ee_step=0.05, jump_threshold=3.0,
+                               avoid_collisions=True):
+        """
+        :param start_joint_values: start joint values
+        :param end_eef_pose: goal end effector pose
+        :param ee_step: float. The distance in meters to interpolate the path.
+        :param jump_threshold: The maximum allowable distance in the arm's
+            configuration space allowed between two poses in the path. Used to
+            prevent "jumps" in the IK solution.
+        :param avoid_collisions: bool. Whether to check for obstacles or not.
+        :return:
+        """
+        # set moveit start state
+        # TODO plan should take in gripper joint values for start state
+        # TODO reduce step
+
+        # from scratch
+        # joint_state = JointState()
+        # joint_state.name = self.ARM_JOINT_NAMES
+        # joint_state.position = start_joint_values
+        # moveit_robot_state = RobotState()
+        # moveit_robot_state.joint_state = joint_state
+
+        # using current state, including all other joint info
+        start_robot_state = self.robot.get_current_state()
+        start_robot_state.joint_state.name = self.ARM_JOINT_NAMES
+        start_robot_state.joint_state.position = start_joint_values
+
+        self.arm_commander_group.set_start_state(start_robot_state)
+
+        start_eef_pose = self.get_arm_fk(start_joint_values)
+        plan, fraction = self.arm_commander_group.compute_cartesian_path(
+            [start_eef_pose, end_eef_pose],
+            ee_step,
+            jump_threshold,
+            avoid_collisions)
+        # remove the first redundant point
+        plan.joint_trajectory.points = plan.joint_trajectory.points[1:]
+        # speed up the trajectory
+        for p in plan.joint_trajectory.points:
+            p.time_from_start = rospy.Duration.from_sec(p.time_from_start.to_sec() / 1.5)
+        return plan, fraction
+
+    def violate_limits(self, joint_values):
+        return pu.violates_limits(self.robot_id, self.GROUPS['arm'], joint_values)
