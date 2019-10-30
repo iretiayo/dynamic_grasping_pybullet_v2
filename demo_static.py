@@ -83,66 +83,30 @@ def create_object_urdf(object_mesh_filepath, object_name,
     return urdf_target_object_filepath
 
 
-class DynamicGrasping:
-    def __init__(self, world, grasp_database_path, reachability_data_dir):
-        self.world = world
-        self.grasp_database_path = grasp_database_path
-        self.grasp_database = np.load(os.path.join(self.grasp_database_path, self.world.target_name + '.npy'))
-        self.reachability_data_dir = reachability_data_dir
-        self.sdf_reachability_space, self.mins, self.step_size, self.dims = get_reachability_space(self.reachability_data_dir)
+class DynamicGraspingWorld:
 
-    def dynamic_grasp(self):
-        while not False:
-            target_pose = pu.get_body_pose(self.world.target)
-            predicted_pose = target_pose
-            grasp_planning_time, grasp = self.plan_grasp(predicted_pose)
-            motion_planning_time, plan = self.plan_motion(grasp)
-
-            freeze_time = grasp_planning_time + motion_planning_time
-            world.step(freeze_time, plan)
-
-    def plan_grasp(self, target_pose):
-        start_time = time.time()
-        grasps_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in self.grasp_database]
-        sdf_values = gu.get_reachability_of_grasps_pose_2d(grasps_in_world,
-                                                           self.sdf_reachability_space,
-                                                           self.mins,
-                                                           self.step_size,
-                                                           self.dims)
-        grasp_order_idxs = np.argsort(sdf_values)[::-1]
-        planning_time = time.time() - start_time
-        print("Planning a grasp takes {:.6f}".format(planning_time))
-
-        # grasps_in_world_ee = [gu.pose_2_list(gu.change_end_effector_link(gu.list_2_pose(g), gu.link6_reference_to_ee)) for g in grasps_in_world]
-        grasps_in_world_ee = [gu.change_end_effector_link_pose_2d(g) for g in grasps_in_world]
-        planned_grasp = grasps_in_world_ee[grasp_order_idxs[0]]
-        # gu.visualize_grasps_with_reachability(grasps_in_world_ee, sdf_values)
-        # gu.visualize_grasp_with_reachability(planned_grasp, sdf_values[grasp_order_idxs[0]], maximum=max(sdf_values), minimum=min(sdf_values))
-
-        return planning_time, planned_grasp
-
-    def plan_motion(self, grasp):
-        start_time = time.time()
-        # check ik
-        joint_values = self.world.controller.get_arm_ik(grasp)
-        plan = self.world.controller.plan_arm_joint_values(joint_values)
-        # self.world.controller.set_arm_joints(joint_values)
-        planning_time = time.time() - start_time
-
-        print("Planning a motion takes {:.6f}".format(planning_time))
-        return planning_time, plan
-
-
-
-class World:
-
-    def __init__(self, target_name, target_initial_pose, robot_initial_pose, conveyor_initial_pose, robot_urdf, target_urdf):
+    def __init__(self,
+                 target_name,
+                 target_initial_pose,
+                 robot_initial_pose,
+                 conveyor_initial_pose,
+                 robot_urdf,
+                 target_urdf,
+                 grasp_database_path,
+                 reachability_data_dir,
+                 rendering):
         self.target_name = target_name
         self.target_initial_pose = target_initial_pose
         self.robot_initial_pose = robot_initial_pose
         self.conveyor_initial_pose = conveyor_initial_pose
         self.robot_urdf = robot_urdf
         self.target_urdf = target_urdf
+        self.rendering = rendering
+
+        self.grasp_database_path = grasp_database_path
+        self.grasp_database = np.load(os.path.join(self.grasp_database_path, self.target_name + '.npy'))
+        self.reachability_data_dir = reachability_data_dir
+        self.sdf_reachability_space, self.mins, self.step_size, self.dims = get_reachability_space(self.reachability_data_dir)
 
         self.plane = p.loadURDF("plane.urdf")
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
@@ -168,7 +132,66 @@ class World:
             self.controller.step()
             # the conveyor step here
             p.stepSimulation()
-        self.controller.update_motion_plan(motion_plan)
+            if self.rendering:
+                time.sleep(1.0/240.0)
+        if motion_plan is not None:
+            self.controller.update_motion_plan(motion_plan)
+
+    def dynamic_grasp(self):
+        grasp, grasp_jv = None, None
+        while not False:
+            target_pose = pu.get_body_pose(self.target)
+            predicted_pose = target_pose
+
+            grasp_planning_time, grasp, grasp_jv = self.plan_grasp(predicted_pose, grasp, grasp_jv)
+            self.step(grasp_planning_time, None)
+
+            motion_planning_time, plan = self.plan_motion(grasp_jv)
+            self.step(motion_planning_time, plan)
+
+    def plan_grasp(self, target_pose, old_grasp, old_grasp_jv):
+        start_time = time.time()
+        if old_grasp is not None:
+            if self.controller.get_arm_ik(old_grasp) is not None:
+                planning_time = time.time() - start_time
+                print("Planning a grasp takes {:.6f}".format(planning_time))
+                return planning_time, old_grasp, old_grasp_jv
+        grasps_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in self.grasp_database]
+        sdf_values = gu.get_reachability_of_grasps_pose_2d(grasps_in_world,
+                                                           self.sdf_reachability_space,
+                                                           self.mins,
+                                                           self.step_size,
+                                                           self.dims)
+        grasp_order_idxs = np.argsort(sdf_values)[::-1]
+
+        temp_start = time.time()
+        # TODO this part can be done before grasps are added to database
+        # grasps_in_world_ee = [gu.pose_2_list(gu.change_end_effector_link(gu.list_2_pose(g), gu.link6_reference_to_ee)) for g in grasps_in_world]
+        grasps_in_world_ee = [gu.change_end_effector_link_pose_2d(g) for g in grasps_in_world]
+        print(time.time()-temp_start)
+        planned_grasp = grasps_in_world_ee[grasp_order_idxs[0]]
+        planned_joint_values = self.controller.get_arm_ik(planned_grasp)
+        # gu.visualize_grasps_with_reachability(grasps_in_world_ee, sdf_values)
+        # gu.visualize_grasp_with_reachability(planned_grasp, sdf_values[grasp_order_idxs[0]], maximum=max(sdf_values), minimum=min(sdf_values))
+        planning_time = time.time() - start_time
+        print("Planning a grasp takes {:.6f}".format(planning_time))
+        return planning_time, planned_grasp, planned_joint_values
+
+    def plan_motion(self, grasp_jv):
+        predicted_period = 0.2
+        start_time = time.time()
+
+        if self.controller.discretized_plan is not None:
+            future_target_index = min(int(predicted_period * 240 + self.controller.wp_target_index), len(self.controller.discretized_plan)-1)
+            start_joint_values = self.controller.discretized_plan[future_target_index]
+            plan = self.controller.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values)
+        else:
+            plan = self.controller.plan_arm_joint_values(grasp_jv)
+        # self.world.controller.set_arm_joints(joint_values)
+        planning_time = time.time() - start_time
+
+        print("Planning a motion takes {:.6f}".format(planning_time))
+        return planning_time, plan
 
 
 if __name__ == "__main__":
@@ -185,11 +208,17 @@ if __name__ == "__main__":
     robot_initial_pose = [[0, 0, 0], [0, 0, 0, 1]]
     conveyor_initial_pose = [[0.3, 0.3, 0.01], [0, 0, 0, 1]]
 
-    world = World(args.object_name, target_initial_pose, robot_initial_pose, conveyor_initial_pose, args.robot_urdf, target_urdf)
-    dynamic_grasping_controller = DynamicGrasping(world=world,
+    dynamic_grasping_world = DynamicGraspingWorld(target_name=args.object_name,
+                                                  target_initial_pose=target_initial_pose,
+                                                  robot_initial_pose=robot_initial_pose,
+                                                  conveyor_initial_pose=conveyor_initial_pose,
+                                                  robot_urdf=args.robot_urdf,
+                                                  target_urdf=target_urdf,
                                                   grasp_database_path=args.grasp_database_path,
-                                                  reachability_data_dir=args.reachability_data_dir)
-    dynamic_grasping_controller.dynamic_grasp()
+                                                  reachability_data_dir=args.reachability_data_dir,
+                                                  rendering=True)
+
+    dynamic_grasping_world.dynamic_grasp()
 
     print("finished")
 

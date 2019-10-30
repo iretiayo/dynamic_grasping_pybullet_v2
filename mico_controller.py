@@ -82,8 +82,7 @@ class MicoController:
         self.arm_ik_svr = rospy.ServiceProxy('compute_ik', GetPositionIK)
         self.arm_fk_svr = rospy.ServiceProxy('compute_fk', GetPositionFK)
 
-        # for stepping the robot
-        self.motion_plan = None
+        self.reset()
 
     def set_arm_joints(self, joint_values):
         pu.set_joint_positions(self.robot_id, self.GROUP_INDEX['arm'], joint_values)
@@ -98,15 +97,21 @@ class MicoController:
     def step(self):
         """ step the robot for 1/240 second """
         # calculate the latest conf and control array
-        if self.motion_plan is None:
+        if self.motion_plan is None or self.wp_target_index == len(self.discretized_plan):
             pass
         else:
-            pass
+            self.control_arm_joints(self.discretized_plan[self.wp_target_index])
+            self.wp_target_index += 1
+
+    def reset(self):
+        self.motion_plan = None
+        self.discretized_plan = None
+        self.wp_target_index = 0
 
     def update_motion_plan(self, motion_plan):
         self.motion_plan = motion_plan
-        ## TODO make a step motion plan for each 1/240 time step
-        self.target_waypoint = self.motion_plan[0]
+        self.discretized_plan = self.discretize_plan(motion_plan)
+        self.wp_target_index = 1
 
     def get_arm_joint_values(self):
         return pu.get_joint_positions(self.robot_id, self.GROUP_INDEX['arm'])
@@ -351,3 +356,15 @@ class MicoController:
 
     def violate_limits(self, joint_values):
         return pu.violates_limits(self.robot_id, self.GROUPS['arm'], joint_values)
+
+    @staticmethod
+    def discretize_plan(motion_plan):
+        discretized_plan = np.zeros((0, 6))
+        for i in range(len(motion_plan.position_trajectory)-1):
+            num_steps = (motion_plan.time_trajectory[i+1] - motion_plan.time_trajectory[i]) * 240
+            segment = np.linspace(motion_plan.position_trajectory[i], motion_plan.position_trajectory[i+1], num_steps)
+            if i+1 == len(motion_plan.position_trajectory)-1:
+                discretized_plan = np.vstack((discretized_plan, segment))
+            else:
+                discretized_plan = np.vstack((discretized_plan, segment[:-1]))
+        return discretized_plan

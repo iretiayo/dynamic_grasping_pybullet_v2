@@ -431,6 +431,21 @@ def control_joints(body, joints, positions):
                                        forces=[get_max_force(body, joint) for joint in joints])
 
 
+def inverse_kinematics(body, eef_link, position, orientation=None):
+    if orientation is None:
+        jv = p.calculateInverseKinematics(bodyUniqueId=body,
+                                          endEffectorLinkIndex=eef_link,
+                                          targetPosition=position,
+                                          residualThreshold=1e-3)
+    else:
+        jv = p.calculateInverseKinematics(bodyUniqueId=body,
+                                          endEffectorLinkIndex=eef_link,
+                                          targetPosition=position,
+                                          targetOrientation=orientation,
+                                          residualThreshold=1e-3)
+    return jv
+
+
 # Links
 
 BASE_LINK = -1
@@ -743,3 +758,30 @@ rgb_colors_255 = [(230, 25, 75),  # red
                   (255, 255, 255)]  # black
 
 rgb_colors_1 = np.array(rgb_colors_255) / 255.
+
+
+def draw_line(start_pos, end_pos, color=(1, 0, 0), width=3, lifetime=0):
+    p.addUserDebugLine(lineFromXYZ=start_pos,
+                       lineToXYZ=end_pos,
+                       lineColorRGB=color,
+                       lineWidth=width,
+                       lifeTime=lifetime)
+
+
+def draw_sphere_body(position, radius, color):
+    vs_id = p.createVisualShape(p.GEOM_SPHERE, radius=radius, rgbaColor=color)
+    body_id = p.createMultiBody(basePosition=position, baseCollisionShapeIndex=-1, baseVisualShapeIndex=vs_id)
+    return body_id
+
+
+def remove_marker(marker_id):
+    p.removeUserDebugItem(marker_id)
+
+
+def remove_markers(marker_ids):
+    for i in marker_ids:
+        p.removeUserDebugItem(i)
+
+
+def remove_all_markers():
+    p.removeAllUserDebugItems()
