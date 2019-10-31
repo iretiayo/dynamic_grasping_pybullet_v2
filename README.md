@@ -15,6 +15,14 @@
 ## Dependencies
 numpy-1.16.2
 
+
+## Grasp Database Generation
+Generate grasps
+```
+python grasp_evaluation_eef_only.py --object_name bleach_cleanser
+```
+
+
 ## MoveIt! vs pybullet
 To indicate that a joint is continuous/circular
 - pybullet needs the lower limit to be larger than upper limit in the urdf. Joint type is irrelavant.

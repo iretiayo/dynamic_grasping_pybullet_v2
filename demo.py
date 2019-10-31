@@ -5,6 +5,7 @@ from mico_pybullet import MicoController
 import rospy
 import tf_conversions
 import numpy as np
+
 np.set_printoptions(precision=6)
 np.set_printoptions(suppress=True)
 import utils as ut
@@ -31,13 +32,13 @@ from stats_utils import get_grasp_switch_idxs, get_grasp_distance, get_grasp_dis
 def get_args():
     parser = argparse.ArgumentParser(description='Run Dynamic Grasping Experiment')
 
-    parser.add_argument('-o', '--object_name', type=str, default= 'power_drill',
+    parser.add_argument('-o', '--object_name', type=str, default='power_drill',
                         help="Target object to be grasped. Ex: cube")
     parser.add_argument('-v', '--conveyor_velocity', type=float, default=0.01,
                         help='Velocity of conveyor belt')
     parser.add_argument('-d', '--conveyor_distance', type=float, default=0.4,
                         help="Distance of conveyor belt to robot base")
-    parser.add_argument('-e', '--experiment_params_fname', type=str, default= 'configs/experiment_params_default.yaml',
+    parser.add_argument('-e', '--experiment_params_fname', type=str, default='configs/experiment_params_default.yaml',
                         help="Config file for experiment params. Ex: configs/experiment_params.yaml")
     parser.add_argument('-vd', '--video_dir', type=str, default='videos',
                         help="Directory to store videos. Ex: video_dir")
@@ -55,7 +56,7 @@ def get_args():
     args.object_mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(args.object_name),
                                              '{}.obj'.format(args.object_name))
     args.object_mesh_filepath_ply = os.path.join(args.mesh_dir, '{}'.format(args.object_name),
-                                             '{}.ply'.format(args.object_name))
+                                                 '{}.ply'.format(args.object_name))
 
     target_mesh = trimesh.load_mesh(args.object_mesh_filepath)
     args.target_mesh_bounds = target_mesh.bounds
@@ -98,10 +99,10 @@ def get_args():
 
 def step_simulate(t):
     """ using p.stepSimulation with p.setTimeStep a large time (like 1s) is unpredictable"""
-    n = int(round(t*240))
+    n = int(round(t * 240))
     for i in range(n):
         p.stepSimulation()
-        time.sleep(1.0/240.0)
+        time.sleep(1.0 / 240.0)
 
 
 def predict(duration, body):
@@ -146,11 +147,11 @@ def is_success(target_object, original_height):
 
 
 def create_scene(args):
-
     p.connect(p.GUI_SERVER)
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
     p.resetSimulation()
-    p.resetDebugVisualizerCamera(cameraDistance=0.9, cameraYaw=-24.4, cameraPitch=-47.0, cameraTargetPosition=(-0.2, -0.30, 0.0))
+    p.resetDebugVisualizerCamera(cameraDistance=0.9, cameraYaw=-24.4, cameraPitch=-47.0,
+                                 cameraTargetPosition=(-0.2, -0.30, 0.0))
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.setGravity(0, 0, -9.8)
 
@@ -162,8 +163,12 @@ def create_scene(args):
     conveyor_id = p.loadURDF("model/conveyor.urdf", [args.min_x, -args.conveyor_distance, 0.01])
 
     # draw lines
-    p.addUserDebugLine(lineFromXYZ=[args.min_x-0.05, -args.conveyor_distance+0.05, 0], lineToXYZ=[args.max_x+0.05, -args.conveyor_distance+0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
-    p.addUserDebugLine(lineFromXYZ=[args.min_x-0.05, -args.conveyor_distance-0.05, 0], lineToXYZ=[args.max_x+0.05, -args.conveyor_distance-0.05, 0], lineWidth=5, lifeTime=0, lineColorRGB=[0, 0, 0])
+    p.addUserDebugLine(lineFromXYZ=[args.min_x - 0.05, -args.conveyor_distance + 0.05, 0],
+                       lineToXYZ=[args.max_x + 0.05, -args.conveyor_distance + 0.05, 0], lineWidth=5, lifeTime=0,
+                       lineColorRGB=[0, 0, 0])
+    p.addUserDebugLine(lineFromXYZ=[args.min_x - 0.05, -args.conveyor_distance - 0.05, 0],
+                       lineToXYZ=[args.max_x + 0.05, -args.conveyor_distance - 0.05, 0], lineWidth=5, lifeTime=0,
+                       lineColorRGB=[0, 0, 0])
 
     # load robot
     urdf_dir = os.path.join(rospkg.RosPack().get_path('kinova_description'), 'urdf')
@@ -176,7 +181,7 @@ def create_scene(args):
     if args.LOAD_OBSTACLES:
         for obstacle in args.scene_config['obstacles']:
             obs_pos = obstacle['position']
-            obs_pos[1] += 0.5-args.conveyor_distance
+            obs_pos[1] += 0.5 - args.conveyor_distance
             obs_id = p.loadURDF(obstacle['urdf_filepath'], obs_pos, obstacle['orientation'])
             obstacle['body_id'] = obs_id
 
@@ -198,7 +203,8 @@ def create_scene_moveit(args, mc):
 
     if args.LOAD_OBSTACLES:
         for obstacle in args.scene_config['obstacles']:
-            mc.mico_moveit.add_mesh(obstacle['object_name'], ut.get_body_pose(obstacle['body_id']), obstacle['obj_filepath'])
+            mc.mico_moveit.add_mesh(obstacle['object_name'], ut.get_body_pose(obstacle['body_id']),
+                                    obstacle['obj_filepath'])
         time.sleep(1)
 
 
@@ -206,7 +212,8 @@ def get_reachability_space(args):
     rospy.loginfo("start creating sdf reachability space...")
     start_time = time.time()
     if args.LOAD_OBSTACLES:
-        sdf_reachability_space_fnm = os.path.splitext(args.scene_fnm)[0]+'_'+str(args.conveyor_distance)+'_reach_data.sdf'
+        sdf_reachability_space_fnm = os.path.splitext(args.scene_fnm)[0] + '_' + str(
+            args.conveyor_distance) + '_reach_data.sdf'
         sdf_reachability_space_filepath = os.path.join(args.reachability_data_dir, sdf_reachability_space_fnm)
         if os.path.exists(sdf_reachability_space_filepath):
             # load sdf for this scene if already exists
@@ -231,16 +238,18 @@ def get_reachability_space(args):
 
             # Generate sdf
             binary_reachability_space -= 0.5
-            sdf_reachability_space = skfmm.distance(binary_reachability_space, periodic=[False, False, False, True, True, True])
+            sdf_reachability_space = skfmm.distance(binary_reachability_space,
+                                                    periodic=[False, False, False, True, True, True])
             binary_reachability_space += 0.5  # undo previous operation
             sdf_reachability_space.tofile(open(sdf_reachability_space_filepath, 'w'))
     else:
         _, mins, step_size, dims, sdf_reachability_space = load_reachability_data_from_dir(args.reachability_data_dir)
-    rospy.loginfo("sdf reachability space created, which takes {}".format(time.time()-start_time))
+    rospy.loginfo("sdf reachability space created, which takes {}".format(time.time() - start_time))
     return sdf_reachability_space
 
+
 def compute_duration(distance):
-    return 1.0 if distance<=0.5 else distance/0.5
+    return 1.0 if distance <= 0.5 else distance / 0.5
 
 
 if __name__ == "__main__":
@@ -264,7 +273,9 @@ if __name__ == "__main__":
     starting_x = -0.6
     if args.ONLINE_PLANNING:
         # need to make sure seed grasp is good!
-        grasp_filepath = os.path.join(args.mesh_dir, args.object_name, "grasps_online_"+ str(args.conveyor_distance) + "_" + str(args.object_name) + '.pk')
+        grasp_filepath = os.path.join(args.mesh_dir, args.object_name,
+                                      "grasps_online_" + str(args.conveyor_distance) + "_" + str(
+                                          args.object_name) + '.pk')
         object_pose_init = Pose(
             Point(starting_x, args.conveyor_distance, ut.get_body_pose(args.target_object_id)[0][2]),
             Quaternion(*ut.get_body_pose(args.target_object_id)[1]))
@@ -272,16 +283,19 @@ if __name__ == "__main__":
         max_steps = 70000
     else:
         if args.UNIFORM_GRASP:
-            grasp_filepath = os.path.join(args.mesh_dir, args.object_name, "grasps_uniform_" + str(args.object_name) + '.pk')
+            grasp_filepath = os.path.join(args.mesh_dir, args.object_name,
+                                          "grasps_uniform_" + str(args.object_name) + '.pk')
         else:
-            grasp_filepath = os.path.join(args.mesh_dir, args.object_name, "grasps_simann_" + str(args.object_name) + '.pk')
+            grasp_filepath = os.path.join(args.mesh_dir, args.object_name,
+                                          "grasps_simann_" + str(args.object_name) + '.pk')
         object_pose_init = Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1))
         search_energy = 'GUIDED_POTENTIAL_QUALITY_ENERGY'
         max_steps = 70000
     grasp_results = generate_grasps(load_fnm=grasp_filepath, save_fnm=grasp_filepath,
                                     object_mesh=args.object_mesh_filepath_ply,
                                     object_pose=object_pose_init, floor_offset=args.target_mesh_bounds.min(0)[2],
-                                    max_steps=max_steps, search_energy=search_energy, seed_grasp=None, uniform_grasp=args.UNIFORM_GRASP)
+                                    max_steps=max_steps, search_energy=search_energy, seed_grasp=None,
+                                    uniform_grasp=args.UNIFORM_GRASP)
     graspit_grasps, graspit_grasp_poses_in_world, graspit_grasp_poses_in_object = grasp_results
     rospy.loginfo("number of initial grasps: {}".format(len(graspit_grasps)))
 
@@ -310,7 +324,7 @@ if __name__ == "__main__":
 
     while ut.get_body_pose(args.target_object_id)[0][0] < starting_x:
         pass
-    start_time = time.time()    # enter workspace
+    start_time = time.time()  # enter workspace
     selected_grasp_indexes = []
     grasp_pose_history = []
 
@@ -319,7 +333,7 @@ if __name__ == "__main__":
         current_pose = ut.get_body_pose(args.target_object_id)
         current_conveyor_pose = ut.get_body_pose(args.conveyor_id)
 
-        if current_conveyor_pose[0][0] > args.max_x-0.05:
+        if current_conveyor_pose[0][0] > args.max_x - 0.05:
             # target moves outside workspace, break directly
             break
 
@@ -329,18 +343,20 @@ if __name__ == "__main__":
 
         #### grasp planning
         grasp_planning_start = time.time()
-        future_pose = motion_predict_svr(duration=duration).prediction.pose if args.USE_KF else ut.list_2_pose(ut.get_body_pose(args.target_object_id))
+        future_pose = motion_predict_svr(duration=duration).prediction.pose if args.USE_KF else ut.list_2_pose(
+            ut.get_body_pose(args.target_object_id))
 
         # information about the current grasp
         pre_g_pose, g_pose, pre_g_joint_values, current_grasp_idx = None, None, None, None
 
         if args.ONLINE_PLANNING:
 
-            ee_in_world, pre_g_pose = convert_graspit_pose_in_object_to_moveit_grasp_pose(graspit_grasp_poses_in_object[0],
-                                                                                          future_pose,
-                                                                                          old_ee_to_new_ee_translation_rotation)
+            ee_in_world, pre_g_pose = convert_graspit_pose_in_object_to_moveit_grasp_pose(
+                graspit_grasp_poses_in_object[0],
+                future_pose,
+                old_ee_to_new_ee_translation_rotation)
             j = mc.get_arm_ik(ut.pose_2_list(pre_g_pose))
-            if j is not None: # previous grasp after conversion is still reachabale
+            if j is not None:  # previous grasp after conversion is still reachabale
                 rospy.loginfo("the previous pre-grasp is still reachabale")
                 pre_g_joint_values = j
                 ut.create_arrow_marker(pre_g_pose, color_index=len(grasp_pose_history) % 20)
@@ -350,7 +366,7 @@ if __name__ == "__main__":
                 seed_grasp = Grasp()
                 # seed_grasp.pose = graspit_grasp_poses_in_world[0]
                 seed_grasp.pose = tf_conversions.toMsg(tf_conversions.fromMsg(future_pose) *
-                                       tf_conversions.fromMsg(graspit_grasp_poses_in_object[0]))
+                                                       tf_conversions.fromMsg(graspit_grasp_poses_in_object[0]))
                 # seed_grasp.dofs = graspit_grasps[0].dofs
                 grasp_results = generate_grasps(object_mesh=args.object_mesh_filepath_ply,
                                                 object_pose=future_pose, floor_offset=args.target_mesh_bounds.min(0)[2],
@@ -370,8 +386,9 @@ if __name__ == "__main__":
                 pre_grasps_in_world.append(pre_g_pose)
 
             if args.KEEP_PREVIOUS_GRASP and current_grasp_idx is not None:
-                pre_g_joint_values = mc.get_arm_ik(tf_conversions.toTf(tf_conversions.fromMsg(pre_grasps_in_world[current_grasp_idx])))
-                if pre_g_joint_values is not None:   # ik_exists
+                pre_g_joint_values = mc.get_arm_ik(
+                    tf_conversions.toTf(tf_conversions.fromMsg(pre_grasps_in_world[current_grasp_idx])))
+                if pre_g_joint_values is not None:  # ik_exists
                     rospy.loginfo("the previous pre-grasp is reachable")
                 else:
                     current_grasp_idx = None
@@ -385,7 +402,8 @@ if __name__ == "__main__":
                     grasp_order_idxs = np.argsort(sdf_values)[::-1]
                 for idx in range(len(grasp_order_idxs)):
                     g_idx = grasp_order_idxs[idx]
-                    pre_g_joint_values = mc.get_arm_ik(tf_conversions.toTf(tf_conversions.fromMsg(pre_grasps_in_world[g_idx])))
+                    pre_g_joint_values = mc.get_arm_ik(
+                        tf_conversions.toTf(tf_conversions.fromMsg(pre_grasps_in_world[g_idx])))
                     if pre_g_joint_values is not None:
                         current_grasp_idx = g_idx
                         break
@@ -400,7 +418,7 @@ if __name__ == "__main__":
                 ee_in_world, pre_g_pose = ees_in_world[current_grasp_idx], pre_grasps_in_world[current_grasp_idx]
                 ut.create_arrow_marker(pre_g_pose, color_index=current_grasp_idx % 20)
             rospy.loginfo("choosing {}-th pre-grasp pose".format(current_grasp_idx))
-        rospy.loginfo("grasp planning takes {}".format(time.time()-grasp_planning_start))
+        rospy.loginfo("grasp planning takes {}".format(time.time() - grasp_planning_start))
 
         #### test switches
         # time.sleep(0.3)
@@ -421,11 +439,13 @@ if __name__ == "__main__":
             # position_trajectory, motion_plan = mc.hierarchical_plan(goal_eef_pose=pre_g_pose,
             #                                                         target_id=args.target_object_id,
             #                                                         maximum_planning_time=moveit_planning_time)
-            position_trajectory, motion_plan = mc.hybrid_plan(goal_eef_pose=pre_g_pose, maximum_planning_time=moveit_planning_time)
+            position_trajectory, motion_plan = mc.hybrid_plan(goal_eef_pose=pre_g_pose,
+                                                              maximum_planning_time=moveit_planning_time)
         else:
             # lazy replan
             if np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0])) > 0.5:
-                rospy.loginfo("distance from eef position to target object position: {}".format(np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0]))))
+                rospy.loginfo("distance from eef position to target object position: {}".format(
+                    np.linalg.norm(np.array(current_pose[0]) - np.array(mc.get_arm_eef_pose()[0]))))
                 rospy.loginfo("eef is still far from target object; do not replan; keep executing previous plan")
                 ut.print_loop_end(loop_start)
                 continue
@@ -444,12 +464,12 @@ if __name__ == "__main__":
                 #                                                         start_joint_values=start_joint_values,
                 #                                                         maximum_planning_time=moveit_planning_time)
                 position_trajectory, motion_plan = mc.hybrid_plan(goal_eef_pose=pre_g_pose,
-                                                            start_joint_values=start_joint_values,
-                                                            maximum_planning_time=moveit_planning_time)
+                                                                  start_joint_values=start_joint_values,
+                                                                  maximum_planning_time=moveit_planning_time)
                 sleep_time = planning_time - (rospy.Time.now() - planning_start_time).to_sec()
                 rospy.loginfo(('Sleep after planning: {}'.format(sleep_time)))
                 rospy.sleep(max(0, sleep_time))
-        rospy.loginfo("motion planning takes {}".format(time.time()-motion_start))
+        rospy.loginfo("motion planning takes {}".format(time.time() - motion_start))
 
         if position_trajectory is None:
             rospy.loginfo("No plans found within {}".format(planning_time))
@@ -457,10 +477,10 @@ if __name__ == "__main__":
             continue
         else:
             rospy.loginfo("start executing with goal id {}".format(mc.goal_id))
-            pre_position_trajectory = position_trajectory # just another reference
+            pre_position_trajectory = position_trajectory  # just another reference
             mc.execute_arm_trajectory(position_trajectory, motion_plan)
             old_motion_plan = motion_plan
-            time.sleep(0.2) # TODO is this necessary?
+            time.sleep(0.2)  # TODO is this necessary?
 
         # TODO sometimes grasp planning takes LONGER with some errors after tracking for a long time, This results the previous
         # trajectory to have finished before we send another goal to move arm
@@ -469,7 +489,8 @@ if __name__ == "__main__":
         #### grasp
         eef_pose = tf_conversions.toMsg(tf_conversions.fromTf(mc.get_arm_eef_pose()))
         # eef_pose = tf_conversions.toMsg(tf_conversions.fromTf(get_transform(mc.mico_moveit.BASE_LINK, mc.mico_moveit.TIP_LINK)))
-        object_pose = tf_conversions.toMsg(tf_conversions.fromTf(p.getBasePositionAndOrientation(args.target_object_id)))
+        object_pose = tf_conversions.toMsg(
+            tf_conversions.fromTf(p.getBasePositionAndOrientation(args.target_object_id)))
         if not args.ONLY_TRACKING:
             if args.conveyor_velocity == 0.01:
                 d_gpos_threshold = 0.03
@@ -479,17 +500,19 @@ if __name__ == "__main__":
                 d_gpos_threshold = 0.06
             start_grasp = can_grasp(pre_g_pose, object_pose, eef_pose,
                                     d_gpos_threshold=d_gpos_threshold, d_target_threshold=None)
-            if start_grasp: # can grasp
+            if start_grasp:  # can grasp
                 if args.DYNAMIC:
                     rospy.loginfo("start grasping")
                     # predicted_pose = predict(1, target_object)
-                    predicted_pose = motion_predict_svr(duration=1).prediction.pose if args.USE_KF else ut.list_2_pose(ut.get_body_pose(args.target_object_id))
+                    predicted_pose = motion_predict_svr(duration=1).prediction.pose if args.USE_KF else ut.list_2_pose(
+                        ut.get_body_pose(args.target_object_id))
                     if args.ONLINE_PLANNING:
                         ee_idx = 0
                     else:
                         ee_idx = current_grasp_idx
-                    ee_in_world, pre_g_pose = convert_graspit_pose_in_object_to_moveit_grasp_pose(graspit_grasp_poses_in_object[ee_idx], predicted_pose,
-                                                                                                  old_ee_to_new_ee_translation_rotation)
+                    ee_in_world, pre_g_pose = convert_graspit_pose_in_object_to_moveit_grasp_pose(
+                        graspit_grasp_poses_in_object[ee_idx], predicted_pose,
+                        old_ee_to_new_ee_translation_rotation)
                     j = mc.get_arm_ik(tf_conversions.toTf(tf_conversions.fromMsg(ee_in_world)), avoid_collisions=False)
                     if j is None:
                         # do not check g_pose is reachable or not during grasp planning, but check predicted g_pose directly
@@ -498,16 +521,19 @@ if __name__ == "__main__":
                         ut.print_loop_end(loop_start)
                         continue
 
-                    position_trajectory, motion_plan,fraction = mc.plan_straight_line(ee_in_world, ee_step=0.02, avoid_collisions=False)
-                    if fraction!=1:
-                        rospy.loginfo("no full (fraction: {}) cartesian path found to reach predicted g_pose, will continue")
+                    position_trajectory, motion_plan, fraction = mc.plan_straight_line(ee_in_world, ee_step=0.02,
+                                                                                       avoid_collisions=False)
+                    if fraction != 1:
+                        rospy.loginfo(
+                            "no full (fraction: {}) cartesian path found to reach predicted g_pose, will continue")
                         ut.print_loop_end(loop_start)
                         continue
                     mc.execute_arm_trajectory(position_trajectory, motion_plan)
                     # mc.move_arm_joint_values(j, plan=False) # TODO sometimes this motion is werid? rarely
-                    time.sleep(1.5) # NOTE give sometime to move before closing - this is IMPORTANT, increase success rate!
+                    time.sleep(
+                        1.5)  # NOTE give sometime to move before closing - this is IMPORTANT, increase success rate!
                     mc.close_gripper()
-                    mc.cartesian_control(z=0.07) # todo change this to use compute cartesian path
+                    mc.cartesian_control(z=0.07)  # todo change this to use compute cartesian path
                     # NOTE: The trajectory returned by this will have a far away first waypoint to jump to
                     # and I assume it is because the initial position is not interpreted as valid by moveit
                     # or the good first waypoint is blocked by a instantly updated block scene
@@ -543,12 +569,13 @@ if __name__ == "__main__":
             position_distances, orientation_distances = get_grasp_distance_online(grasp_pose_history)
         else:
             num_grasp_switches, grasp_switch_indices = get_grasp_switch_idxs(selected_grasp_indexes)
-            position_distances, orientation_distances = get_grasp_distance(graspit_grasp_poses_in_object, grasp_switch_indices)
+            position_distances, orientation_distances = get_grasp_distance(graspit_grasp_poses_in_object,
+                                                                           grasp_switch_indices)
 
         grasp_switch_stats = [
-                  ('num_grasp_switches', num_grasp_switches),
-                  ('grasp_switches_position_distances', position_distances),
-                  ('grasp_switches_orientation_distances', orientation_distances)]
+            ('num_grasp_switches', num_grasp_switches),
+            ('grasp_switches_position_distances', position_distances),
+            ('grasp_switches_orientation_distances', orientation_distances)]
         result += grasp_switch_stats
 
     result = OrderedDict(result)

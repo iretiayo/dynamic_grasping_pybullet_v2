@@ -14,6 +14,8 @@ import tf_conversions
 from mico_controller import MicoController
 import rospy
 import rospkg
+import threading
+from geometry_msgs.msg import PoseStamped
 
 from reachability_utils.process_reachability_data_from_csv import load_reachability_data_from_dir
 
@@ -24,8 +26,13 @@ def get_args():
     parser.add_argument('--object_name', type=str, default='bleach_cleanser',
                         help="Target object to be grasped. Ex: cube")
     parser.add_argument('--grasp_database_path', type=str, default='yeah')
-    parser.add_argument('--disable_gui', action='store_true', default=False)
+    parser.add_argument('--rendering', action='store_true', default=False)
+    parser.add_argument('--realtime', action='store_true', default=False)
+    parser.add_argument('--num_trials', type=int, default=1)
     args = parser.parse_args()
+
+    if args.realtime:
+        args.rendering = True
 
     args.mesh_dir = os.path.abspath('assets/models')
     args.robot_urdf = os.path.abspath('assets/mico/mico.urdf')
@@ -43,8 +50,8 @@ def get_reachability_space(reachability_data_dir):
     return sdf_reachability_space, mins, step_size, dims
 
 
-def configure_pybullet(disable_gui=False):
-    if disable_gui:
+def configure_pybullet(rendering=False):
+    if not rendering:
         p.connect(p.DIRECT)
     else:
         p.connect(p.GUI_SERVER)
@@ -89,19 +96,23 @@ class DynamicGraspingWorld:
                  target_name,
                  target_initial_pose,
                  robot_initial_pose,
+                 robot_initial_state,
                  conveyor_initial_pose,
                  robot_urdf,
                  target_urdf,
+                 target_mesh_file_path,
                  grasp_database_path,
                  reachability_data_dir,
-                 rendering):
+                 realtime):
         self.target_name = target_name
         self.target_initial_pose = target_initial_pose
         self.robot_initial_pose = robot_initial_pose
+        self.robot_initial_state = robot_initial_state
         self.conveyor_initial_pose = conveyor_initial_pose
         self.robot_urdf = robot_urdf
         self.target_urdf = target_urdf
-        self.rendering = rendering
+        self.target_mesh_file_path = target_mesh_file_path
+        self.realtime = realtime
 
         self.grasp_database_path = grasp_database_path
         self.grasp_database = np.load(os.path.join(self.grasp_database_path, self.target_name + '.npy'))
@@ -110,32 +121,61 @@ class DynamicGraspingWorld:
 
         self.plane = p.loadURDF("plane.urdf")
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
-        self.robot = p.loadURDF(self.robot_urdf, self.robot_initial_pose[0], self.robot_initial_pose[1], flags=p.URDF_USE_SELF_COLLISION)
+        self.robot = MicoController(self.robot_initial_pose, self.robot_initial_state, self.robot_urdf)
         self.conveyor = p.loadURDF("assets/conveyor.urdf", conveyor_initial_pose[0], conveyor_initial_pose[1])
 
-        self.controller = MicoController(self.robot)
         self.reset()
+
+        self.target_pose_pub = rospy.Publisher('target_pose', PoseStamped, queue_size=1)
+        self.conveyor_pose_pub = rospy.Publisher('conveyor_pose', PoseStamped, queue_size=1)
+        rospy.set_param('target_mesh_file_path', self.target_mesh_file_path)
+
+        update_scene_thread = threading.Thread(target=self.update_scene_threading)
+        update_scene_thread.daemon = True
+        update_scene_thread.start()
+
+    def update_scene_threading(self):
+        r = rospy.Rate(30)
+        while True:
+            target_pose = pu.get_body_pose(self.target)
+            conveyor_pose = pu.get_body_pose(self.conveyor)
+            self.target_pose_pub.publish(gu.list_2_ps(target_pose))
+            self.conveyor_pose_pub.publish(gu.list_2_ps(conveyor_pose))
+            rospy.set_param('pose_published', True)
+            r.sleep()
+            # target_pose = pu.get_body_pose(self.target)
+            # conveyor_pose = pu.get_body_pose(self.conveyor)
+            # self.robot.scene.add_mesh(self.target_name, gu.list_2_ps(target_pose), self.target_mesh_file_path)
+            # self.robot.scene.add_box('conveyor', gu.list_2_ps(conveyor_pose), size=(.1, .1, .02))
 
     def reset(self):
         p.resetBasePositionAndOrientation(self.target, self.target_initial_pose[0], self.target_initial_pose[1])
-        p.resetBasePositionAndOrientation(self.robot, self.robot_initial_pose[0], self.robot_initial_pose[1])
-        p.resetBasePositionAndOrientation(self.robot, self.robot_initial_pose[0], self.robot_initial_pose[1])
+        self.robot.reset()
 
-        self.controller.set_arm_joints(MicoController.HOME)
-        self.controller.control_arm_joints(MicoController.HOME)
         pu.step(2)
 
     def step(self, freeze_time, motion_plan):
         # calculate conveyor pose, change constraint
         # calculate arm pose, control array
         for i in range(int(freeze_time * 240)):
-            self.controller.step()
+            self.robot.step()
             # the conveyor step here
             p.stepSimulation()
-            if self.rendering:
+            if self.realtime:
                 time.sleep(1.0/240.0)
         if motion_plan is not None:
-            self.controller.update_motion_plan(motion_plan)
+            self.robot.update_motion_plan(motion_plan)
+
+    def static_grasp(self):
+        target_pose = pu.get_body_pose(self.target)
+        predicted_pose = target_pose
+
+        grasp_planning_time, grasp, grasp_jv = self.plan_grasp(predicted_pose, None, None)
+        motion_planning_time, plan = self.plan_motion(grasp_jv)
+        self.robot.execute_plan(plan, self.realtime)
+        self.robot.close_gripper(self.realtime)
+        plan, fraction = self.robot.plan_cartesian_control(z=0.07)
+        self.robot.execute_plan(plan, self.realtime)
 
     def dynamic_grasp(self):
         grasp, grasp_jv = None, None
@@ -152,7 +192,7 @@ class DynamicGraspingWorld:
     def plan_grasp(self, target_pose, old_grasp, old_grasp_jv):
         start_time = time.time()
         if old_grasp is not None:
-            if self.controller.get_arm_ik(old_grasp) is not None:
+            if self.robot.get_arm_ik(old_grasp) is not None:
                 planning_time = time.time() - start_time
                 print("Planning a grasp takes {:.6f}".format(planning_time))
                 return planning_time, old_grasp, old_grasp_jv
@@ -170,7 +210,7 @@ class DynamicGraspingWorld:
         grasps_in_world_ee = [gu.change_end_effector_link_pose_2d(g) for g in grasps_in_world]
         print(time.time()-temp_start)
         planned_grasp = grasps_in_world_ee[grasp_order_idxs[0]]
-        planned_joint_values = self.controller.get_arm_ik(planned_grasp)
+        planned_joint_values = self.robot.get_arm_ik(planned_grasp)
         # gu.visualize_grasps_with_reachability(grasps_in_world_ee, sdf_values)
         # gu.visualize_grasp_with_reachability(planned_grasp, sdf_values[grasp_order_idxs[0]], maximum=max(sdf_values), minimum=min(sdf_values))
         planning_time = time.time() - start_time
@@ -181,13 +221,12 @@ class DynamicGraspingWorld:
         predicted_period = 0.2
         start_time = time.time()
 
-        if self.controller.discretized_plan is not None:
-            future_target_index = min(int(predicted_period * 240 + self.controller.wp_target_index), len(self.controller.discretized_plan)-1)
-            start_joint_values = self.controller.discretized_plan[future_target_index]
-            plan = self.controller.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values)
+        if self.robot.discretized_plan is not None:
+            future_target_index = min(int(predicted_period * 240 + self.robot.wp_target_index), len(self.robot.discretized_plan)-1)
+            start_joint_values = self.robot.discretized_plan[future_target_index]
+            plan = self.robot.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values)
         else:
-            plan = self.controller.plan_arm_joint_values(grasp_jv)
-        # self.world.controller.set_arm_joints(joint_values)
+            plan = self.robot.plan_arm_joint_values(grasp_jv)
         planning_time = time.time() - start_time
 
         print("Planning a motion takes {:.6f}".format(planning_time))
@@ -196,7 +235,7 @@ class DynamicGraspingWorld:
 
 if __name__ == "__main__":
     args = get_args()
-    configure_pybullet(args.disable_gui)
+    configure_pybullet(args.rendering)
     rospy.init_node('dynamic_grasping')
 
     object_mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(args.object_name), '{}.obj'.format(args.object_name))
@@ -211,14 +250,18 @@ if __name__ == "__main__":
     dynamic_grasping_world = DynamicGraspingWorld(target_name=args.object_name,
                                                   target_initial_pose=target_initial_pose,
                                                   robot_initial_pose=robot_initial_pose,
+                                                  robot_initial_state=MicoController.HOME,
                                                   conveyor_initial_pose=conveyor_initial_pose,
                                                   robot_urdf=args.robot_urdf,
                                                   target_urdf=target_urdf,
+                                                  target_mesh_file_path=object_mesh_filepath,
                                                   grasp_database_path=args.grasp_database_path,
                                                   reachability_data_dir=args.reachability_data_dir,
-                                                  rendering=True)
+                                                  realtime=args.realtime)
 
-    dynamic_grasping_world.dynamic_grasp()
+    for i in range(args.num_trials):
+        dynamic_grasping_world.static_grasp()
+        dynamic_grasping_world.reset()
 
     print("finished")
 

@@ -34,12 +34,15 @@ class MicoController:
                 'm1n6s200_joint_4',
                 'm1n6s200_joint_5',
                 'm1n6s200_joint_6'],
-        'gripper': ["m1n6s200_joint_finger_1", "m1n6s200_joint_finger_2"]
+        'gripper': ["m1n6s200_joint_finger_1",
+                    "m1n6s200_joint_finger_tip_1",
+                    "m1n6s200_joint_finger_2",
+                    "m1n6s200_joint_finger_tip_2"]
     }
 
     GROUP_INDEX = {
         'arm': [2, 3, 4, 5, 6, 7],
-        'gripper': [9, 11]
+        'gripper': [9, 10, 11, 12]
     }
 
     INDEX_NAME_MAP = {
@@ -59,16 +62,26 @@ class MicoController:
     }
 
     EEF_LINK_INDEX = 8
-    OPEN_POSITION = [0.0, 0.0]
-    CLOSED_POSITION = [1.1, 1.1]
+    OPEN_POSITION = [0.0, 0.0, 0.0, 0.0]
+    CLOSED_POSITION = [1.1, 0.0, 1.1, 0.0]
     LINK6_COM = [-0.002216, -0.000001, -0.058489]
     LIFT_VALUE = 0.2
     HOME = [4.80469, 2.92482, 1.002, 4.20319, 1.4458, 1.3233]
     EEF_LINK = "m1n6s200_end_effector"
     BASE_LINK = "root"
 
-    def __init__(self, robot_id):
-        self.robot_id = robot_id
+    def __init__(self,
+                 initial_pose,
+                 initial_joint_values,
+                 urdf_path):
+        self.initial_pose = initial_pose
+        self.initial_joint_values = initial_joint_values
+        self.urdf_path = urdf_path
+
+        self.id = p.loadURDF(self.urdf_path,
+                             basePosition=self.initial_pose[0],
+                             baseOrientation=self.initial_pose[1],
+                             flags=p.URDF_USE_SELF_COLLISION)
 
         self.arm_ik_svr = rospy.ServiceProxy('compute_ik', GetPositionIK)
         self.arm_fk_svr = rospy.ServiceProxy('compute_fk', GetPositionFK)
@@ -85,11 +98,11 @@ class MicoController:
         self.reset()
 
     def set_arm_joints(self, joint_values):
-        pu.set_joint_positions(self.robot_id, self.GROUP_INDEX['arm'], joint_values)
-        pu.control_joints(self.robot_id, self.GROUP_INDEX['arm'], joint_values)
+        pu.set_joint_positions(self.id, self.GROUP_INDEX['arm'], joint_values)
+        pu.control_joints(self.id, self.GROUP_INDEX['arm'], joint_values)
 
     def control_arm_joints(self, joint_values):
-        pu.control_joints(self.robot_id, self.GROUP_INDEX['arm'], joint_values)
+        pu.control_joints(self.id, self.GROUP_INDEX['arm'], joint_values)
 
     def compute_next_action(self, object_pose, ):
         pass
@@ -104,6 +117,9 @@ class MicoController:
             self.wp_target_index += 1
 
     def reset(self):
+        self.set_arm_joints(self.initial_joint_values)
+        self.set_gripper_joints(self.OPEN_POSITION)
+        self.clear_scene()
         self.motion_plan = None
         self.discretized_plan = None
         self.wp_target_index = 0
@@ -114,13 +130,13 @@ class MicoController:
         self.wp_target_index = 1
 
     def get_arm_joint_values(self):
-        return pu.get_joint_positions(self.robot_id, self.GROUP_INDEX['arm'])
+        return pu.get_joint_positions(self.id, self.GROUP_INDEX['arm'])
 
     def get_gripper_joint_values(self):
-        return pu.get_joint_positions(self.robot_id, self.GROUP_INDEX['gripper'])
+        return pu.get_joint_positions(self.id, self.GROUP_INDEX['gripper'])
 
     def get_eef_pose(self):
-        return pu.get_link_pose(self.robot_id, self.EEF_LINK_INDEX)
+        return pu.get_link_pose(self.id, self.EEF_LINK_INDEX)
 
     def get_arm_ik(self, pose_2d, timeout=0.01, avoid_collisions=True):
         gripper_joint_values = self.get_gripper_joint_values()
@@ -247,13 +263,30 @@ class MicoController:
             time_trajectory.append(p.time_from_start.to_sec())
         return Motion(np.array(position_trajectory), np.array(time_trajectory), np.array(velocity_trajectory))
 
-    def close_gripper(self):
+    def set_gripper_joints(self, joint_values):
+        pu.set_joint_positions(self.id, self.GROUP_INDEX['gripper'], joint_values)
+        pu.control_joints(self.id, self.GROUP_INDEX['gripper'], joint_values)
+
+    def control_gripper_joints(self, joint_values):
+        pu.control_joints(self.id, self.GROUP_INDEX['gripper'], joint_values)
+
+    def close_gripper(self, realtime=False):
         num_steps = 240
         waypoints = np.linspace(self.OPEN_POSITION, self.CLOSED_POSITION, num_steps)
         for wp in waypoints:
-            pu.control_joints(self.robot_id, self.GROUP_INDEX['gripper'], wp)
+            self.control_gripper_joints(wp)
             p.stepSimulation()
-        pu.step()
+            if realtime:
+                time.sleep(1. / 240.)
+
+    def open_gripper(self, realtime=False):
+        num_steps = 240
+        waypoints = np.linspace(self.CLOSED_POSITION, self.OPEN_POSITION, num_steps)
+        for wp in waypoints:
+            self.control_gripper_joints(wp)
+            p.stepSimulation()
+            if realtime:
+                time.sleep(1. / 240.)
 
     def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None, maximum_planning_time=0.5):
         """
@@ -272,7 +305,7 @@ class MicoController:
                                                      maximum_planning_time=maximum_planning_time)  # STOMP does not convert goal joint values
         # check if there exists a plan
         if len(moveit_plan.joint_trajectory.points) == 0:
-            return None, None
+            return None
 
         plan = MicoController.process_plan(moveit_plan, start_joint_values)
         return plan
@@ -298,18 +331,18 @@ class MicoController:
             start_joint_values = self.get_arm_joint_values()
 
         # moveit will do the conversion internally
-        plan, fraction = self.mico_moveit.plan_straight_line(start_joint_values, goal_eef_pose, ee_step=ee_step,
-                                                             jump_threshold=jump_threshold,
-                                                             avoid_collisions=avoid_collisions)
+        moveit_plan, fraction = self.plan_straight_line_ros(start_joint_values, goal_eef_pose, ee_step=ee_step,
+                                                            jump_threshold=jump_threshold,
+                                                            avoid_collisions=avoid_collisions)
 
         # print("plan length: {}, fraction: {}".format(len(plan.joint_trajectory.points), fraction))
 
         # check if there exists a plan
-        if len(plan.joint_trajectory.points) == 0:
-            return None, None, fraction
+        if len(moveit_plan.joint_trajectory.points) == 0:
+            return None, fraction
 
-        position_trajectory, plan = MicoController.process_plan(plan, start_joint_values)
-        return position_trajectory, plan, fraction
+        plan = MicoController.process_plan(moveit_plan, start_joint_values)
+        return plan, fraction
 
     def plan_straight_line_ros(self, start_joint_values, end_eef_pose, ee_step=0.05, jump_threshold=3.0,
                                avoid_collisions=True):
@@ -336,12 +369,12 @@ class MicoController:
 
         # using current state, including all other joint info
         start_robot_state = self.robot.get_current_state()
-        start_robot_state.joint_state.name = self.ARM_JOINT_NAMES
+        start_robot_state.joint_state.name = self.GROUPS['arm']
         start_robot_state.joint_state.position = start_joint_values
 
         self.arm_commander_group.set_start_state(start_robot_state)
 
-        start_eef_pose = self.get_arm_fk(start_joint_values)
+        start_eef_pose = gu.list_2_pose(self.get_arm_fk(start_joint_values))
         plan, fraction = self.arm_commander_group.compute_cartesian_path(
             [start_eef_pose, end_eef_pose],
             ee_step,
@@ -355,16 +388,59 @@ class MicoController:
         return plan, fraction
 
     def violate_limits(self, joint_values):
-        return pu.violates_limits(self.robot_id, self.GROUPS['arm'], joint_values)
+        return pu.violates_limits(self.id, self.GROUPS['arm'], joint_values)
 
     @staticmethod
     def discretize_plan(motion_plan):
         discretized_plan = np.zeros((0, 6))
-        for i in range(len(motion_plan.position_trajectory)-1):
-            num_steps = (motion_plan.time_trajectory[i+1] - motion_plan.time_trajectory[i]) * 240
-            segment = np.linspace(motion_plan.position_trajectory[i], motion_plan.position_trajectory[i+1], num_steps)
-            if i+1 == len(motion_plan.position_trajectory)-1:
+        for i in range(len(motion_plan.position_trajectory) - 1):
+            num_steps = (motion_plan.time_trajectory[i + 1] - motion_plan.time_trajectory[i]) * 240
+            segment = np.linspace(motion_plan.position_trajectory[i], motion_plan.position_trajectory[i + 1], num_steps)
+            if i + 1 == len(motion_plan.position_trajectory) - 1:
                 discretized_plan = np.vstack((discretized_plan, segment))
             else:
                 discretized_plan = np.vstack((discretized_plan, segment[:-1]))
         return discretized_plan
+
+    def clear_scene(self):
+        for obj_name in self.get_attached_object_names():
+            self.scene.remove_attached_object(self.EEF_LINK_INDEX, obj_name)
+        for obj_name in self.get_known_object_names():
+            self.scene.remove_world_object(obj_name)
+
+    def get_known_object_names(self):
+        return self.scene.get_known_object_names()
+
+    def get_attached_object_names(self):
+        return self.scene.get_attached_objects().keys()
+
+    def execute_plan(self, plan, realtime=False):
+        self.update_motion_plan(plan)
+        for wp in self.discretized_plan:
+            self.control_arm_joints(wp)
+            p.stepSimulation()
+            if realtime:
+                time.sleep(1. / 240.)
+
+    def plan_cartesian_control(self, x=0.0, y=0.0, z=0.0, frame="world"):
+        """
+        Only for small motion, do not check fraction
+        :param frame: "eef" or "world"
+        """
+        if frame == "eef":
+            pose_2d = self.get_eef_pose()
+            world_T_old = tf_conversions.toMatrix(tf_conversions.fromTf(pose_2d))
+            old_T_new = tf_conversions.toMatrix(tf_conversions.fromTf(((x, y, z), (0, 0, 0, 1))))
+            world_T_new = world_T_old.dot(old_T_new)
+            pose_2d_new = tf_conversions.toTf(tf_conversions.fromMatrix(world_T_new))
+        elif frame == "world":
+            pose_2d_new = self.get_eef_pose()
+            pose_2d_new[0][0] += x
+            pose_2d_new[0][1] += y
+            pose_2d_new[0][2] += z
+        else:
+            raise TypeError("not supported frame: {}".format(frame))
+        plan, fraction = self.plan_straight_line(gu.list_2_pose(pose_2d_new),
+                                                 ee_step=0.01,
+                                                 avoid_collisions=False)
+        return plan, fraction

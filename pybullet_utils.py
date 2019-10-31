@@ -495,7 +495,7 @@ def get_link_state(body, link):
 
 def get_com_pose(body, link):  # COM = center of mass
     link_state = get_link_state(body, link)
-    return link_state.linkWorldPosition, link_state.linkWorldOrientation
+    return list(link_state.linkWorldPosition), list(link_state.linkWorldOrientation)
 
 
 def get_link_inertial_pose(body, link):
@@ -508,7 +508,7 @@ def get_link_pose(body, link):
         return get_body_pose(body)
     # if set to 1 (or True), the Cartesian world position/orientation will be recomputed using forward kinematics.
     link_state = get_link_state(body, link)
-    return link_state.worldLinkFramePosition, link_state.worldLinkFrameOrientation
+    return list(link_state.worldLinkFramePosition), list(link_state.worldLinkFrameOrientation)
 
 
 def get_all_link_parents(body):

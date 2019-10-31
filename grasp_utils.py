@@ -10,7 +10,7 @@ import pybullet_utils as pu
 
 import graspit_commander
 import grid_sample_client
-from geometry_msgs.msg import Pose, Point, Quaternion
+from geometry_msgs.msg import Pose, Point, Quaternion, PoseStamped
 
 from reachability_utils.reachability_resolution_analysis import interpolate_pose_in_reachability_space_grid
 import plyfile
@@ -48,6 +48,29 @@ def list_2_pose(pose_2d):
     :return: pose: geometry_msgs.msg.Pose
     """
     return Pose(Point(*pose_2d[0]), Quaternion(*pose_2d[1]))
+
+
+def ps_2_list(pose_stamped):
+    """
+
+    :param pose: geometry_msgs.msg.PoseStamped
+    :return: pose_2d: [[x, y, z], [x, y, z, w]]
+    """
+    pose = pose_stamped.pose
+    pose_2d = pose_2_list(pose)
+    return pose_2d
+
+
+def list_2_ps(pose_2d):
+    """
+
+    :param pose_2d: [[x, y, z], [x, y, z, w]]
+    :return: pose: geometry_msgs.msg.PoseStamped
+    """
+    pose_stamped = PoseStamped()
+    pose_stamped.header.frame_id = "/world"
+    pose_stamped.pose = list_2_pose(pose_2d)
+    return pose_stamped
 
 
 # https://www.youtube.com/watch?v=aaDUIZVNCDM
