@@ -7,12 +7,13 @@ import os
 import pickle
 import numpy as np
 import pybullet_utils as pu
-
+import time
 import graspit_commander
 import grid_sample_client
 from geometry_msgs.msg import Pose, Point, Quaternion, PoseStamped
 
 from reachability_utils.reachability_resolution_analysis import interpolate_pose_in_reachability_space_grid
+from reachability_utils.process_reachability_data_from_csv import load_reachability_data_from_dir
 import plyfile
 
 # link6_reference_to_ee = ([0.0, 0.0, -0.16], [1.0, 0.0, 0.0, 0])
@@ -437,6 +438,14 @@ def visualize_grasp_with_reachability(grasp_pose, sdf_value, maximum, minimum, u
     if use_cmap_from_mpl:
         cmap = pu.MplColorHelper(unicode(cmap_name), minimum, maximum)
         pu.plot_heatmap_bar(unicode(cmap_name), minimum, maximum)
-        pu.create_arrow_marker(grasp_pose, raw_color=cmap.get_rgb(sdf_value), line_length=0.2, line_width=3)
+        pu.create_arrow_marker(grasp_pose, raw_color=cmap.get_rgb(sdf_value), line_length=0.3, line_width=3)
     else:
         pu.create_arrow_marker(grasp_pose, raw_color=pu.rgb(sdf_value, maximum=maximum, minimum=minimum))
+
+
+def get_reachability_space(reachability_data_dir):
+    rospy.loginfo("start creating sdf reachability space...")
+    start_time = time.time()
+    _, mins, step_size, dims, sdf_reachability_space = load_reachability_data_from_dir(reachability_data_dir)
+    rospy.loginfo("sdf reachability space created, which takes {}".format(time.time() - start_time))
+    return sdf_reachability_space, mins, step_size, dims

@@ -421,6 +421,7 @@ class MicoController:
             p.stepSimulation()
             if realtime:
                 time.sleep(1. / 240.)
+        pu.step(2)
 
     def plan_cartesian_control(self, x=0.0, y=0.0, z=0.0, frame="world"):
         """

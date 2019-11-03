@@ -12,13 +12,13 @@ PI = np.pi
 CIRCULAR_LIMITS = -PI, PI
 
 
-def step(duration=1):
-    for i in range(duration * 240):
+def step(duration=1.0):
+    for i in range(int(duration * 240)):
         p.stepSimulation()
 
 
-def step_real(duration=1):
-    for i in range(duration * 240):
+def step_real(duration=1.0):
+    for i in range(int(duration * 240)):
         p.stepSimulation()
         time.sleep(1.0 / 240.0)
 
