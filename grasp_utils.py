@@ -144,7 +144,7 @@ def change_end_effector_link(graspit_grasp_msg_pose, old_link_to_new_link_transl
 
 
 def get_grasps(robot_name='MicoGripper', object_mesh='cube', object_pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
-               floor_offset=0, max_steps=35000, search_energy='GUIDED_POTENTIAL_QUALITY_ENERGY', seed_grasp=None,
+               floor_offset=None, max_steps=35000, search_energy='GUIDED_POTENTIAL_QUALITY_ENERGY', seed_grasp=None,
                uniform_grasp=True):
     gc = graspit_commander.GraspitCommander()
     gc.clearWorld()
@@ -152,7 +152,7 @@ def get_grasps(robot_name='MicoGripper', object_mesh='cube', object_pose=Pose(Po
     gc.importRobot(robot_name)
     gc.setRobotPose(Pose(Point(0, 0, 1), Quaternion(0, 0, 0, 1)))
     gc.importGraspableBody(object_mesh, object_pose)
-    if floor_offset:
+    if floor_offset is not None:
         floor_offset -= 0.01
         if 'cube' in object_mesh and uniform_grasp:
             floor_offset -= 0.02

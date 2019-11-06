@@ -41,6 +41,9 @@ def get_args():
     args.conveyor_urdf = os.path.abspath('assets/conveyor.urdf')
 
     args.reachability_data_dir = os.path.join(rospkg.RosPack().get_path('mico_reachability_config'), 'data')
+    # timestr = time.strftime("%Y-%m-%d-%H-%M-%S")
+    # args.runstr = 'static-'+timestr
+    # args.result_dir = os.path.join(args.result_dir, args.runstr)
     if not os.path.exists(args.result_dir):
         os.makedirs(args.result_dir)
     args.result_file_path = os.path.join(args.result_dir, args.object_name+'.csv')
