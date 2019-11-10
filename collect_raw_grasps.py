@@ -18,6 +18,17 @@ Collect raw grasps from GraspIt!
 Return a (num_grasps, 7) numpy array.
 
 Each grasp is in the target object link6 reference frame.
+
+Add to a grasp_folder_path, e.g.
+
+raw_grasps/
+    - bleach_cleanser.npy
+    - cube.npy
+    - mustard_bottle.npy
+    - potted_meat_can.npy
+    - power_drill.npy
+    - sugar_box.npy
+    - tomato_soup_can.npy
 """
 
 

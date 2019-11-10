@@ -27,6 +27,10 @@ def split_7d(pose):
     return [list(pose[:3]), list(pose[3:])]
 
 
+def merge_pose_2d(pose):
+    return pose[0] + pose[1]
+
+
 # Constraints
 
 ConstraintInfo = namedtuple('ConstraintInfo', ['parentBodyUniqueId', 'parentJointIndex',
@@ -508,7 +512,7 @@ def get_link_pose(body, link):
         return get_body_pose(body)
     # if set to 1 (or True), the Cartesian world position/orientation will be recomputed using forward kinematics.
     link_state = get_link_state(body, link)
-    return list(link_state.worldLinkFramePosition), list(link_state.worldLinkFrameOrientation)
+    return [list(link_state.worldLinkFramePosition), list(link_state.worldLinkFrameOrientation)]
 
 
 def get_all_link_parents(body):
