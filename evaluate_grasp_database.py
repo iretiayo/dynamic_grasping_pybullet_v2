@@ -6,7 +6,7 @@ import pandas as pd
 import tqdm
 import pybullet as p
 import pybullet_data
-from grasp_evaluation_eef_only import World, create_object_urdf
+from collect_good_grasps import World, create_object_urdf
 import trimesh
 import pybullet_utils as pu
 import grasp_utils as gu
@@ -22,7 +22,7 @@ def get_args():
     args = parser.parse_args()
 
     args.mesh_dir = os.path.abspath('assets/models')
-    args.gripper_urdf = os.path.abspath('assets/mico_hand/mico_hand.urdf')
+    args.gripper_urdf = os.path.abspath('assets/mico/mico_hand.urdf')
 
     return args
 
@@ -33,15 +33,15 @@ if __name__ == "__main__":
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.setPhysicsEngineParameter(enableFileCaching=0)
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+    pu.reset_camera(yaw=50.0, pitch=-35.0, dist=1.2)
 
-    object_grasp_npy_list = os.listdir(args.grasp_database)
-    object_names = [s.split('.')[0] for s in object_grasp_npy_list]
-    for obj, obj_grasps_npy in zip(object_names, object_grasp_npy_list):
+    object_names = os.listdir(args.grasp_database)
+    for object_name in object_names:
         p.resetSimulation()
         p.setGravity(0, 0, -9.8)
-        object_mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(obj), '{}.obj'.format(obj))
+        object_mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(object_name), '{}.obj'.format(object_name))
         object_mesh_filepath_ply = object_mesh_filepath.replace('.obj', '.ply')
-        target_urdf = create_object_urdf(object_mesh_filepath, obj)
+        target_urdf = create_object_urdf(object_mesh_filepath, object_name)
         target_mesh = trimesh.load_mesh(object_mesh_filepath)
         floor_offset = target_mesh.bounds.min(0)[2]
         target_initial_pose = [[0, 0, -target_mesh.bounds.min(0)[2] + 0.01], [0, 0, 0, 1]]
@@ -52,16 +52,19 @@ if __name__ == "__main__":
         ee_to_link6_reference = ([0.0, -3.3091697137634315e-14, -0.16], [-1.0, 0.0, 0.0, -1.0341155355510722e-13])
 
         successes = []
-        grasp_database = np.load(os.path.join(args.grasp_database, obj_grasps_npy))
-        bar = tqdm.tqdm(total=len(grasp_database))
-        for grasp_in_object_link6_ref in grasp_database:
+        grasps_eef = np.load(os.path.join(args.grasp_database, object_name, 'grasps_eef.npy'))
+        grasps_link6_com = np.load(os.path.join(args.grasp_database, object_name, 'grasps_link6_com.npy'))
+        grasps_link6_ref = np.load(os.path.join(args.grasp_database, object_name, 'grasps_link6_ref.npy'))
+        bar = tqdm.tqdm(total=len(grasps_eef))
+        for grasp_link6_com_in_object in grasps_link6_com:
             world.reset()
             object_pose = p.getBasePositionAndOrientation(world.target)
-            grasp_in_object_link6_ref = [grasp_in_object_link6_ref[:3], grasp_in_object_link6_ref[3:]]
-            grasp_in_world_link6_ref = gu.convert_grasp_in_object_to_world(object_pose, grasp_in_object_link6_ref)
-            world.controller.execute_grasp(gu.list_2_pose(grasp_in_world_link6_ref))
-            success = p.getBasePositionAndOrientation(world.target)[0][2] > 0.2
+            success_height_threshold = object_pose[0][2] + world.controller.LIFT_VALUE - 0.05
+            grasp_link6_com_in_object = pu.split_7d(grasp_link6_com_in_object)
+            grasp_link6_com_in_world = gu.convert_grasp_in_object_to_world(object_pose, grasp_link6_com_in_object)
+            world.controller.execute_grasp_link6_com(grasp_link6_com_in_world)
+            success = p.getBasePositionAndOrientation(world.target)[0][2] > success_height_threshold
             successes.append(success)
             bar.update(1)
-            bar.set_description('{} | {:.4f}'.format(obj, np.count_nonzero(successes)/len(successes)))
+            bar.set_description('{} | {:.4f}'.format(object_name, np.count_nonzero(successes)/len(successes)))
         bar.close()

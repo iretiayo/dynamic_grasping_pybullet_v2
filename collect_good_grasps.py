@@ -104,6 +104,12 @@ class Controller:
         self.lift()
         return actual_ee_pose_2d, actual_link6_ref_pose_2d, actual_link6_com_pose_2d
 
+    def execute_grasp_link6_com(self, grasp):
+        """ High level grasp interface using grasp 2d in world frame (link6_com_frame)"""
+        self.reset_to(grasp)
+        self.close_gripper()
+        self.lift()
+
     def open_gripper(self):
         pu.set_joint_positions(self.robot_id, self.GRIPPER_INDICES, self.OPEN_POSITION)
         pu.control_joints(self.robot_id, self.GRIPPER_INDICES, self.OPEN_POSITION)
@@ -163,8 +169,6 @@ if __name__ == "__main__":
     gripper_initial_pose = [[0, 0, 0.5], [0, 0, 0, 1]]
 
     world = World(target_initial_pose, gripper_initial_pose, args.gripper_urdf, target_urdf)
-    link6_reference_to_ee = ([0.0, 0.0, -0.16], [1.0, 0.0, 0.0, 0])
-    ee_to_link6_reference = ([0.0, -3.3091697137634315e-14, -0.16], [-1.0, 0.0, 0.0, -1.0341155355510722e-13])
 
     grasps_link6_ref_in_object = np.load(os.path.join(args.load_folder_path, args.object_name + '.npy'))
     # placeholder to save good grasps
@@ -184,7 +188,7 @@ if __name__ == "__main__":
             successes = []
             g_link6_ref_in_object = pu.split_7d(g_link6_ref_in_object)
             g_link6_ref_in_world = gu.convert_grasp_in_object_to_world(object_pose, g_link6_ref_in_object)
-            pu.create_frame_marker(g_link6_ref_in_world)
+            # pu.create_frame_marker(g_link6_ref_in_world)    # for visualization
             for t in range(args.num_trials):  # test a single grasp
                 actual_ee_pose_2d, actual_link6_ref_pose_2d, actual_link6_com_pose_2d = world.controller.execute_grasp(g_link6_ref_in_world)
                 success = p.getBasePositionAndOrientation(world.target)[0][2] > success_height_threshold
@@ -204,8 +208,8 @@ if __name__ == "__main__":
 
             num_grasps += 1
             progressbar.update(1)
-            progressbar.set_description("grasp index: {} | success rate {}/{} | overall success rate {}/{}".
-                                        format(num_grasps, num_successful_trials, args.num_trials,
+            progressbar.set_description("object name: {} | success rate {}/{} | overall success rate {}/{}".
+                                        format(args.object_name, num_successful_trials, args.num_trials,
                                                num_successful_grasps, num_grasps))
             if num_grasps == args.num_grasps:
                 break

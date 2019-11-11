@@ -97,9 +97,18 @@ def get_transform(reference_frame, target_frame):
 
 
 def back_off(grasp_pose, offset=-.05):
+    """ back off alone negative z axis """
     pre_grasp_pose = tf_conversions.toMsg(
         tf_conversions.fromMsg(grasp_pose) * tf_conversions.fromTf(((0, 0, offset), (0, 0, 0, 1))))
     return pre_grasp_pose
+
+
+def back_off_pose_2d(grasp_pose_2d, offset=-.05):
+    """ back off alone negative z axis """
+    grasp_pose = list_2_pose(grasp_pose_2d)
+    pre_grasp_pose = tf_conversions.toMsg(
+        tf_conversions.fromMsg(grasp_pose) * tf_conversions.fromTf(((0, 0, offset), (0, 0, 0, 1))))
+    return pose_2_list(pre_grasp_pose)
 
 
 def change_end_effector_link_pose_2d(grasp_pose, old_link_to_new_link=link6_reference_to_ee):
