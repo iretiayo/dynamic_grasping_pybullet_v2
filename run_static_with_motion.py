@@ -74,11 +74,10 @@ def create_object_urdf(object_mesh_filepath, object_name,
     return urdf_target_object_filepath
 
 
-def write_csv_line(result_file_path, index, success, grasp_attempted, grasp_reached, target_position, target_orientation, distance, comment):
+def write_csv_line(result_file_path, index, success, grasp_attempted, target_position, target_orientation, distance, comment):
     result = [('index', index),
               ('success', success),
               ('grasp_attempted', grasp_attempted),
-              ('grasp_reached', grasp_reached),
               ('target_position', target_position),
               ('target_orientation', target_orientation),
               ('distance', distance),
@@ -130,12 +129,11 @@ if __name__ == "__main__":
 
     for i in range(args.num_trials):
         target_pose, distance = dynamic_grasping_world.reset(random=True)
-        success, grasp_attempted, grasp_reached, comment = dynamic_grasping_world.static_grasp()
+        success, grasp_attempted, comment = dynamic_grasping_world.static_grasp()
         write_csv_line(result_file_path=args.result_file_path,
                        index=i,
                        success=success,
                        grasp_attempted=grasp_attempted,
-                       grasp_reached=grasp_reached,
                        target_position=target_pose[0],
                        target_orientation=target_pose[1],
                        distance=distance,

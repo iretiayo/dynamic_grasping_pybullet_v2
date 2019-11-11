@@ -30,7 +30,8 @@ class DynamicGraspingWorld:
         self.target_name = target_name
         self.target_initial_pose = target_initial_pose
         self.robot_initial_pose = robot_initial_pose
-        self.initial_distance = np.linalg.norm(np.array(target_initial_pose[0][:2]) - np.array(robot_initial_pose[0][:2]))
+        self.initial_distance = np.linalg.norm(
+            np.array(target_initial_pose[0][:2]) - np.array(robot_initial_pose[0][:2]))
         self.robot_initial_state = robot_initial_state
         self.conveyor_initial_pose = conveyor_initial_pose
         self.robot_urdf = robot_urdf
@@ -47,8 +48,16 @@ class DynamicGraspingWorld:
         self.distance_high = 0.4
 
         self.grasp_database_path = grasp_database_path
-        # TODO
-        self.grasp_database = np.load(os.path.join(self.grasp_database_path, self.target_name, 'grasps_link6_ref.npy'))
+        self.grasps_eef = np.load(os.path.join(self.grasp_database_path, self.target_name, 'grasps_eef.npy'))
+        self.grasps_link6_ref = np.load(
+            os.path.join(self.grasp_database_path, self.target_name, 'grasps_link6_ref.npy'))
+        self.grasps_link6_com = np.load(
+            os.path.join(self.grasp_database_path, self.target_name, 'grasps_link6_com.npy'))
+        self.pre_grasps_eef = np.load(
+            os.path.join(self.grasp_database_path, self.target_name, 'pre_grasps_eef_0.05.npy'))
+        self.pre_grasps_link6_ref = np.load(
+            os.path.join(self.grasp_database_path, self.target_name, 'pre_grasps_link6_ref_0.05.npy'))
+
         self.reachability_data_dir = reachability_data_dir
         self.sdf_reachability_space, self.mins, self.step_size, self.dims = gu.get_reachability_space(
             self.reachability_data_dir)
@@ -84,7 +93,8 @@ class DynamicGraspingWorld:
             # self.robot.scene.add_box('conveyor', gu.list_2_ps(conveyor_pose), size=(.1, .1, .02))
 
     def reset(self, random=False):
-        target_pose, distance = self.sample_target_location() if random else (self.target_initial_pose, self.initial_distance)
+        target_pose, distance = self.sample_target_location() if random else (
+            self.target_initial_pose, self.initial_distance)
         conveyor_pose = [[target_pose[0][0], target_pose[0][1], 0.01],
                          [0, 0, 0, 1]] if target_pose is not None else self.conveyor_initial_pose
         p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
@@ -108,24 +118,27 @@ class DynamicGraspingWorld:
     def static_grasp(self):
         target_pose = pu.get_body_pose(self.target)
         predicted_pose = target_pose
-        grasp_reached = False
-        grasp_attempted = False  # planned grasp is reachable and motion is found
+        grasp_attempted = False  # planned pre grasp is reachable and motion is found
 
-        grasp_planning_time, grasp, grasp_jv = self.plan_grasp(predicted_pose, None, None)
-        if grasp_jv is None:
-            return False, grasp_attempted, grasp_reached, "most reachable grasp is not reachable"
-        motion_planning_time, plan = self.plan_motion(grasp_jv)
+        grasp_planning_time, pre_grasp, pre_grasp_jv, grasp, grasp_jv = self.plan_grasp(predicted_pose, None, None)
+        if grasp_jv is None or pre_grasp_jv is None:
+            return False, grasp_attempted, "most reachable grasp is not reachable"
+        motion_planning_time, plan = self.plan_motion(pre_grasp_jv)
         if plan is None:
-            return False, grasp_attempted, grasp_reached, "no motion found to the planned grasp"
+            return False, grasp_attempted, "no motion found to the planned pre grasp"
         self.robot.execute_plan(plan, self.realtime)
         grasp_attempted = True
-        if np.allclose(np.array(self.robot.get_arm_joint_values()), np.array(grasp_jv), atol=0.01):
-            grasp_reached = True
+
+        plan, fraction = self.robot.plan_cartesian_control(z=0.05, frame='eef')
+        self.robot.execute_plan(plan, self.realtime)
+        print(fraction)
+
         self.robot.close_gripper(self.realtime)
         plan, fraction = self.robot.plan_cartesian_control(z=0.07)
+        print(fraction)
         self.robot.execute_plan(plan, self.realtime)
         success = self.check_success()
-        return success, grasp_attempted, grasp_reached, " "
+        return success, grasp_attempted, " "
 
     def check_success(self):
         if pu.get_body_pose(self.target)[0][2] >= self.target_initial_pose[0][2] + 0.03:
@@ -146,31 +159,45 @@ class DynamicGraspingWorld:
             self.step(motion_planning_time, plan)
 
     def plan_grasp(self, target_pose, old_grasp, old_grasp_jv):
+        """ Plan a reachable pre_grasp and grasp pose"""
         start_time = time.time()
+        planned_pre_grasp = None
+        planned_pre_grasp_jv = None
+        planned_grasp = None
+        planned_grasp_jv = None
+        max_check = 1
         if old_grasp is not None:
             if self.robot.get_arm_ik(old_grasp) is not None:
                 planning_time = time.time() - start_time
                 print("Planning a grasp takes {:.6f}".format(planning_time))
                 return planning_time, old_grasp, old_grasp_jv
-        grasps_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
-                           self.grasp_database]
-        sdf_values = gu.get_reachability_of_grasps_pose_2d(grasps_in_world,
+        pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+                                         self.pre_grasps_link6_ref]
+        sdf_values = gu.get_reachability_of_grasps_pose_2d(pre_grasps_link6_ref_in_world,
                                                            self.sdf_reachability_space,
                                                            self.mins,
                                                            self.step_size,
                                                            self.dims)
         grasp_order_idxs = np.argsort(sdf_values)[::-1]
+        for i, idx in enumerate(grasp_order_idxs):
+            if i == max_check:
+                break
+            planned_pre_grasp_in_object = pu.split_7d(self.pre_grasps_eef[idx])
+            planned_pre_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_pre_grasp_in_object)
+            planned_pre_grasp_jv = self.robot.get_arm_ik(planned_pre_grasp)
+            if planned_pre_grasp_jv is None:
+                continue
+            planned_grasp_in_object = pu.split_7d(self.grasps_eef[idx])
+            planned_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_grasp_in_object)
+            planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False)
+            if planned_grasp_jv is None:
+                continue
 
-        # TODO this part can be done before grasps are added to database
-        # grasps_in_world_ee = [gu.pose_2_list(gu.change_end_effector_link(gu.list_2_pose(g), gu.link6_reference_to_ee)) for g in grasps_in_world]
-        grasps_in_world_ee = [gu.change_end_effector_link_pose_2d(g) for g in grasps_in_world]
-        planned_grasp = grasps_in_world_ee[grasp_order_idxs[0]]
-        planned_joint_values = self.robot.get_arm_ik(planned_grasp)
         # gu.visualize_grasps_with_reachability(grasps_in_world_ee, sdf_values)
         # gu.visualize_grasp_with_reachability(planned_grasp, sdf_values[grasp_order_idxs[0]], maximum=max(sdf_values), minimum=min(sdf_values))
         planning_time = time.time() - start_time
         print("Planning a grasp takes {:.6f}".format(planning_time))
-        return planning_time, planned_grasp, planned_joint_values
+        return planning_time, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
 
     def plan_motion(self, grasp_jv):
         predicted_period = 0.2
@@ -192,7 +219,8 @@ class DynamicGraspingWorld:
         x, y = np.random.uniform([-self.distance_high, -self.distance_high], [self.distance_high, self.distance_high])
         distance = np.linalg.norm(np.array([x, y]) - np.array(self.robot_initial_pose[0][:2]))
         while not self.distance_low <= distance <= self.distance_high:
-            x, y = np.random.uniform([-self.distance_high, -self.distance_high], [self.distance_high, self.distance_high])
+            x, y = np.random.uniform([-self.distance_high, -self.distance_high],
+                                     [self.distance_high, self.distance_high])
             distance = np.linalg.norm(np.array([x, y]) - np.array(self.robot_initial_pose[0][:2]))
         z = self.target_initial_pose[0][2]
         angle = np.random.uniform(-pi, pi)

@@ -383,8 +383,8 @@ class MicoController:
         # remove the first redundant point
         plan.joint_trajectory.points = plan.joint_trajectory.points[1:]
         # speed up the trajectory
-        for p in plan.joint_trajectory.points:
-            p.time_from_start = rospy.Duration.from_sec(p.time_from_start.to_sec() / 1.5)
+        # for p in plan.joint_trajectory.points:
+        #     p.time_from_start = rospy.Duration.from_sec(p.time_from_start.to_sec() / 1.5)
         return plan, fraction
 
     def violate_limits(self, joint_values):
@@ -425,7 +425,7 @@ class MicoController:
 
     def plan_cartesian_control(self, x=0.0, y=0.0, z=0.0, frame="world"):
         """
-        Only for small motion, do not check fraction
+        Only for small motion, do not check friction
         :param frame: "eef" or "world"
         """
         if frame == "eef":
