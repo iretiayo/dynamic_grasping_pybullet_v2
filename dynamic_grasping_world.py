@@ -47,7 +47,8 @@ class DynamicGraspingWorld:
         self.distance_high = 0.4
 
         self.grasp_database_path = grasp_database_path
-        self.grasp_database = np.load(os.path.join(self.grasp_database_path, self.target_name + '.npy'))
+        # TODO
+        self.grasp_database = np.load(os.path.join(self.grasp_database_path, self.target_name, 'grasps_link6_ref.npy'))
         self.reachability_data_dir = reachability_data_dir
         self.sdf_reachability_space, self.mins, self.step_size, self.dims = gu.get_reachability_space(
             self.reachability_data_dir)
