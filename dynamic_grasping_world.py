@@ -198,6 +198,8 @@ class DynamicGraspingWorld:
             planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False)
             if planned_grasp_jv is None:
                 continue
+            break
+
 
         # gu.visualize_grasps_with_reachability(grasps_in_world_ee, sdf_values)
         # gu.visualize_grasp_with_reachability(planned_grasp, sdf_values[grasp_order_idxs[0]], maximum=max(sdf_values), minimum=min(sdf_values))
