@@ -23,6 +23,8 @@ from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
 from std_msgs.msg import Header
 from collections import namedtuple
 
+np.set_printoptions(suppress=True)
+
 Motion = namedtuple('Motion', ['position_trajectory', 'time_trajectory', 'velocity_trajectory'])
 
 
@@ -70,6 +72,9 @@ class MicoController:
     EEF_LINK = "m1n6s200_end_effector"
     BASE_LINK = "root"
 
+    # this is read from moveit_configs joint_limits.yaml
+    MOVEIT_ARM_MAX_VELOCITY = [0.35, 0.35, 0.35, 0.35, 0.35, 0.35]
+
     def __init__(self,
                  initial_pose,
                  initial_joint_values,
@@ -95,6 +100,7 @@ class MicoController:
         self.arm_ik_svr = rospy.ServiceProxy('compute_ik', GetPositionIK)
         self.arm_fk_svr = rospy.ServiceProxy('compute_fk', GetPositionFK)
 
+        self.arm_difference_fn = pu.get_difference_fn(self.id, self.GROUP_INDEX['arm'])
         self.reset()
 
     def set_arm_joints(self, joint_values):
@@ -138,15 +144,15 @@ class MicoController:
     def get_eef_pose(self):
         return pu.get_link_pose(self.id, self.EEF_LINK_INDEX)
 
-    def get_arm_ik(self, pose_2d, timeout=0.01, avoid_collisions=True):
-        gripper_joint_values = self.get_gripper_joint_values()
-        arm_joint_values = self.get_arm_joint_values()
+    def get_arm_ik(self, pose_2d, timeout=0.1, avoid_collisions=True, arm_joint_values=None,
+                   gripper_joint_values=None):
+        gripper_joint_values = self.get_gripper_joint_values() if gripper_joint_values is None else gripper_joint_values
+        arm_joint_values = self.get_arm_joint_values() if arm_joint_values is None else arm_joint_values
         j = self.get_arm_ik_ros(pose_2d, timeout, avoid_collisions, arm_joint_values, gripper_joint_values)
         if j is None:
             # print("No ik exists!")
             return None
         else:
-            # return MicoMoveit.convert_range(j)
             return j
 
     def get_arm_fk(self, arm_joint_values):
@@ -226,10 +232,8 @@ class MicoController:
         circular_idx = [0, 3, 4, 5]
         new_joint_values = []
         for i, v in enumerate(joint_values):
-            if v > np.pi and i in circular_idx:
-                new_joint_values.append(v - 2 * np.pi)
-            elif v < -np.pi and i in circular_idx:
-                new_joint_values.append(v + 2 * np.pi)
+            if i in circular_idx:
+                new_joint_values.append(pu.wrap_angle(v))
             else:
                 new_joint_values.append(v)
         return new_joint_values
@@ -238,7 +242,7 @@ class MicoController:
     def process_plan(moveit_plan, start_joint_values):
         """
         convert position trajectory to work with current joint values
-        :param plan: MoveIt plan
+        :param moveit_plan: MoveIt plan
         :return plan: Motion
         """
         diff = np.array(start_joint_values) - np.array(moveit_plan.joint_trajectory.points[0].positions)
@@ -246,6 +250,19 @@ class MicoController:
             p.positions = (np.array(p.positions) + diff).tolist()
         plan = MicoController.extract_plan(moveit_plan)
         return plan
+
+    @staticmethod
+    def process_discretized_plan(discretized_plan, start_joint_values):
+        """
+        convert position trajectory to work with current joint values
+        :param plan: MoveIt plan
+        :return plan: Motion
+        """
+        diff = np.array(start_joint_values) - np.array(discretized_plan[0])
+        new_discretized_plan = []
+        for wp in discretized_plan:
+            new_discretized_plan.append((np.array(wp) + diff).tolist())
+        return new_discretized_plan
 
     @staticmethod
     def extract_plan(moveit_plan):
@@ -414,13 +431,24 @@ class MicoController:
     def get_attached_object_names(self):
         return self.scene.get_attached_objects().keys()
 
-    def execute_plan(self, plan, realtime=False):
-        self.update_motion_plan(plan)
-        for wp in self.discretized_plan:
-            self.control_arm_joints(wp)
-            p.stepSimulation()
-            if realtime:
-                time.sleep(1. / 240.)
+    def execute_plan(self, plan, realtime=False, discretized=False):
+        """
+
+        :param plan: Motion
+        """
+        if not discretized:
+            self.update_motion_plan(plan)
+            for wp in self.discretized_plan:
+                self.control_arm_joints(wp)
+                p.stepSimulation()
+                if realtime:
+                    time.sleep(1. / 240.)
+        else:
+            for wp in plan:
+                self.control_arm_joints(wp)
+                p.stepSimulation()
+                if realtime:
+                    time.sleep(1. / 240.)
         pu.step(2)
 
     def plan_cartesian_control(self, x=0.0, y=0.0, z=0.0, frame="world"):
@@ -445,3 +473,32 @@ class MicoController:
                                                  ee_step=0.01,
                                                  avoid_collisions=False)
         return plan, fraction
+
+    def plan_arm_joint_values_simple(self, goal_joint_values, start_joint_values=None):
+        """ Linear interpolation """
+        start_joint_values = self.get_arm_joint_values() if start_joint_values is None else start_joint_values
+
+        diffs = self.arm_difference_fn(goal_joint_values, start_joint_values)
+        steps = np.abs(np.divide(diffs, self.MOVEIT_ARM_MAX_VELOCITY)) * 240
+        num_steps = int(max(steps))
+        waypoints = MicoController.refine_path(start_joint_values, diffs, num_steps)
+        print(self.adapt_conf(goal_joint_values, waypoints[-1]))
+        return waypoints
+
+    @staticmethod
+    def refine_path(start_joint_values, diffs, num_steps):
+        waypoints = [start_joint_values]
+        num_steps = num_steps
+        for i in range(num_steps):
+            waypoints.append(list(((float(i) + 1.0) / float(num_steps)) * np.array(diffs) + start_joint_values))
+        return waypoints
+
+    def adapt_conf(self, conf2, conf1):
+        """ adapt configuration 2 to configuration 1"""
+        diff = self.arm_difference_fn(conf2, conf1)
+        adapted_conf2 = np.array(conf1) + np.array(diff)
+        return adapted_conf2.tolist()
+
+    def equal_conf(self, conf1, conf2, tol=0):
+        adapted_conf2 = self.adapt_conf(conf2, conf1)
+        return np.allclose(conf1, adapted_conf2, atol=tol)

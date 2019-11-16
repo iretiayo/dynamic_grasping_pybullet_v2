@@ -48,7 +48,7 @@ def get_args():
     # args.result_dir = os.path.join(args.result_dir, args.runstr)
     if not os.path.exists(args.result_dir):
         os.makedirs(args.result_dir)
-    args.result_file_path = os.path.join(args.result_dir, args.object_name+'.csv')
+    args.result_file_path = os.path.join(args.result_dir, args.object_name + '.csv')
     return args
 
 
@@ -76,12 +76,27 @@ def create_object_urdf(object_mesh_filepath, object_name,
     return urdf_target_object_filepath
 
 
-def write_csv_line(result_file_path, index, success, grasp_attempted, grasp_planning_time, ik_called, target_position, target_orientation, distance, comment):
-    result = [('index', index),
+def write_csv_line(result_file_path,
+                   exp_idx,
+                   grasp_idx,
+                   success,
+                   grasp_attempted,
+                   pre_grasp_reached,
+                   grasp_reachaed,
+                   grasp_planning_time,
+                   num_ik_called,
+                   target_position,
+                   target_orientation,
+                   distance,
+                   comment):
+    result = [('exp_idx', exp_idx),
+              ('grasp_idx', grasp_idx),
               ('success', success),
               ('grasp_attempted', grasp_attempted),
+              ('pre_grasp_reached', pre_grasp_reached),
+              ('grasp_reachaed', grasp_reachaed),
               ('grasp_planning_time', grasp_planning_time),
-              ('ik_called', ik_called),
+              ('num_ik_called', num_ik_called),
               ('target_position', target_position),
               ('target_orientation', target_orientation),
               ('distance', distance),
@@ -135,15 +150,18 @@ if __name__ == "__main__":
 
     for i in range(args.num_trials):
         target_pose, distance = dynamic_grasping_world.reset(random=True)
-        success, grasp_attempted, grasp_planning_time, ik_called, comment = dynamic_grasping_world.static_grasp()
+        success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, comment = \
+            dynamic_grasping_world.static_grasp()
         write_csv_line(result_file_path=args.result_file_path,
-                       index=i,
+                       exp_idx=i,
+                       grasp_idx=grasp_idx,
                        success=success,
                        grasp_attempted=grasp_attempted,
+                       pre_grasp_reached=pre_grasp_reached,
+                       grasp_reachaed=grasp_reachaed,
                        grasp_planning_time=grasp_planning_time,
-                       ik_called=ik_called,
+                       num_ik_called=num_ik_called,
                        target_position=target_pose[0],
                        target_orientation=target_pose[1],
                        distance=distance,
                        comment=comment)
-

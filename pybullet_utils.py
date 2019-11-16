@@ -144,7 +144,7 @@ def get_joint_torque(body, joint):
 
 
 def get_joint_positions(body, joints=None):
-    return tuple(get_joint_position(body, joint) for joint in joints)
+    return list(get_joint_position(body, joint) for joint in joints)
 
 
 def set_joint_position(body, joint, value):
@@ -190,8 +190,7 @@ def is_circular(body, joint):
     joint_info = get_joint_info(body, joint)
     if joint_info.jointType == p.JOINT_FIXED:
         return False
-    if joint_info.jointUpperLimit < joint_info.jointLowerLimit:
-        raise ValueError("circular joint, check it out!")
+    return joint_info.jointUpperLimit < joint_info.jointLowerLimit
 
 
 def get_joint_limits(body, joint):
@@ -271,10 +270,39 @@ def wrap_angle(theta):
     return (theta + np.pi) % (2 * np.pi) - np.pi
 
 
+def circular_difference(theta2, theta1):
+    return wrap_angle(theta2 - theta1)
+
+
 def wrap_joint(body, joint, value):
     if is_circular(body, joint):
         return wrap_angle(value)
     return value
+
+
+def get_difference_fn(body, joints):
+    def fn(q2, q1):
+        difference = []
+        for joint, value2, value1 in zip(joints, q2, q1):
+            difference.append(circular_difference(value2, value1)
+                              if is_circular(body, joint) else (value2 - value1))
+        return list(difference)
+
+    return fn
+
+
+def get_refine_fn(body, joints, num_steps=0):
+    difference_fn = get_difference_fn(body, joints)
+    num_steps = num_steps + 1
+
+    def fn(q1, q2):
+        q = q1
+        for i in range(num_steps):
+            q = tuple((1. / (num_steps - i)) * np.array(difference_fn(q2, q)) + q)
+            yield q
+            # TODO: should wrap these joints
+
+    return fn
 
 
 # Body and base
@@ -789,3 +817,4 @@ def remove_markers(marker_ids):
 
 def remove_all_markers():
     p.removeAllUserDebugItems()
+
