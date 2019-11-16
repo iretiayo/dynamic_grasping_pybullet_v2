@@ -231,6 +231,7 @@ class DynamicGraspingWorld:
             planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False, arm_joint_values=planned_pre_grasp_jv)
             if planned_grasp_jv is None:
                 continue
+            num_ik_called += 1
             break
 
         # gu.visualize_grasps_with_reachability(grasps_in_world_ee, sdf_values)

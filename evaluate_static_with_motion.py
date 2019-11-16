@@ -33,6 +33,8 @@ def evaluate_results(df):
     stats['num_attempted'] = len(df_attempted)
     stats['raw_success_rate'] = stats['num_successes'] / stats['num_trials']
     stats['attemped_success_rate'] = stats['num_successes'] / stats['num_attempted']
+    stats['grasp_panning_time'] = df.mean().grasp_planning_time
+    stats['num_ik_called'] = df.mean().num_ik_called
     return stats
 
 
@@ -40,13 +42,16 @@ if __name__ == '__main__':
     args = get_args()
 
     csv_names = os.listdir(args.result_dir)
+    stat_list = []
     for n in csv_names:
         result_file_path = os.path.join(args.result_dir, n)
         df = pd.read_csv(result_file_path, index_col=0)
         stats = evaluate_results(df)
+        stat_list.append(stats)
 
         print('')
         print(n)
         print("Statistics:")
         pp = pprint.PrettyPrinter(indent=4)
         pp.pprint(stats)
+
