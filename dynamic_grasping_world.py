@@ -133,6 +133,7 @@ class DynamicGraspingWorld:
         grasp_attempted = False  # pre_grasp and grasp is reachable and motion is found
         pre_grasp_reached = False
         grasp_reachaed = False
+        comment = " "
 
         # planning grasp
         grasp_idx, grasp_planning_time, num_ik_called, pre_grasp, pre_grasp_jv, grasp, grasp_jv = self.plan_grasp(predicted_pose, None, None, None)
@@ -167,10 +168,11 @@ class DynamicGraspingWorld:
         # close and lift
         self.robot.close_gripper(self.realtime)
         plan, fraction = self.robot.plan_cartesian_control(z=0.07)
-        print(fraction)
+        if fraction != 1.0:
+            comment = "lift fration {} is not 1.0".format(fraction)
         self.robot.execute_plan(plan, self.realtime)
         success = self.check_success()
-        return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, " "
+        return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, comment
 
     def check_success(self):
         if pu.get_body_pose(self.target)[0][2] >= self.target_initial_pose[0][2] + 0.03:

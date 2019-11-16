@@ -150,6 +150,7 @@ if __name__ == "__main__":
 
     for i in range(args.num_trials):
         target_pose, distance = dynamic_grasping_world.reset(random=True)
+        time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, comment = \
             dynamic_grasping_world.static_grasp()
         write_csv_line(result_file_path=args.result_file_path,
