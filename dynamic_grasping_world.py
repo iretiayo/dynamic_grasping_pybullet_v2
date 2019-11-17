@@ -28,7 +28,8 @@ class DynamicGraspingWorld:
                  reachability_data_dir,
                  realtime,
                  max_check,
-                 disable_reachability):
+                 disable_reachability,
+                 back_off):
         self.target_name = target_name
         self.target_initial_pose = target_initial_pose
         self.robot_initial_pose = robot_initial_pose
@@ -42,6 +43,7 @@ class DynamicGraspingWorld:
         self.target_mesh_file_path = target_mesh_file_path
         self.realtime = realtime
         self.max_check = max_check
+        self.back_off = back_off
         self.disable_reachability = disable_reachability
 
         self.x_low = -0.4
@@ -58,9 +60,9 @@ class DynamicGraspingWorld:
         self.grasps_link6_com = np.load(
             os.path.join(self.grasp_database_path, self.target_name, 'grasps_link6_com.npy'))
         self.pre_grasps_eef = np.load(
-            os.path.join(self.grasp_database_path, self.target_name, 'pre_grasps_eef_0.05.npy'))
+            os.path.join(self.grasp_database_path, self.target_name, 'pre_grasps_eef_'+str(self.back_off)+'.npy'))
         self.pre_grasps_link6_ref = np.load(
-            os.path.join(self.grasp_database_path, self.target_name, 'pre_grasps_link6_ref_0.05.npy'))
+            os.path.join(self.grasp_database_path, self.target_name, 'pre_grasps_link6_ref_'+str(self.back_off)+'.npy'))
 
         self.reachability_data_dir = reachability_data_dir
         self.sdf_reachability_space, self.mins, self.step_size, self.dims = gu.get_reachability_space(

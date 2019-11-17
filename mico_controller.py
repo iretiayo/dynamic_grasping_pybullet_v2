@@ -159,6 +159,9 @@ class MicoController:
         pose = self.get_arm_fk_ros(arm_joint_values)
         return gu.pose_2_list(pose) if pose is not None else None
 
+    def get_arm_fk_pybullet(self, joint_values):
+        return pu.forward_kinematics(self.id, self.GROUP_INDEX['arm'], joint_values, self.EEF_LINK_INDEX)
+
     def get_arm_ik_ros(self, pose_2d, timeout, avoid_collisions, arm_joint_values, gripper_joint_values):
         """
         Compute arm IK.

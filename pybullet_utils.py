@@ -463,6 +463,15 @@ def control_joints(body, joints, positions):
                                        forces=[get_max_force(body, joint) for joint in joints])
 
 
+def forward_kinematics(body, joints, positions, eef_link=None):
+    eef_link = get_num_joints(body) - 1 if eef_link is None else eef_link
+    old_positions = get_joint_positions(body, joints)
+    set_joint_positions(body, joints, positions)
+    eef_pose = get_link_pose(body, eef_link)
+    set_joint_positions(body, joints, old_positions)
+    return eef_pose
+
+
 def inverse_kinematics(body, eef_link, position, orientation=None):
     if orientation is None:
         jv = p.calculateInverseKinematics(bodyUniqueId=body,

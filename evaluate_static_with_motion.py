@@ -38,6 +38,35 @@ def evaluate_results(df):
     return stats
 
 
+def get_overall_stats(stat_list):
+    overall_stats = {}
+
+    num_successes_list = []
+    num_trials_list = []
+    num_attempted_list = []
+    raw_success_rate_list = []
+    attemped_success_rate_list = []
+    grasp_planning_time_list = []
+    num_ik_called_list = []
+    for stats in stat_list:
+        num_successes_list.append(stats['num_successes'])
+        num_trials_list.append(stats['num_trials'])
+        num_attempted_list.append(stats['num_attempted'])
+        raw_success_rate_list.append(stats['raw_success_rate'])
+        attemped_success_rate_list.append(stats['attemped_success_rate'])
+        grasp_planning_time_list.append(stats['grasp_panning_time'])
+        num_ik_called_list.append(stats['num_ik_called'])
+
+    overall_stats['num_successes'] = sum(num_successes_list)
+    overall_stats['num_trials'] = sum(num_trials_list)
+    overall_stats['num_attempted'] = sum(num_attempted_list)
+    overall_stats['raw_success_rate'] = overall_stats['num_successes'] / overall_stats['num_trials']
+    overall_stats['attemped_success_rate'] = overall_stats['num_successes'] / overall_stats['num_attempted']
+    overall_stats['grasp_panning_time'] = np.average(grasp_planning_time_list)
+    overall_stats['num_ik_called'] = np.average(num_ik_called_list)
+    return overall_stats
+
+
 if __name__ == '__main__':
     args = get_args()
 
@@ -54,4 +83,11 @@ if __name__ == '__main__':
         print("Statistics:")
         pp = pprint.PrettyPrinter(indent=4)
         pp.pprint(stats)
+
+    overall_stats = get_overall_stats(stat_list)
+    print('')
+    print('Summary')
+    print("Statistics:")
+    pp = pprint.PrettyPrinter(indent=4)
+    pp.pprint(overall_stats)
 

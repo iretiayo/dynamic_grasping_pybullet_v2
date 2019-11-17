@@ -32,6 +32,7 @@ def get_args():
     parser.add_argument('--num_trials', type=int, required=True)
     parser.add_argument('--result_dir', type=str, required=True)
     parser.add_argument('--max_check', type=int, default=1)
+    parser.add_argument('--back_off', type=float, default=0.05)
     parser.add_argument('--disable_reachability', action='store_true', default=False)
     args = parser.parse_args()
 
@@ -146,7 +147,8 @@ if __name__ == "__main__":
                                                   reachability_data_dir=args.reachability_data_dir,
                                                   realtime=args.realtime,
                                                   max_check=args.max_check,
-                                                  disable_reachability=args.disable_reachability)
+                                                  disable_reachability=args.disable_reachability,
+                                                  back_off=args.back_off)
 
     for i in range(args.num_trials):
         target_pose, distance = dynamic_grasping_world.reset(random=True)
