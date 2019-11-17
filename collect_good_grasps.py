@@ -120,6 +120,17 @@ class Controller:
         self.reset_to(grasp)
         self.close_gripper()
         self.lift()
+        pu.step(2)
+
+    def execute_grasp_link6_com_with_pre_grasp(self, grasp, pre_grasp):
+        """ High level grasp interface using grasp 2d in world frame (link6_com_frame)"""
+        self.reset_to(pre_grasp)
+        self.move_to(grasp)
+        self.close_gripper()
+        self.lift()
+        self.lift(0.2)
+        self.lift(-0.2)
+        pu.step(2)
 
     def open_gripper(self):
         pu.set_joint_positions(self.robot_id, self.GRIPPER_INDICES, self.OPEN_POSITION)

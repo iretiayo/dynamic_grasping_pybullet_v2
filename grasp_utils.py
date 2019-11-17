@@ -458,3 +458,13 @@ def get_reachability_space(reachability_data_dir):
     _, mins, step_size, dims, sdf_reachability_space = load_reachability_data_from_dir(reachability_data_dir)
     rospy.loginfo("sdf reachability space created, which takes {}".format(time.time() - start_time))
     return sdf_reachability_space, mins, step_size, dims
+
+
+def load_grasp_database(grasp_database_path, object_name, back_off):
+    grasps_eef = np.load(os.path.join(grasp_database_path, object_name, 'grasps_eef.npy'))
+    grasps_link6_com = np.load(os.path.join(grasp_database_path, object_name, 'grasps_link6_com.npy'))
+    grasps_link6_ref = np.load(os.path.join(grasp_database_path, object_name, 'grasps_link6_ref.npy'))
+    pre_grasps_eef = np.load(os.path.join(grasp_database_path, object_name, 'pre_grasps_eef_'+str(back_off)+'.npy'))
+    pre_grasps_link6_com = np.load(os.path.join(grasp_database_path, object_name, 'pre_grasps_link6_com_'+str(back_off)+'.npy'))
+    pre_grasps_link6_ref = np.load(os.path.join(grasp_database_path, object_name, 'pre_grasps_link6_ref_'+str(back_off)+'.npy'))
+    return grasps_eef, grasps_link6_ref, grasps_link6_com, pre_grasps_eef, pre_grasps_link6_ref, pre_grasps_link6_com

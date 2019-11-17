@@ -19,6 +19,7 @@ def get_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--grasp_database', type=str, required=True)
+    parser.add_argument('--back_off', type=float, default=0.05)
     args = parser.parse_args()
 
     args.mesh_dir = os.path.abspath('assets/models')
@@ -52,17 +53,18 @@ if __name__ == "__main__":
         ee_to_link6_reference = ([0.0, -3.3091697137634315e-14, -0.16], [-1.0, 0.0, 0.0, -1.0341155355510722e-13])
 
         successes = []
-        grasps_eef = np.load(os.path.join(args.grasp_database, object_name, 'grasps_eef.npy'))
-        grasps_link6_com = np.load(os.path.join(args.grasp_database, object_name, 'grasps_link6_com.npy'))
-        grasps_link6_ref = np.load(os.path.join(args.grasp_database, object_name, 'grasps_link6_ref.npy'))
+        grasps_eef, grasps_link6_ref, grasps_link6_com, pre_grasps_eef, pre_grasps_link6_ref, pre_grasps_link6_com = \
+            gu.load_grasp_database(args.grasp_database, object_name, args.back_off)
         bar = tqdm.tqdm(total=len(grasps_eef))
-        for grasp_link6_com_in_object in grasps_link6_com:
+        for grasp_link6_com_in_object, pre_grasp_link6_com_in_object in zip(grasps_link6_com, pre_grasps_link6_com):
             world.reset()
             object_pose = p.getBasePositionAndOrientation(world.target)
             success_height_threshold = object_pose[0][2] + world.controller.LIFT_VALUE - 0.05
             grasp_link6_com_in_object = pu.split_7d(grasp_link6_com_in_object)
             grasp_link6_com_in_world = gu.convert_grasp_in_object_to_world(object_pose, grasp_link6_com_in_object)
-            world.controller.execute_grasp_link6_com(grasp_link6_com_in_world)
+            pre_grasp_link6_com_in_object = pu.split_7d(pre_grasp_link6_com_in_object)
+            pre_grasp_link6_com_in_world = gu.convert_grasp_in_object_to_world(object_pose, pre_grasp_link6_com_in_object)
+            world.controller.execute_grasp_link6_com_with_pre_grasp(grasp_link6_com_in_world, pre_grasp_link6_com_in_world)
             success = p.getBasePositionAndOrientation(world.target)[0][2] > success_height_threshold
             successes.append(success)
             bar.update(1)
