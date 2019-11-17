@@ -27,6 +27,7 @@ def get_args():
     parser.add_argument('--num_trials', type=int, default=10)
     parser.add_argument('--disable_gui', action='store_true', default=False)
     parser.add_argument('--min_success_rate', type=float, default=1)
+    parser.add_argument('--back_off', type=float, default=0.05)
     args = parser.parse_args()
 
     args.mesh_dir = os.path.abspath('assets/models')
@@ -93,16 +94,26 @@ class Controller:
             p.stepSimulation()
         pu.step()
 
-    def execute_grasp(self, grasp):
+    def execute_grasp(self, grasp, back_off):
         """ High level grasp interface using grasp 2d in world frame (link6_reference_frame)"""
         link6_com_pose_2d = gu.change_end_effector_link_pose_2d(grasp, gu.link6_reference_to_link6_com)
-        self.reset_to(link6_com_pose_2d)
+        pre_link6_com_pose_2d = gu.back_off_pose_2d(link6_com_pose_2d, back_off)
+        self.reset_to(pre_link6_com_pose_2d)
+        actual_pre_ee_pose_2d = pu.get_link_pose(self.robot_id, 0)
+        actual_pre_link6_ref_pose_2d = gu.change_end_effector_link_pose_2d(actual_pre_ee_pose_2d, gu.ee_to_link6_reference)
+        actual_pre_link6_com_pose_2d = pre_link6_com_pose_2d
+
+        self.move_to(link6_com_pose_2d)
         actual_ee_pose_2d = pu.get_link_pose(self.robot_id, 0)
         actual_link6_ref_pose_2d = gu.change_end_effector_link_pose_2d(actual_ee_pose_2d, gu.ee_to_link6_reference)
         actual_link6_com_pose_2d = link6_com_pose_2d
         self.close_gripper()
         self.lift()
-        return actual_ee_pose_2d, actual_link6_ref_pose_2d, actual_link6_com_pose_2d
+        # robust test
+        self.lift(0.2)
+        self.lift(-0.2)
+        pu.step(2)
+        return actual_pre_ee_pose_2d, actual_pre_link6_ref_pose_2d, actual_pre_link6_com_pose_2d, actual_ee_pose_2d, actual_link6_ref_pose_2d, actual_link6_com_pose_2d
 
     def execute_grasp_link6_com(self, grasp):
         """ High level grasp interface using grasp 2d in world frame (link6_com_frame)"""
@@ -175,6 +186,9 @@ if __name__ == "__main__":
     grasps_eef = []
     grasps_link6_com = []
     grasps_link6_ref = []
+    pre_grasps_eef = []
+    pre_grasps_link6_com = []
+    pre_grasps_link6_ref = []
 
     num_grasps = 0
     num_successful_grasps = 0
@@ -190,7 +204,8 @@ if __name__ == "__main__":
             g_link6_ref_in_world = gu.convert_grasp_in_object_to_world(object_pose, g_link6_ref_in_object)
             # pu.create_frame_marker(g_link6_ref_in_world)    # for visualization
             for t in range(args.num_trials):  # test a single grasp
-                actual_ee_pose_2d, actual_link6_ref_pose_2d, actual_link6_com_pose_2d = world.controller.execute_grasp(g_link6_ref_in_world)
+                actual_pre_ee_pose_2d, actual_pre_link6_ref_pose_2d, actual_pre_link6_com_pose_2d, actual_ee_pose_2d, actual_link6_ref_pose_2d, actual_link6_com_pose_2d\
+                    = world.controller.execute_grasp(g_link6_ref_in_world, args.back_off)
                 success = p.getBasePositionAndOrientation(world.target)[0][2] > success_height_threshold
                 successes.append(success)
                 # print(success)    # the place to put a break point
@@ -199,12 +214,20 @@ if __name__ == "__main__":
             num_successful_trials = np.count_nonzero(successes)
             if success_rate >= args.min_success_rate:
                 num_successful_grasps += 1
+
                 grasp_eef_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_ee_pose_2d)
                 grasp_link6_com_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_link6_com_pose_2d)
-                grasps_link6_ref_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_link6_ref_pose_2d)
+                grasp_link6_ref_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_link6_ref_pose_2d)
+                pre_grasp_eef_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_pre_ee_pose_2d)
+                pre_grasp_link6_com_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_pre_link6_com_pose_2d)
+                pre_grasp_link6_ref_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_pre_link6_ref_pose_2d)
+
                 grasps_eef.append(pu.merge_pose_2d(grasp_eef_in_object))
                 grasps_link6_com.append(pu.merge_pose_2d(grasp_link6_com_in_object))
-                grasps_link6_ref.append(pu.merge_pose_2d(grasps_link6_ref_in_object))
+                grasps_link6_ref.append(pu.merge_pose_2d(grasp_link6_ref_in_object))
+                pre_grasps_eef.append(pu.merge_pose_2d(pre_grasp_eef_in_object))
+                pre_grasps_link6_com.append(pu.merge_pose_2d(pre_grasp_link6_com_in_object))
+                pre_grasps_link6_ref.append(pu.merge_pose_2d(pre_grasp_link6_ref_in_object))
 
             num_grasps += 1
             progressbar.update(1)
@@ -217,4 +240,7 @@ if __name__ == "__main__":
     np.save(os.path.join(args.save_folder_path, 'grasps_eef.npy'), np.array(grasps_eef))
     np.save(os.path.join(args.save_folder_path, 'grasps_link6_com.npy'), np.array(grasps_link6_com))
     np.save(os.path.join(args.save_folder_path, 'grasps_link6_ref.npy'), np.array(grasps_link6_ref))
+    np.save(os.path.join(args.save_folder_path, 'pre_grasps_eef_'+str(args.back_off)+'.npy'), np.array(pre_grasps_eef))
+    np.save(os.path.join(args.save_folder_path, 'pre_grasps_link6_com_'+str(args.back_off)+'.npy'), np.array(pre_grasps_link6_com))
+    np.save(os.path.join(args.save_folder_path, 'pre_grasps_link6_ref_'+str(args.back_off)+'.npy'), np.array(pre_grasps_link6_ref))
     print("finished")
