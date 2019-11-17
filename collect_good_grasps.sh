@@ -6,6 +6,6 @@ do
     --object_name $object_name \
     --load_folder_path assets/grasps/raw_grasps \
     --save_folder_path assets/grasps/filtered_grasps \
-    --back_off 0.05 \
+    --back_off 0.05; \
     sleep 5
 done
