@@ -60,9 +60,10 @@ class DynamicGraspingWorld:
         self.grasps_link6_com = np.load(
             os.path.join(self.grasp_database_path, self.target_name, 'grasps_link6_com.npy'))
         self.pre_grasps_eef = np.load(
-            os.path.join(self.grasp_database_path, self.target_name, 'pre_grasps_eef_'+str(self.back_off)+'.npy'))
+            os.path.join(self.grasp_database_path, self.target_name, 'pre_grasps_eef_' + str(self.back_off) + '.npy'))
         self.pre_grasps_link6_ref = np.load(
-            os.path.join(self.grasp_database_path, self.target_name, 'pre_grasps_link6_ref_'+str(self.back_off)+'.npy'))
+            os.path.join(self.grasp_database_path, self.target_name,
+                         'pre_grasps_link6_ref_' + str(self.back_off) + '.npy'))
 
         self.reachability_data_dir = reachability_data_dir
         self.sdf_reachability_space, self.mins, self.step_size, self.dims = gu.get_reachability_space(
@@ -138,7 +139,8 @@ class DynamicGraspingWorld:
         comment = " "
 
         # planning grasp
-        grasp_idx, grasp_planning_time, num_ik_called, pre_grasp, pre_grasp_jv, grasp, grasp_jv = self.plan_grasp(predicted_pose, None, None, None)
+        grasp_idx, grasp_planning_time, num_ik_called, pre_grasp, pre_grasp_jv, grasp, grasp_jv = self.plan_grasp(
+            predicted_pose, None, None, None)
         if grasp_jv is None or pre_grasp_jv is None:
             return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "most reachable grasp is not reachable"
 
@@ -174,6 +176,7 @@ class DynamicGraspingWorld:
             comment = "lift fration {} is not 1.0".format(fraction)
         self.robot.execute_plan(plan, self.realtime)
         success = self.check_success()
+        pu.remove_all_markers()
         return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, comment
 
     def check_success(self):
@@ -230,14 +233,18 @@ class DynamicGraspingWorld:
                 continue
             planned_grasp_in_object = pu.split_7d(self.grasps_eef[grasp_idx])
             planned_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_grasp_in_object)
-            planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False, arm_joint_values=planned_pre_grasp_jv)
+            planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False,
+                                                     arm_joint_values=planned_pre_grasp_jv)
             if planned_grasp_jv is None:
                 continue
             num_ik_called += 1
             break
 
-        # gu.visualize_grasps_with_reachability(grasps_in_world_ee, sdf_values)
-        # gu.visualize_grasp_with_reachability(planned_grasp, sdf_values[grasp_order_idxs[0]], maximum=max(sdf_values), minimum=min(sdf_values))
+        # grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+        #                        self.grasps_eef]
+        # gu.visualize_grasps_with_reachability(grasps_eef_in_world, sdf_values)
+        # gu.visualize_grasp_with_reachability(planned_grasp, sdf_values[grasp_order_idxs[0]],
+        #                                      maximum=max(sdf_values), minimum=min(sdf_values))
         planning_time = time.time() - start_time
         print("Planning a grasp takes {:.6f}".format(planning_time))
         return grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
