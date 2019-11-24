@@ -298,6 +298,7 @@ class MicoController:
             p.stepSimulation()
             if realtime:
                 time.sleep(1. / 240.)
+        pu.step(2)
 
     def open_gripper(self, realtime=False):
         num_steps = 240

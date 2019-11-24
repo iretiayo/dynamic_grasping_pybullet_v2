@@ -102,6 +102,7 @@ class DynamicGraspingWorld:
     def reset(self, random=False):
         target_pose, distance = self.sample_target_location() if random else (
             self.target_initial_pose, self.initial_distance)
+        # target_pose, distance = [[0.16858876211602258, -0.15793107046452778, 0.132056], [0.0, 0.0, -0.1212393237380722, 0.9926233053779943]], 0.23100734561888828
         conveyor_pose = [[target_pose[0][0], target_pose[0][1], 0.01],
                          [0, 0, 0, 1]] if target_pose is not None else self.conveyor_initial_pose
         p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
