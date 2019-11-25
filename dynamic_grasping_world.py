@@ -140,7 +140,7 @@ class DynamicGraspingWorld:
             return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no reachable grasp is found"
 
         # planning motion
-        motion_planning_time, plan = self.plan_motion(pre_grasp_jv)
+        motion_planning_time, plan = self.plan_arm_motion(pre_grasp_jv)
         if plan is None:
             return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no motion found to the planned pre grasp jv"
 
@@ -158,7 +158,7 @@ class DynamicGraspingWorld:
 
         # approach
         plan = self.robot.plan_arm_joint_values_simple(grasp_jv)
-        self.robot.execute_plan(plan, self.realtime, discretized=True)
+        self.robot.execute_plan(plan, self.realtime)
         grasp_reachaed = self.robot.equal_conf(self.robot.get_arm_joint_values(), grasp_jv, tol=0.01)
         # plan, fraction = self.robot.plan_cartesian_control(z=0.05, frame='eef')
         # self.robot.execute_plan(plan, self.realtime)
@@ -267,21 +267,22 @@ class DynamicGraspingWorld:
         print("Planning a grasp takes {:.6f}".format(planning_time))
         return grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
 
-    def plan_motion(self, grasp_jv):
+    def plan_arm_motion(self, grasp_jv):
+        """ plan a discretized motion for the arm """
         predicted_period = 0.2
         start_time = time.time()
 
-        if self.robot.discretized_plan is not None:
-            future_target_index = min(int(predicted_period * 240 + self.robot.wp_target_index),
-                                      len(self.robot.discretized_plan) - 1)
-            start_joint_values = self.robot.discretized_plan[future_target_index]
-            plan = self.robot.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values)
+        if self.robot.arm_discretized_plan is not None:
+            future_target_index = min(int(predicted_period * 240 + self.robot.arm_wp_target_index),
+                                      len(self.robot.arm_discretized_plan) - 1)
+            start_joint_values = self.robot.arm_discretized_plan[future_target_index]
+            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values)
         else:
-            plan = self.robot.plan_arm_joint_values(grasp_jv)
+            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv)
         planning_time = time.time() - start_time
 
         print("Planning a motion takes {:.6f}".format(planning_time))
-        return planning_time, plan
+        return planning_time, arm_discretized_plan
 
     def sample_target_location(self):
         x, y = np.random.uniform([-self.distance_high, -self.distance_high], [self.distance_high, self.distance_high])

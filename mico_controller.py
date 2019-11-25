@@ -116,24 +116,30 @@ class MicoController:
     def step(self):
         """ step the robot for 1/240 second """
         # calculate the latest conf and control array
-        if self.motion_plan is None or self.wp_target_index == len(self.discretized_plan):
+        if self.arm_discretized_plan is None or self.arm_wp_target_index == len(self.arm_discretized_plan):
             pass
         else:
-            self.control_arm_joints(self.discretized_plan[self.wp_target_index])
-            self.wp_target_index += 1
+            self.control_arm_joints(self.arm_discretized_plan[self.arm_wp_target_index])
+
+        if self.gripper_discretized_plan is None or self.gripper_wp_target_index == len(self.gripper_discretized_plan):
+            pass
+        else:
+            self.control_gripper_joints(self.gripper_discretized_plan[self.gripper_wp_target_index])
 
     def reset(self):
         self.set_arm_joints(self.initial_joint_values)
         self.set_gripper_joints(self.OPEN_POSITION)
         self.clear_scene()
-        self.motion_plan = None
-        self.discretized_plan = None
-        self.wp_target_index = 0
+        self.arm_discretized_plan = None
+        self.gripper_discretized_plan = None
+        self.arm_wp_target_index = 0
+        self.gripper_wp_target_index = 0
 
-    def update_motion_plan(self, motion_plan):
-        self.motion_plan = motion_plan
-        self.discretized_plan = self.discretize_plan(motion_plan)
-        self.wp_target_index = 1
+    def update_motion_plan(self, arm_discretized_plan, gripper_discretized_plan):
+        self.arm_discretized_plan = arm_discretized_plan
+        self.gripper_discretized_plan = gripper_discretized_plan
+        self.arm_wp_target_index = 1
+        self.gripper_wp_target_index = 1
 
     def get_arm_joint_values(self):
         return pu.get_joint_positions(self.id, self.GROUP_INDEX['arm'])
@@ -257,8 +263,8 @@ class MicoController:
     @staticmethod
     def process_discretized_plan(discretized_plan, start_joint_values):
         """
-        convert position trajectory to work with current joint values
-        :param plan: MoveIt plan
+        convert discretized plan to work with current joint values
+        :param discretized_plan: discretized plan, list of waypoints
         :return plan: Motion
         """
         diff = np.array(start_joint_values) - np.array(discretized_plan[0])
@@ -308,6 +314,7 @@ class MicoController:
             p.stepSimulation()
             if realtime:
                 time.sleep(1. / 240.)
+        pu.step(2)
 
     def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None, maximum_planning_time=0.5):
         """
@@ -328,8 +335,9 @@ class MicoController:
         if len(moveit_plan.joint_trajectory.points) == 0:
             return None
 
-        plan = MicoController.process_plan(moveit_plan, start_joint_values)
-        return plan
+        motion_plan = MicoController.process_plan(moveit_plan, start_joint_values)
+        discretized_plan = MicoController.discretize_plan(motion_plan)
+        return discretized_plan
 
     def plan_arm_joint_values_ros(self, start_joint_values, goal_joint_values, maximum_planning_time=0.5):
         """ No matter what start and goal are, the returned plan start and goal will
@@ -348,6 +356,10 @@ class MicoController:
 
     def plan_straight_line(self, goal_eef_pose, start_joint_values=None, ee_step=0.05, jump_threshold=3.0,
                            avoid_collisions=True):
+        """
+
+        :return plan: Motion
+        """
         if start_joint_values is None:
             start_joint_values = self.get_arm_joint_values()
 
@@ -435,24 +447,16 @@ class MicoController:
     def get_attached_object_names(self):
         return self.scene.get_attached_objects().keys()
 
-    def execute_plan(self, plan, realtime=False, discretized=False):
+    def execute_plan(self, plan, realtime=False):
         """
 
-        :param plan: Motion
+        :param plan: a discretized plan, list of waypoints
         """
-        if not discretized:
-            self.update_motion_plan(plan)
-            for wp in self.discretized_plan:
-                self.control_arm_joints(wp)
-                p.stepSimulation()
-                if realtime:
-                    time.sleep(1. / 240.)
-        else:
-            for wp in plan:
-                self.control_arm_joints(wp)
-                p.stepSimulation()
-                if realtime:
-                    time.sleep(1. / 240.)
+        for wp in plan:
+            self.control_arm_joints(wp)
+            p.stepSimulation()
+            if realtime:
+                time.sleep(1. / 240.)
         pu.step(2)
 
     def plan_cartesian_control(self, x=0.0, y=0.0, z=0.0, frame="world"):
@@ -473,13 +477,14 @@ class MicoController:
             pose_2d_new[0][2] += z
         else:
             raise TypeError("not supported frame: {}".format(frame))
-        plan, fraction = self.plan_straight_line(gu.list_2_pose(pose_2d_new),
+        motion_plan, fraction = self.plan_straight_line(gu.list_2_pose(pose_2d_new),
                                                  ee_step=0.01,
                                                  avoid_collisions=False)
-        return plan, fraction
+        discretized_plan = MicoController.discretize_plan(motion_plan)
+        return discretized_plan, fraction
 
     def plan_arm_joint_values_simple(self, goal_joint_values, start_joint_values=None):
-        """ Linear interpolation """
+        """ Linear interpolation between joint_values """
         start_joint_values = self.get_arm_joint_values() if start_joint_values is None else start_joint_values
 
         diffs = self.arm_difference_fn(goal_joint_values, start_joint_values)

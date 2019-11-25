@@ -60,6 +60,7 @@ def configure_pybullet(rendering=False):
         p.connect(p.GUI_SERVER)
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+    pu.reset_camera(yaw=50.0, pitch=-35.0, dist=1.200002670288086, target=(0.0, 0.0, 0.0))
     p.setPhysicsEngineParameter(enableFileCaching=0)
     p.resetSimulation()
     p.setGravity(0, 0, -9.8)
