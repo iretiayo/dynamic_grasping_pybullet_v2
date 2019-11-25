@@ -111,17 +111,19 @@ class DynamicGraspingWorld:
         pu.step(2)
         return target_pose, distance
 
-    def step(self, freeze_time, motion_plan):
-        # calculate conveyor pose, change constraint
-        # calculate arm pose, control array
+    def step(self, freeze_time, arm_motion_plan, gripper_motion_plan):
         for i in range(int(freeze_time * 240)):
+            # step the robot
             self.robot.step()
-            # the conveyor step here
+            # the conveyor steps here
+            # step python
             p.stepSimulation()
             if self.realtime:
                 time.sleep(1.0 / 240.0)
-        if motion_plan is not None:
-            self.robot.update_motion_plan(motion_plan)
+        if arm_motion_plan is not None:
+            self.robot.update_arm_motion_plan(arm_motion_plan)
+        if gripper_motion_plan is not None:
+            self.robot.update_gripper_motion_plan(gripper_motion_plan)
 
     def static_grasp(self):
         target_pose = pu.get_body_pose(self.target)
@@ -145,7 +147,7 @@ class DynamicGraspingWorld:
             return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no motion found to the planned pre grasp jv"
 
         # move
-        self.robot.execute_plan(plan, self.realtime)
+        self.robot.execute_arm_plan(plan, self.realtime)
         grasp_attempted = True
         pre_grasp_reached = self.robot.equal_conf(self.robot.get_arm_joint_values(), pre_grasp_jv, tol=0.01)
 
@@ -158,7 +160,7 @@ class DynamicGraspingWorld:
 
         # approach
         plan = self.robot.plan_arm_joint_values_simple(grasp_jv)
-        self.robot.execute_plan(plan, self.realtime)
+        self.robot.execute_arm_plan(plan, self.realtime)
         grasp_reachaed = self.robot.equal_conf(self.robot.get_arm_joint_values(), grasp_jv, tol=0.01)
         # plan, fraction = self.robot.plan_cartesian_control(z=0.05, frame='eef')
         # self.robot.execute_plan(plan, self.realtime)
@@ -169,7 +171,7 @@ class DynamicGraspingWorld:
         plan, fraction = self.robot.plan_cartesian_control(z=0.07)
         if fraction != 1.0:
             comment = "lift fration {} is not 1.0".format(fraction)
-        self.robot.execute_plan(plan, self.realtime)
+        self.robot.execute_arm_plan(plan, self.realtime)
         success = self.check_success()
         pu.remove_all_markers()
         return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, comment
@@ -180,30 +182,78 @@ class DynamicGraspingWorld:
         else:
             return False
 
-    def dynamic_grasp(self):
+    def dynamic_grasp(self, grasp_threshold=0.01, close_delay=2):
         success = False
         grasp_idx = None
-        grasp_attempted = False
-        while not grasp_attempted:
+        while True:
             target_pose = pu.get_body_pose(self.target)
             predicted_pose = target_pose
 
+            # plan a grasp
             grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv \
                 = self.plan_grasp(predicted_pose, grasp_idx)
             if planned_grasp_jv is None or planned_pre_grasp_jv is None:
-                return success, grasp_idx, grasp_attempted,  "no reachable grasp is found"
-            self.step(grasp_planning_time, None)
+                # return success, grasp_idx, grasp_attempted,  "no reachable grasp is found"
+                self.step(grasp_planning_time, None, None)
+                continue
+            self.step(grasp_planning_time, None, None)
 
-            motion_planning_time, plan = self.plan_motion(planned_pre_grasp_jv)
+            # plan a motion
+            motion_planning_time, plan = self.plan_arm_motion(planned_pre_grasp_jv)
             if plan is None:
-                return success, grasp_idx, grasp_attempted, "no motion found to the planned pre grasp jv"
-            self.step(motion_planning_time, plan)
+                # return success, grasp_idx, grasp_attempted, "no motion found to the planned pre grasp jv"
+                self.step(motion_planning_time, None, None)
+                continue
+            self.step(motion_planning_time, plan, None)
 
-            if self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=0.01):
-                # TODO start grasping
-                pass
+            # check can grasp or not
+            if self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=grasp_threshold):
+                motion_planning_time, arm_motion_plan, gripper_motion_plan = self.plan_approach_motion(planned_grasp_jv)
+                self.execute_appraoch_and_grasp(arm_motion_plan, gripper_motion_plan, close_delay)
+                self.execute_lift()
+                return success
 
+    def plan_approach_motion(self, grasp_jv):
+        """ Plan the discretized approach motion for both arm and gripper """
+        predicted_period = 0.2
+        start_time = time.time()
 
+        if self.robot.arm_discretized_plan is not None:
+            future_target_index = min(int(predicted_period * 240 + self.robot.arm_wp_target_index),
+                                      len(self.robot.arm_discretized_plan) - 1)
+            start_joint_values = self.robot.arm_discretized_plan[future_target_index]
+            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values)
+        else:
+            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv)
+
+        # there is no gripper discretized plan
+        gripper_discretized_plan = self.robot.plan_gripper_joint_values(self.robot.CLOSED_POSITION)
+
+        planning_time = time.time() - start_time
+        print("Planning a motion takes {:.6f}".format(planning_time))
+        return planning_time, arm_discretized_plan, gripper_discretized_plan
+
+    def execute_appraoch_and_grasp(self, arm_plan, gripper_plan, delay):
+        num_delay_steps = int(delay * 240.0)
+        arm_len = len(arm_plan)
+        gripper_len = len(gripper_plan)
+        final_len = max(arm_len, gripper_len+num_delay_steps)
+
+        arm_plan = np.vstack((arm_plan, np.tile(arm_plan[-1], (final_len-arm_len, 1)))) if arm_len <= final_len else arm_plan
+        gripper_plan = np.vstack((np.tile(gripper_plan[0], (num_delay_steps, 1)), gripper_plan))
+        gripper_plan = np.vstack((gripper_plan, np.tile(gripper_plan[-1], (final_len-len(gripper_plan), 1)))) if len(gripper_plan) <= final_len else gripper_plan
+        assert len(arm_plan) == len(gripper_plan)
+        for arm_wp, gripper_wp in zip(arm_plan, gripper_plan):
+            self.robot.control_arm_joints(arm_wp)
+            self.robot.control_gripper_joints(gripper_wp)
+            # step conveyor
+            p.stepSimulation()
+
+    def execute_lift(self):
+        plan, fraction = self.robot.plan_cartesian_control(z=0.07)
+        if fraction != 1.0:
+            print('fraction {} not 1'.format(fraction))
+        self.robot.execute_arm_plan(plan, self.realtime)
 
     def plan_grasp(self, target_pose, old_grasp_idx):
         """ Plan a reachable pre_grasp and grasp pose"""

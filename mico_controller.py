@@ -120,11 +120,13 @@ class MicoController:
             pass
         else:
             self.control_arm_joints(self.arm_discretized_plan[self.arm_wp_target_index])
+            self.arm_wp_target_index += 1
 
         if self.gripper_discretized_plan is None or self.gripper_wp_target_index == len(self.gripper_discretized_plan):
             pass
         else:
             self.control_gripper_joints(self.gripper_discretized_plan[self.gripper_wp_target_index])
+            self.gripper_wp_target_index += 1
 
     def reset(self):
         self.set_arm_joints(self.initial_joint_values)
@@ -135,10 +137,12 @@ class MicoController:
         self.arm_wp_target_index = 0
         self.gripper_wp_target_index = 0
 
-    def update_motion_plan(self, arm_discretized_plan, gripper_discretized_plan):
+    def update_arm_motion_plan(self, arm_discretized_plan):
         self.arm_discretized_plan = arm_discretized_plan
-        self.gripper_discretized_plan = gripper_discretized_plan
         self.arm_wp_target_index = 1
+
+    def update_gripper_motion_plan(self, gripper_discretized_plan):
+        self.gripper_discretized_plan = gripper_discretized_plan
         self.gripper_wp_target_index = 1
 
     def get_arm_joint_values(self):
@@ -297,24 +301,19 @@ class MicoController:
         pu.control_joints(self.id, self.GROUP_INDEX['gripper'], joint_values)
 
     def close_gripper(self, realtime=False):
-        num_steps = 240
-        waypoints = np.linspace(self.OPEN_POSITION, self.CLOSED_POSITION, num_steps)
-        for wp in waypoints:
-            self.control_gripper_joints(wp)
-            p.stepSimulation()
-            if realtime:
-                time.sleep(1. / 240.)
-        pu.step(2)
+        waypoints = self.plan_gripper_joint_values(self.CLOSED_POSITION)
+        self.execute_gripper_plan(waypoints, realtime)
 
     def open_gripper(self, realtime=False):
+        waypoints = self.plan_gripper_joint_values(self.OPEN_POSITION)
+        self.execute_gripper_plan(waypoints, realtime)
+
+    def plan_gripper_joint_values(self, goal_joint_values, start_joint_values=None):
+        if start_joint_values is None:
+            start_joint_values = self.get_gripper_joint_values()
         num_steps = 240
-        waypoints = np.linspace(self.CLOSED_POSITION, self.OPEN_POSITION, num_steps)
-        for wp in waypoints:
-            self.control_gripper_joints(wp)
-            p.stepSimulation()
-            if realtime:
-                time.sleep(1. / 240.)
-        pu.step(2)
+        discretized_plan = np.linspace(start_joint_values, goal_joint_values, num_steps)
+        return discretized_plan
 
     def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None, maximum_planning_time=0.5):
         """
@@ -425,6 +424,7 @@ class MicoController:
 
     @staticmethod
     def discretize_plan(motion_plan):
+        """ return np array """
         discretized_plan = np.zeros((0, 6))
         for i in range(len(motion_plan.position_trajectory) - 1):
             num_steps = (motion_plan.time_trajectory[i + 1] - motion_plan.time_trajectory[i]) * 240
@@ -446,18 +446,6 @@ class MicoController:
 
     def get_attached_object_names(self):
         return self.scene.get_attached_objects().keys()
-
-    def execute_plan(self, plan, realtime=False):
-        """
-
-        :param plan: a discretized plan, list of waypoints
-        """
-        for wp in plan:
-            self.control_arm_joints(wp)
-            p.stepSimulation()
-            if realtime:
-                time.sleep(1. / 240.)
-        pu.step(2)
 
     def plan_cartesian_control(self, x=0.0, y=0.0, z=0.0, frame="world"):
         """
@@ -511,3 +499,28 @@ class MicoController:
     def equal_conf(self, conf1, conf2, tol=0):
         adapted_conf2 = self.adapt_conf(conf2, conf1)
         return np.allclose(conf1, adapted_conf2, atol=tol)
+
+    # execution
+    def execute_arm_plan(self, plan, realtime=False):
+        """
+        execute a discretized arm plan (list of waypoints)
+        """
+        for wp in plan:
+            self.control_arm_joints(wp)
+            p.stepSimulation()
+            if realtime:
+                time.sleep(1. / 240.)
+        pu.step(2)
+
+    def execute_gripper_plan(self, plan, realtime=False):
+        """
+        execute a discretized gripper plan (list of waypoints)
+        """
+        for wp in plan:
+            self.control_gripper_joints(wp)
+            p.stepSimulation()
+            if realtime:
+                time.sleep(1. / 240.)
+        pu.step(2)
+
+
