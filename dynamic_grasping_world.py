@@ -124,12 +124,6 @@ class DynamicGraspingWorld:
             self.robot.update_motion_plan(motion_plan)
 
     def static_grasp(self):
-        # self.robot.set_arm_joints([3.2720155007739176, 1.931754217179181, 4.10746373416935, 7.0937298643688385, 3.1565016364314125, 4.098997129207226])
-        # pre_grasp_jv = [3.272122830341827, 1.931751101278606, 4.1075796925965955, 7.087007367975662, 3.157699799777374, 4.091737933443786]
-        # grasp_jv = [6.293363581235132, 4.299720173495125, 2.0321840038083527, 10.70099473066443, 2.5708503923357267, 4.635566083781453]
-        # plan = self.robot.plan_arm_joint_values_simple(grasp_jv)
-        # self.robot.execute_plan(plan, self.realtime, discretized=True)
-
         target_pose = pu.get_body_pose(self.target)
         predicted_pose = target_pose
 
@@ -141,14 +135,14 @@ class DynamicGraspingWorld:
 
         # planning grasp
         grasp_idx, grasp_planning_time, num_ik_called, pre_grasp, pre_grasp_jv, grasp, grasp_jv = self.plan_grasp(
-            predicted_pose, None, None, None)
+            predicted_pose, None)
         if grasp_jv is None or pre_grasp_jv is None:
-            return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "most reachable grasp is not reachable"
+            return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no reachable grasp is found"
 
         # planning motion
         motion_planning_time, plan = self.plan_motion(pre_grasp_jv)
         if plan is None:
-            return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no motion found to the planned pre grasp"
+            return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no motion found to the planned pre grasp jv"
 
         # move
         self.robot.execute_plan(plan, self.realtime)
@@ -187,18 +181,31 @@ class DynamicGraspingWorld:
             return False
 
     def dynamic_grasp(self):
-        grasp, grasp_jv = None, None
-        while not False:
+        success = False
+        grasp_idx = None
+        grasp_attempted = False
+        while not grasp_attempted:
             target_pose = pu.get_body_pose(self.target)
             predicted_pose = target_pose
 
-            grasp_planning_time, grasp, grasp_jv = self.plan_grasp(predicted_pose, grasp, grasp_jv)
+            grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv \
+                = self.plan_grasp(predicted_pose, grasp_idx)
+            if planned_grasp_jv is None or planned_pre_grasp_jv is None:
+                return success, grasp_idx, grasp_attempted,  "no reachable grasp is found"
             self.step(grasp_planning_time, None)
 
-            motion_planning_time, plan = self.plan_motion(grasp_jv)
+            motion_planning_time, plan = self.plan_motion(planned_pre_grasp_jv)
+            if plan is None:
+                return success, grasp_idx, grasp_attempted, "no motion found to the planned pre grasp jv"
             self.step(motion_planning_time, plan)
 
-    def plan_grasp(self, target_pose, old_grasp_idx, old_grasp, old_grasp_jv):
+            if self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=0.01):
+                # TODO start grasping
+                pass
+
+
+
+    def plan_grasp(self, target_pose, old_grasp_idx):
         """ Plan a reachable pre_grasp and grasp pose"""
         start_time = time.time()
         num_ik_called = 0
@@ -207,12 +214,22 @@ class DynamicGraspingWorld:
         planned_pre_grasp_jv = None
         planned_grasp = None
         planned_grasp_jv = None
-        if old_grasp is not None:
-            # TODO fix this for dynamic case
-            if self.robot.get_arm_ik(old_grasp) is not None:
-                planning_time = time.time() - start_time
-                print("Planning a grasp takes {:.6f}".format(planning_time))
-                return planning_time, old_grasp, old_grasp_jv
+
+        # if an old grasp index is provided
+        if old_grasp_idx is not None:
+            planned_pre_grasp_in_object = pu.split_7d(self.pre_grasps_eef[old_grasp_idx])
+            planned_pre_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_pre_grasp_in_object)
+            planned_pre_grasp_jv = self.robot.get_arm_ik(planned_pre_grasp)
+            if planned_pre_grasp_jv is not None:
+                planned_grasp_in_object = pu.split_7d(self.grasps_eef[old_grasp_idx])
+                planned_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_grasp_in_object)
+                planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False,
+                                                         arm_joint_values=planned_pre_grasp_jv)
+                if planned_grasp_jv is not None:
+                    planning_time = time.time() - start_time
+                    print("Planning a grasp takes {:.6f}".format(planning_time))
+                    return old_grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
+
         pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
                                          self.pre_grasps_link6_ref]
         if self.disable_reachability:
