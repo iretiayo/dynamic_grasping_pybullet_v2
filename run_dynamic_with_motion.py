@@ -34,6 +34,7 @@ def get_args():
     parser.add_argument('--max_check', type=int, default=1)
     parser.add_argument('--back_off', type=float, default=0.05)
     parser.add_argument('--disable_reachability', action='store_true', default=False)
+    parser.add_argument('--conveyor_speed', type=float, default=0.01)
     args = parser.parse_args()
 
     if args.realtime:
@@ -142,6 +143,7 @@ if __name__ == "__main__":
                                                   conveyor_initial_pose=conveyor_initial_pose,
                                                   robot_urdf=args.robot_urdf,
                                                   conveyor_urdf=args.conveyor_urdf,
+                                                  conveyor_speed=args.conveyor_speed,
                                                   target_urdf=target_urdf,
                                                   target_mesh_file_path=object_mesh_filepath,
                                                   grasp_database_path=args.grasp_database_path,

@@ -22,6 +22,7 @@ class DynamicGraspingWorld:
                  conveyor_initial_pose,
                  robot_urdf,
                  conveyor_urdf,
+                 conveyor_speed,
                  target_urdf,
                  target_mesh_file_path,
                  grasp_database_path,
@@ -39,6 +40,7 @@ class DynamicGraspingWorld:
         self.conveyor_initial_pose = conveyor_initial_pose
         self.robot_urdf = robot_urdf
         self.conveyor_urdf = conveyor_urdf
+        self.conveyor_speed = conveyor_speed
         self.target_urdf = target_urdf
         self.target_mesh_file_path = target_mesh_file_path
         self.realtime = realtime
@@ -73,7 +75,7 @@ class DynamicGraspingWorld:
         self.plane = p.loadURDF("plane.urdf")
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
         self.robot = MicoController(self.robot_initial_pose, self.robot_initial_state, self.robot_urdf)
-        self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf)
+        self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf, self.conveyor_speed)
 
         self.reset()
 
@@ -100,22 +102,27 @@ class DynamicGraspingWorld:
             # self.robot.scene.add_box('conveyor', gu.list_2_ps(conveyor_pose), size=(.1, .1, .02))
 
     def reset(self, random=False):
+        pu.remove_all_markers()
         target_pose, distance = self.sample_target_location() if random else (
             self.target_initial_pose, self.initial_distance)
         # target_pose, distance = [[0.16858876211602258, -0.15793107046452778, 0.132056], [0.0, 0.0, -0.1212393237380722, 0.9926233053779943]], 0.23100734561888828
         conveyor_pose = [[target_pose[0][0], target_pose[0][1], 0.01],
                          [0, 0, 0, 1]] if target_pose is not None else self.conveyor_initial_pose
         p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
-        self.conveyor.set_pose(conveyor_pose)
+        self.conveyor.reset(conveyor_pose)
         self.robot.reset()
         pu.step(2)
+
+        conveyor_target_position, conveyor_dist = self.sample_conveyor_target_position()
+        self.conveyor.initialize_trajectory(conveyor_target_position)
+        pu.draw_line(self.conveyor.start_pose[0], conveyor_target_position)
         return target_pose, distance
 
     def step(self, freeze_time, arm_motion_plan, gripper_motion_plan):
         for i in range(int(freeze_time * 240)):
             # step the robot
             self.robot.step()
-            # the conveyor steps here
+            self.conveyor.step()
             # step python
             p.stepSimulation()
             if self.realtime:
@@ -222,9 +229,9 @@ class DynamicGraspingWorld:
             future_target_index = min(int(predicted_period * 240 + self.robot.arm_wp_target_index),
                                       len(self.robot.arm_discretized_plan) - 1)
             start_joint_values = self.robot.arm_discretized_plan[future_target_index]
-            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values)
+            arm_discretized_plan = self.robot.plan_arm_joint_values_simple(grasp_jv, start_joint_values=start_joint_values)
         else:
-            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv)
+            arm_discretized_plan = self.robot.plan_arm_joint_values_simple(grasp_jv)
 
         # there is no gripper discretized plan
         gripper_discretized_plan = self.robot.plan_gripper_joint_values(self.robot.CLOSED_POSITION)
@@ -347,21 +354,67 @@ class DynamicGraspingWorld:
         orientation = p.getQuaternionFromEuler([0, 0, angle])
         return [pos, orientation], distance
 
+    def sample_conveyor_target_position(self):
+        x, y = np.random.uniform([-self.distance_high, -self.distance_high], [self.distance_high, self.distance_high])
+        distance = np.linalg.norm(np.array([x, y]) - np.array(self.robot_initial_pose[0][:2]))
+        while not self.distance_low <= distance <= self.distance_high:
+            x, y = np.random.uniform([-self.distance_high, -self.distance_high],
+                                     [self.distance_high, self.distance_high])
+            distance = np.linalg.norm(np.array([x, y]) - np.array(self.robot_initial_pose[0][:2]))
+        z = self.conveyor.get_pose()[0][2]
+        pos = [x, y, z]
+        return pos, distance
+
 
 class Conveyor:
-    def __init__(self, initial_pose, urdf_path):
+    def __init__(self, initial_pose, urdf_path, speed):
         self.initial_pose = initial_pose
         self.urdf_path = urdf_path
         self.id = p.loadURDF(self.urdf_path, initial_pose[0], initial_pose[1])
+        self.speed = speed
 
         self.cid = p.createConstraint(parentBodyUniqueId=self.id, parentLinkIndex=-1, childBodyUniqueId=-1,
                                       childLinkIndex=-1, jointType=p.JOINT_FIXED, jointAxis=[0, 0, 0],
                                       parentFramePosition=[0, 0, 0], childFramePosition=initial_pose[0],
                                       childFrameOrientation=initial_pose[1])
 
+        self.start_pose = None
+        self.target_pose = None
+        self.discretized_trajectory = None
+        self.distance = None
+        self.wp_target = 0
+
     def set_pose(self, pose):
         pu.set_pose(self.id, pose)
         self.control_pose(pose)
 
+    def get_pose(self):
+        return pu.get_body_pose(self.id)
+
     def control_pose(self, pose):
         p.changeConstraint(self.cid, jointChildPivot=pose[0], jointChildFrameOrientation=pose[1])
+
+    def reset(self, pose):
+        self.set_pose(pose)
+
+    def step(self):
+        if self.discretized_trajectory is None or self.wp_target_index == len(self.discretized_trajectory):
+            pass
+        else:
+            self.control_pose(self.discretized_trajectory[self.wp_target_index])
+            self.wp_target_index += 1
+
+    def initialize_trajectory(self, target_position):
+        self.start_pose = self.get_pose()
+        start_position = self.start_pose[0]
+        start_orientation = self.start_pose[1]
+        self.target_pose = [target_position, start_orientation]
+
+        self.distance = np.linalg.norm(np.array(start_position) - np.array(target_position))
+        num_steps = int(self.distance / self.speed * 240)
+        position_trajectory = np.linspace(start_position, target_position, num_steps)
+        self.discretized_trajectory = [[p, start_orientation] for p in position_trajectory]
+        self.wp_target_index = 1
+
+
+
