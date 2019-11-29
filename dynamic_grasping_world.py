@@ -48,11 +48,7 @@ class DynamicGraspingWorld:
         self.back_off = back_off
         self.disable_reachability = disable_reachability
 
-        self.x_low = -0.4
-        self.y_low = -0.4
-        self.x_high = 0.4
-        self.y_high = 0.4
-        self.distance_low = 0.1
+        self.distance_low = 0.15
         self.distance_high = 0.4
 
         self.grasp_database_path = grasp_database_path
@@ -227,25 +223,32 @@ class DynamicGraspingWorld:
             return False
 
     def dynamic_grasp(self, grasp_threshold=0.01, close_delay=2):
-        success = False
+        """
+
+        :return attempted_grasp_idx: the executed grasp index
+        """
         grasp_idx = None
-        while True:
+        done = False
+        dynamic_grasp_time = 0
+        while not done:
             target_pose = pu.get_body_pose(self.target)
             predicted_pose = target_pose
 
             # plan a grasp
             grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv \
                 = self.plan_grasp(predicted_pose, grasp_idx)
+            dynamic_grasp_time += grasp_planning_time
             if planned_grasp_jv is None or planned_pre_grasp_jv is None:
-                # return success, grasp_idx, grasp_attempted,  "no reachable grasp is found"
+                print('no reachable grasp found')
                 self.step(grasp_planning_time, None, None)
                 continue
             self.step(grasp_planning_time, None, None)
 
             # plan a motion
             motion_planning_time, plan = self.plan_arm_motion(planned_pre_grasp_jv)
+            dynamic_grasp_time += motion_planning_time
             if plan is None:
-                # return success, grasp_idx, grasp_attempted, "no motion found to the planned pre grasp jv"
+                print('no motion is found')
                 self.step(motion_planning_time, None, None)
                 continue
             self.step(motion_planning_time, plan, None)
@@ -253,9 +256,12 @@ class DynamicGraspingWorld:
             # check can grasp or not
             if self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=grasp_threshold):
                 motion_planning_time, arm_motion_plan, gripper_motion_plan = self.plan_approach_motion(planned_grasp_jv)
+                dynamic_grasp_time += motion_planning_time
                 self.execute_appraoch_and_grasp(arm_motion_plan, gripper_motion_plan, close_delay)
                 self.execute_lift()
-                return success
+                return self.check_success(), grasp_idx, dynamic_grasp_time
+            done = self.check_done()
+        return False, None, dynamic_grasp_time
 
     def plan_approach_motion(self, grasp_jv):
         """ Plan the discretized approach motion for both arm and gripper """
@@ -409,6 +415,12 @@ class DynamicGraspingWorld:
         if length is None:
             length = 1.0
         return dist, theta, length
+
+    def check_done(self):
+        done = False
+        if self.conveyor.wp_target_index == len(self.conveyor.discretized_trajectory):
+            done = True
+        return done
 
 
 class Conveyor:

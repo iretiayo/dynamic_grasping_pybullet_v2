@@ -6,6 +6,7 @@ import time
 import trimesh
 import argparse
 import grasp_utils as gu
+import misc_utils as mu
 import pybullet_utils as pu
 from collections import OrderedDict
 import csv
@@ -54,19 +55,6 @@ def get_args():
     return args
 
 
-def configure_pybullet(rendering=False):
-    if not rendering:
-        p.connect(p.DIRECT)
-    else:
-        p.connect(p.GUI_SERVER)
-    p.setAdditionalSearchPath(pybullet_data.getDataPath())
-    # p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
-    pu.reset_camera(yaw=50.0, pitch=-35.0, dist=1.200002670288086, target=(0.0, 0.0, 0.0))
-    p.setPhysicsEngineParameter(enableFileCaching=0)
-    p.resetSimulation()
-    p.setGravity(0, 0, -9.8)
-
-
 def create_object_urdf(object_mesh_filepath, object_name,
                        urdf_template_filepath='assets/object_template.urdf',
                        urdf_target_object_filepath='assets/target_object.urdf'):
@@ -79,45 +67,10 @@ def create_object_urdf(object_mesh_filepath, object_name,
     return urdf_target_object_filepath
 
 
-def write_csv_line(result_file_path,
-                   exp_idx,
-                   grasp_idx,
-                   success,
-                   grasp_attempted,
-                   pre_grasp_reached,
-                   grasp_reachaed,
-                   grasp_planning_time,
-                   num_ik_called,
-                   target_position,
-                   target_orientation,
-                   distance,
-                   comment):
-    result = [('exp_idx', exp_idx),
-              ('grasp_idx', grasp_idx),
-              ('success', success),
-              ('grasp_attempted', grasp_attempted),
-              ('pre_grasp_reached', pre_grasp_reached),
-              ('grasp_reachaed', grasp_reachaed),
-              ('grasp_planning_time', grasp_planning_time),
-              ('num_ik_called', num_ik_called),
-              ('target_position', target_position),
-              ('target_orientation', target_orientation),
-              ('distance', distance),
-              ('comment', comment)]
-    pp = pprint.PrettyPrinter(indent=4)
-    pp.pprint(result)
-    result = OrderedDict(result)
-    file_exists = os.path.exists(result_file_path)
-    with open(result_file_path, 'a') as csv_file:
-        writer = csv.DictWriter(csv_file, result.keys())
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(result)
-
 
 if __name__ == "__main__":
     args = get_args()
-    configure_pybullet(args.rendering)
+    mu.configure_pybullet(args.rendering)
     rospy.init_node('dynamic_grasping')
 
     print()
@@ -157,17 +110,12 @@ if __name__ == "__main__":
         distance, theta, length = dynamic_grasping_world.reset(mode='dynamic_linear')
         print(distance, theta, length)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
-        success = dynamic_grasping_world.dynamic_grasp()
-        # write_csv_line(result_file_path=args.result_file_path,
-        #                exp_idx=i,
-        #                grasp_idx=grasp_idx,
-        #                success=success,
-        #                grasp_attempted=grasp_attempted,
-        #                pre_grasp_reached=pre_grasp_reached,
-        #                grasp_reachaed=grasp_reachaed,
-        #                grasp_planning_time=grasp_planning_time,
-        #                num_ik_called=num_ik_called,
-        #                target_position=target_pose[0],
-        #                target_orientation=target_pose[1],
-        #                distance=distance,
-        #                comment=comment)
+        success, grasp_idx, dynamic_grasping_time = dynamic_grasping_world.dynamic_grasp()
+        result = [('exp_idx', i),
+                  ('grasp_idx', grasp_idx),
+                  ('success', success),
+                  ('dynamic_grasping_time', dynamic_grasping_time),
+                  ('theta', theta),
+                  ('length', length),
+                  ('distance', distance)]
+        mu.write_csv_line(result_file_path=args.result_file_path, result=result)
