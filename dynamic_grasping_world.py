@@ -222,7 +222,7 @@ class DynamicGraspingWorld:
         else:
             return False
 
-    def dynamic_grasp(self, grasp_threshold=0.01, close_delay=2):
+    def dynamic_grasp(self, grasp_threshold, lazy_threshold, close_delay):
         """
 
         :return attempted_grasp_idx: the executed grasp index
@@ -231,6 +231,7 @@ class DynamicGraspingWorld:
         done = False
         dynamic_grasp_time = 0
         while not done:
+            done = self.check_done()
             target_pose = pu.get_body_pose(self.target)
             predicted_pose = target_pose
 
@@ -245,6 +246,10 @@ class DynamicGraspingWorld:
             self.step(grasp_planning_time, None, None)
 
             # plan a motion
+            distance = np.linalg.norm(np.array(self.robot.get_eef_pose()[0]) - np.array(planned_pre_grasp[0]))
+            if distance > lazy_threshold and self.robot.arm_discretized_plan is not None:
+                print("lazy plan")
+                continue
             motion_planning_time, plan = self.plan_arm_motion(planned_pre_grasp_jv)
             dynamic_grasp_time += motion_planning_time
             if plan is None:
@@ -254,13 +259,13 @@ class DynamicGraspingWorld:
             self.step(motion_planning_time, plan, None)
 
             # check can grasp or not
+            print(self.robot.arm_difference_fn(self.robot.get_arm_joint_values(), planned_pre_grasp_jv))
             if self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=grasp_threshold):
                 motion_planning_time, arm_motion_plan, gripper_motion_plan = self.plan_approach_motion(planned_grasp_jv)
                 dynamic_grasp_time += motion_planning_time
                 self.execute_appraoch_and_grasp(arm_motion_plan, gripper_motion_plan, close_delay)
                 self.execute_lift()
                 return self.check_success(), grasp_idx, dynamic_grasp_time
-            done = self.check_done()
         return False, None, dynamic_grasp_time
 
     def plan_approach_motion(self, grasp_jv):
@@ -419,6 +424,10 @@ class DynamicGraspingWorld:
     def check_done(self):
         done = False
         if self.conveyor.wp_target_index == len(self.conveyor.discretized_trajectory):
+            # conveyor trajectory finishes
+            done = True
+        if pu.get_body_pose(self.target)[0][2] < self.target_initial_pose[0][2] - 0.03:
+            # target knocked down
             done = True
         return done
 

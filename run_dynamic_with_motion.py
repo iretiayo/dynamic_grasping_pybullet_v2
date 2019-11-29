@@ -52,6 +52,11 @@ def get_args():
     if not os.path.exists(args.result_dir):
         os.makedirs(args.result_dir)
     args.result_file_path = os.path.join(args.result_dir, args.object_name + '.csv')
+
+    # dynamic hyper parameter
+    args.grasp_threshold = 0.03,
+    args.lazy_threshold = 0.3,
+    args.close_delay = 2
     return args
 
 
@@ -109,7 +114,11 @@ if __name__ == "__main__":
         distance, theta, length = dynamic_grasping_world.reset(mode='dynamic_linear')
         print(distance, theta, length)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
-        success, grasp_idx, dynamic_grasping_time = dynamic_grasping_world.dynamic_grasp()
+        success, grasp_idx, dynamic_grasping_time = dynamic_grasping_world.dynamic_grasp(
+            grasp_threshold=args.grasp_threshold,
+            lazy_threshold=args.lazy_threshold,
+            close_delay=args.close_delay
+        )
         result = [('exp_idx', i),
                   ('grasp_idx', grasp_idx),
                   ('success', success),
