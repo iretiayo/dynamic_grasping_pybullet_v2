@@ -67,7 +67,6 @@ def create_object_urdf(object_mesh_filepath, object_name,
     return urdf_target_object_filepath
 
 
-
 if __name__ == "__main__":
     args = get_args()
     mu.configure_pybullet(args.rendering)
