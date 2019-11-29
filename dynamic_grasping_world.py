@@ -10,7 +10,7 @@ import rospy
 import threading
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import String
-from math import pi, cos, sin, sqrt, atan
+from math import pi, cos, sin, sqrt, atan, radians
 
 
 class DynamicGraspingWorld:
@@ -76,6 +76,7 @@ class DynamicGraspingWorld:
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
         self.robot = MicoController(self.robot_initial_pose, self.robot_initial_state, self.robot_urdf)
         self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf, self.conveyor_speed)
+        self.reset('initial')  # the reset is needed to simulate for
 
         self.target_pose_pub = rospy.Publisher('target_pose', PoseStamped, queue_size=1)
         self.conveyor_pose_pub = rospy.Publisher('conveyor_pose', PoseStamped, queue_size=1)
@@ -102,7 +103,7 @@ class DynamicGraspingWorld:
     def reset(self, mode):
         """
         mode:
-            initial:
+            initial: reset the target to the fixed initial pose, not moving
             static_random: reset the target to a random pose, not moving
             dynamic_linear: initialize the conveyor with a linear motion
             dynamic_circular: initialize the conveyor with a circular motion
@@ -114,7 +115,7 @@ class DynamicGraspingWorld:
             conveyor_pose = [[target_pose[0][0], target_pose[0][1], 0.01],
                              [0, 0, 0, 1]] if target_pose is not None else self.conveyor_initial_pose
             p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
-            self.conveyor.reset(conveyor_pose)
+            self.conveyor.set_pose(conveyor_pose)
             self.robot.reset()
             pu.step(2)
             return target_pose, distance
@@ -125,25 +126,27 @@ class DynamicGraspingWorld:
             conveyor_pose = [[target_pose[0][0], target_pose[0][1], 0.01],
                              [0, 0, 0, 1]] if target_pose is not None else self.conveyor_initial_pose
             p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
-            self.conveyor.reset(conveyor_pose)
+            self.conveyor.set_pose(conveyor_pose)
             self.robot.reset()
             pu.step(2)
             return target_pose, distance
 
         elif mode == 'dynamic_linear':
             pu.remove_all_markers()
-            target_pose, distance = self.sample_target_location()
-            conveyor_pose = [[target_pose[0][0], target_pose[0][1], 0.01],
-                             [0, 0, 0, 1]] if target_pose is not None else self.conveyor_initial_pose
+            self.conveyor.clear_motion()
+
+            distance, theta, length = self.sample_convey_linear_motion()
+            self.conveyor.initialize_linear_motion(distance, theta, length)
+            conveyor_pose = self.conveyor.start_pose
+            target_pose = [[conveyor_pose[0][0], conveyor_pose[0][1], self.target_initial_pose[0][2]],
+                           self.sample_target_angle()]
             p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
-            self.conveyor.reset(conveyor_pose)
+            self.conveyor.set_pose(conveyor_pose)
             self.robot.reset()
             pu.step(2)
 
-            conveyor_target_position, conveyor_dist = self.sample_conveyor_target_position()
-            self.conveyor.initialize_trajectory(conveyor_target_position)
-            pu.draw_line(self.conveyor.start_pose[0], conveyor_target_position)
-            return target_pose, distance
+            pu.draw_line(self.conveyor.start_pose[0], self.conveyor.target_pose[0])
+            return distance, theta, length
 
         elif mode == 'dynamic_circular':
             raise NotImplementedError
@@ -263,7 +266,8 @@ class DynamicGraspingWorld:
             future_target_index = min(int(predicted_period * 240 + self.robot.arm_wp_target_index),
                                       len(self.robot.arm_discretized_plan) - 1)
             start_joint_values = self.robot.arm_discretized_plan[future_target_index]
-            arm_discretized_plan = self.robot.plan_arm_joint_values_simple(grasp_jv, start_joint_values=start_joint_values)
+            arm_discretized_plan = self.robot.plan_arm_joint_values_simple(grasp_jv,
+                                                                           start_joint_values=start_joint_values)
         else:
             arm_discretized_plan = self.robot.plan_arm_joint_values_simple(grasp_jv)
 
@@ -278,11 +282,13 @@ class DynamicGraspingWorld:
         num_delay_steps = int(delay * 240.0)
         arm_len = len(arm_plan)
         gripper_len = len(gripper_plan)
-        final_len = max(arm_len, gripper_len+num_delay_steps)
+        final_len = max(arm_len, gripper_len + num_delay_steps)
 
-        arm_plan = np.vstack((arm_plan, np.tile(arm_plan[-1], (final_len-arm_len, 1)))) if arm_len <= final_len else arm_plan
+        arm_plan = np.vstack(
+            (arm_plan, np.tile(arm_plan[-1], (final_len - arm_len, 1)))) if arm_len <= final_len else arm_plan
         gripper_plan = np.vstack((np.tile(gripper_plan[0], (num_delay_steps, 1)), gripper_plan))
-        gripper_plan = np.vstack((gripper_plan, np.tile(gripper_plan[-1], (final_len-len(gripper_plan), 1)))) if len(gripper_plan) <= final_len else gripper_plan
+        gripper_plan = np.vstack((gripper_plan, np.tile(gripper_plan[-1], (final_len - len(gripper_plan), 1)))) if len(
+            gripper_plan) <= final_len else gripper_plan
         assert len(arm_plan) == len(gripper_plan)
         for arm_wp, gripper_wp in zip(arm_plan, gripper_plan):
             self.robot.control_arm_joints(arm_wp)
@@ -388,41 +394,21 @@ class DynamicGraspingWorld:
         orientation = p.getQuaternionFromEuler([0, 0, angle])
         return [pos, orientation], distance
 
-    def sample_conveyor_target_position(self):
-        x, y = np.random.uniform([-self.distance_high, -self.distance_high], [self.distance_high, self.distance_high])
-        distance = np.linalg.norm(np.array([x, y]) - np.array(self.robot_initial_pose[0][:2]))
-        while not self.distance_low <= distance <= self.distance_high:
-            x, y = np.random.uniform([-self.distance_high, -self.distance_high],
-                                     [self.distance_high, self.distance_high])
-            distance = np.linalg.norm(np.array([x, y]) - np.array(self.robot_initial_pose[0][:2]))
-        z = self.conveyor.get_pose()[0][2]
-        pos = [x, y, z]
-        return pos, distance
+    @staticmethod
+    def sample_target_angle():
+        """ return quaternion """
+        angle = np.random.uniform(-pi, pi)
+        orientation = p.getQuaternionFromEuler([0, 0, angle])
+        return orientation
 
-    def sample_linear_motion(self, dist, theta, length):
-        """
-        return the start (x, y) and end (x, y) of the linear motion
-
-        :param dist: distance to robot center,
-        :param theta: the angle of rotation, (0, 2*pi)
-        :param length: the length of the motion
-        """
-        new_dist = sqrt(dist ** 2 + (length / 2.0) ** 2)
-        delta_theta = atan((length / 2.0) / dist)
-
-        theta_1 = theta + delta_theta
-        theta_2 = theta - delta_theta
-
-        start_xy = (new_dist * cos(theta_1), new_dist * sin(theta_1))
-        end_xy = (new_dist * cos(theta_2), new_dist * sin(theta_2))
-
-        return start_xy, end_xy
-
-
-
-
-
-
+    def sample_convey_linear_motion(self, dist=None, theta=None, length=None):
+        if dist is None:
+            dist = np.random.uniform(low=self.distance_low, high=self.distance_high)
+        if theta is None:
+            theta = np.random.uniform(low=0, high=360)
+        if length is None:
+            length = 1.0
+        return dist, theta, length
 
 
 class Conveyor:
@@ -441,7 +427,10 @@ class Conveyor:
         self.target_pose = None
         self.discretized_trajectory = None
         self.distance = None
-        self.wp_target = 0
+        self.wp_target_index = 0
+        self.distance = None
+        self.theta = None
+        self.length = None
 
     def set_pose(self, pose):
         pu.set_pose(self.id, pose)
@@ -453,9 +442,6 @@ class Conveyor:
     def control_pose(self, pose):
         p.changeConstraint(self.cid, jointChildPivot=pose[0], jointChildFrameOrientation=pose[1])
 
-    def reset(self, pose):
-        self.set_pose(pose)
-
     def step(self):
         if self.discretized_trajectory is None or self.wp_target_index == len(self.discretized_trajectory):
             pass
@@ -463,17 +449,42 @@ class Conveyor:
             self.control_pose(self.discretized_trajectory[self.wp_target_index])
             self.wp_target_index += 1
 
-    def initialize_trajectory(self, target_position):
-        self.start_pose = self.get_pose()
-        start_position = self.start_pose[0]
-        start_orientation = self.start_pose[1]
-        self.target_pose = [target_position, start_orientation]
+    def initialize_linear_motion(self, dist, theta, length):
+        """
+        :param dist: distance to robot center,
+        :param theta: the angle of rotation, (0, 360)
+        :param length: the length of the motion
+        """
+        self.distance = dist
+        self.theta = theta
+        self.length = length
+        # uses the z value and orientation of the current pose
+        z = self.get_pose()[0][-1]
+        orientation = self.get_pose()[1]
+        # compute start xy and end xy
+        new_dist = sqrt(dist ** 2 + (length / 2.0) ** 2)
+        delta_theta = atan((length / 2.0) / dist)
 
-        self.distance = np.linalg.norm(np.array(start_position) - np.array(target_position))
-        num_steps = int(self.distance / self.speed * 240)
+        theta_1 = radians(self.theta) + delta_theta
+        theta_2 = radians(self.theta) - delta_theta
+
+        start_xy = [new_dist * cos(theta_1), new_dist * sin(theta_1)]
+        target_xy = [new_dist * cos(theta_2), new_dist * sin(theta_2)]
+        start_position = start_xy + [z]
+        target_position = target_xy + [z]
+
+        self.start_pose = [start_position, orientation]
+        self.target_pose = [target_position, orientation]
+
+        num_steps = int(self.length / self.speed * 240)
         position_trajectory = np.linspace(start_position, target_position, num_steps)
-        self.discretized_trajectory = [[p, start_orientation] for p in position_trajectory]
-        self.wp_target_index = 1
+        self.discretized_trajectory = [[p, orientation] for p in position_trajectory]
 
-
-
+    def clear_motion(self):
+        self.start_pose = None
+        self.target_pose = None
+        self.discretized_trajectory = None
+        self.wp_target_index = 0
+        self.distance = None
+        self.theta = None
+        self.length = None

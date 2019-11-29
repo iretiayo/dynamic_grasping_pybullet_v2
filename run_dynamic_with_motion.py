@@ -60,7 +60,7 @@ def configure_pybullet(rendering=False):
     else:
         p.connect(p.GUI_SERVER)
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
-    p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+    # p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
     pu.reset_camera(yaw=50.0, pitch=-35.0, dist=1.200002670288086, target=(0.0, 0.0, 0.0))
     p.setPhysicsEngineParameter(enableFileCaching=0)
     p.resetSimulation()
@@ -154,7 +154,8 @@ if __name__ == "__main__":
                                                   back_off=args.back_off)
 
     for i in range(args.num_trials):
-        target_pose, distance = dynamic_grasping_world.reset(mode='initial')
+        distance, theta, length = dynamic_grasping_world.reset(mode='dynamic_linear')
+        print(distance, theta, length)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         success = dynamic_grasping_world.dynamic_grasp()
         # write_csv_line(result_file_path=args.result_file_path,
