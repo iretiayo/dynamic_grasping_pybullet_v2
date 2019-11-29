@@ -10,7 +10,7 @@ import rospy
 import threading
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import String
-from math import pi
+from math import pi, cos, sin, sqrt, atan
 
 
 class DynamicGraspingWorld:
@@ -77,8 +77,6 @@ class DynamicGraspingWorld:
         self.robot = MicoController(self.robot_initial_pose, self.robot_initial_state, self.robot_urdf)
         self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf, self.conveyor_speed)
 
-        self.reset()
-
         self.target_pose_pub = rospy.Publisher('target_pose', PoseStamped, queue_size=1)
         self.conveyor_pose_pub = rospy.Publisher('conveyor_pose', PoseStamped, queue_size=1)
         self.target_mesh_file_path_pub = rospy.Publisher('target_mesh', String, queue_size=1)
@@ -101,22 +99,58 @@ class DynamicGraspingWorld:
             # self.robot.scene.add_mesh(self.target_name, gu.list_2_ps(target_pose), self.target_mesh_file_path)
             # self.robot.scene.add_box('conveyor', gu.list_2_ps(conveyor_pose), size=(.1, .1, .02))
 
-    def reset(self, random=False):
-        pu.remove_all_markers()
-        target_pose, distance = self.sample_target_location() if random else (
-            self.target_initial_pose, self.initial_distance)
-        # target_pose, distance = [[0.16858876211602258, -0.15793107046452778, 0.132056], [0.0, 0.0, -0.1212393237380722, 0.9926233053779943]], 0.23100734561888828
-        conveyor_pose = [[target_pose[0][0], target_pose[0][1], 0.01],
-                         [0, 0, 0, 1]] if target_pose is not None else self.conveyor_initial_pose
-        p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
-        self.conveyor.reset(conveyor_pose)
-        self.robot.reset()
-        pu.step(2)
+    def reset(self, mode):
+        """
+        mode:
+            initial:
+            static_random: reset the target to a random pose, not moving
+            dynamic_linear: initialize the conveyor with a linear motion
+            dynamic_circular: initialize the conveyor with a circular motion
+            hand_over: TODO
+        """
+        if mode == 'initial':
+            pu.remove_all_markers()
+            target_pose, distance = self.target_initial_pose, self.initial_distance
+            conveyor_pose = [[target_pose[0][0], target_pose[0][1], 0.01],
+                             [0, 0, 0, 1]] if target_pose is not None else self.conveyor_initial_pose
+            p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
+            self.conveyor.reset(conveyor_pose)
+            self.robot.reset()
+            pu.step(2)
+            return target_pose, distance
 
-        conveyor_target_position, conveyor_dist = self.sample_conveyor_target_position()
-        self.conveyor.initialize_trajectory(conveyor_target_position)
-        pu.draw_line(self.conveyor.start_pose[0], conveyor_target_position)
-        return target_pose, distance
+        elif mode == 'static_random':
+            pu.remove_all_markers()
+            target_pose, distance = self.sample_target_location()
+            conveyor_pose = [[target_pose[0][0], target_pose[0][1], 0.01],
+                             [0, 0, 0, 1]] if target_pose is not None else self.conveyor_initial_pose
+            p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
+            self.conveyor.reset(conveyor_pose)
+            self.robot.reset()
+            pu.step(2)
+            return target_pose, distance
+
+        elif mode == 'dynamic_linear':
+            pu.remove_all_markers()
+            target_pose, distance = self.sample_target_location()
+            conveyor_pose = [[target_pose[0][0], target_pose[0][1], 0.01],
+                             [0, 0, 0, 1]] if target_pose is not None else self.conveyor_initial_pose
+            p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
+            self.conveyor.reset(conveyor_pose)
+            self.robot.reset()
+            pu.step(2)
+
+            conveyor_target_position, conveyor_dist = self.sample_conveyor_target_position()
+            self.conveyor.initialize_trajectory(conveyor_target_position)
+            pu.draw_line(self.conveyor.start_pose[0], conveyor_target_position)
+            return target_pose, distance
+
+        elif mode == 'dynamic_circular':
+            raise NotImplementedError
+        elif mode == 'hand_over':
+            raise NotImplementedError
+        else:
+            raise NotImplementedError
 
     def step(self, freeze_time, arm_motion_plan, gripper_motion_plan):
         for i in range(int(freeze_time * 240)):
@@ -364,6 +398,31 @@ class DynamicGraspingWorld:
         z = self.conveyor.get_pose()[0][2]
         pos = [x, y, z]
         return pos, distance
+
+    def sample_linear_motion(self, dist, theta, length):
+        """
+        return the start (x, y) and end (x, y) of the linear motion
+
+        :param dist: distance to robot center,
+        :param theta: the angle of rotation, (0, 2*pi)
+        :param length: the length of the motion
+        """
+        new_dist = sqrt(dist ** 2 + (length / 2.0) ** 2)
+        delta_theta = atan((length / 2.0) / dist)
+
+        theta_1 = theta + delta_theta
+        theta_2 = theta - delta_theta
+
+        start_xy = (new_dist * cos(theta_1), new_dist * sin(theta_1))
+        end_xy = (new_dist * cos(theta_2), new_dist * sin(theta_2))
+
+        return start_xy, end_xy
+
+
+
+
+
+
 
 
 class Conveyor:

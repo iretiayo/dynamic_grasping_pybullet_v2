@@ -154,7 +154,7 @@ if __name__ == "__main__":
                                                   back_off=args.back_off)
 
     for i in range(args.num_trials):
-        target_pose, distance = dynamic_grasping_world.reset(random=True)
+        target_pose, distance = dynamic_grasping_world.reset(mode='initial')
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         success = dynamic_grasping_world.dynamic_grasp()
         # write_csv_line(result_file_path=args.result_file_path,
