@@ -35,8 +35,9 @@ def get_args():
     parser.add_argument('--max_check', type=int, default=1)
     parser.add_argument('--back_off', type=float, default=0.05)
     parser.add_argument('--disable_reachability', action='store_true', default=False)
-    parser.add_argument('--conveyor_speed', type=float, default=0.01)
+
     # dynamic hyper parameter
+    parser.add_argument('--conveyor_speed', type=float, default=0.01)
     parser.add_argument('--grasp_threshold', type=float, default=0.03)
     parser.add_argument('--lazy_threshold', type=float, default=0.3)
     parser.add_argument('--close_delay', type=float, default=2)

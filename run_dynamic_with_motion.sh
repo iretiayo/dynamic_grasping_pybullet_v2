@@ -11,6 +11,7 @@ do
     --grasp_database_path assets/grasps/filtered_grasps \
     --grasp_threshold 0.03 \
     --lazy_threshold  0.3 \
+    --conveyor_speed 0.01 \
     --close_delay 2;
     sleep 5
 done
