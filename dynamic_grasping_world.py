@@ -336,7 +336,7 @@ class DynamicGraspingWorld:
                                                          arm_joint_values=planned_pre_grasp_jv)
                 if planned_grasp_jv is not None:
                     planning_time = time.time() - start_time
-                    print("Planning a grasp takes {:.6f}".format(planning_time))
+                    # print("Planning a grasp takes {:.6f}".format(planning_time))
                     return old_grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
 
         pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
