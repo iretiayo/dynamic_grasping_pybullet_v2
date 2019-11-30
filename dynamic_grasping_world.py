@@ -260,7 +260,6 @@ class DynamicGraspingWorld:
             self.step(motion_planning_time, plan, None)
 
             # check can grasp or not
-            print(self.robot.arm_difference_fn(self.robot.get_arm_joint_values(), planned_pre_grasp_jv))
             if self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=grasp_threshold):
                 motion_planning_time, arm_motion_plan, gripper_motion_plan = self.plan_approach_motion(planned_grasp_jv)
                 dynamic_grasp_time += motion_planning_time
