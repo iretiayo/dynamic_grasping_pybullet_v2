@@ -7,6 +7,6 @@ do
     --rendering \
     --num_trials 500 \
     --result_dir result \
-    --grasp_database_path assets/grasps/filtered_grasps
+    --grasp_database_path assets/grasps/filtered_grasps;
     sleep 5
 done

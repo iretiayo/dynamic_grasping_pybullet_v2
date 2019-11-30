@@ -720,7 +720,7 @@ def create_arrow_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
 
     position = np.array(pose[0])
     orientation = np.array(pose[1])
-    color = raw_color if raw_color is not None else rgb_colors_1[color_index]
+    color = raw_color if raw_color is not None else rgb_colors_1[color_index % len(rgb_colors_1)]
 
     pts = np.array([[0, 0, 0], [line_length, 0, 0], [0, line_length, 0], [0, 0, line_length]])
     z_extend = [0, 0, line_length + arrow_length]

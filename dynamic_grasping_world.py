@@ -240,20 +240,21 @@ class DynamicGraspingWorld:
                 = self.plan_grasp(predicted_pose, grasp_idx)
             dynamic_grasp_time += grasp_planning_time
             if planned_grasp_jv is None or planned_pre_grasp_jv is None:
-                print('no reachable grasp found')
+                # print('no reachable grasp found')
                 self.step(grasp_planning_time, None, None)
                 continue
             self.step(grasp_planning_time, None, None)
+            pu.create_arrow_marker(planned_pre_grasp, color_index=grasp_idx)
 
             # plan a motion
             distance = np.linalg.norm(np.array(self.robot.get_eef_pose()[0]) - np.array(planned_pre_grasp[0]))
             if distance > lazy_threshold and self.robot.arm_discretized_plan is not None:
-                print("lazy plan")
+                # print("lazy plan")
                 continue
             motion_planning_time, plan = self.plan_arm_motion(planned_pre_grasp_jv)
             dynamic_grasp_time += motion_planning_time
             if plan is None:
-                print('no motion is found')
+                # print('no motion is found')
                 self.step(motion_planning_time, None, None)
                 continue
             self.step(motion_planning_time, plan, None)
@@ -286,7 +287,7 @@ class DynamicGraspingWorld:
         gripper_discretized_plan = self.robot.plan_gripper_joint_values(self.robot.CLOSED_POSITION)
 
         planning_time = time.time() - start_time
-        print("Planning a motion takes {:.6f}".format(planning_time))
+        # print("Planning a motion takes {:.6f}".format(planning_time))
         return planning_time, arm_discretized_plan, gripper_discretized_plan
 
     def execute_appraoch_and_grasp(self, arm_plan, gripper_plan, delay):
@@ -372,7 +373,7 @@ class DynamicGraspingWorld:
         # gu.visualize_grasp_with_reachability(planned_grasp, sdf_values[grasp_order_idxs[0]],
         #                                      maximum=max(sdf_values), minimum=min(sdf_values))
         planning_time = time.time() - start_time
-        print("Planning a grasp takes {:.6f}".format(planning_time))
+        # print("Planning a grasp takes {:.6f}".format(planning_time))
         return grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
 
     def plan_arm_motion(self, grasp_jv):
@@ -389,7 +390,7 @@ class DynamicGraspingWorld:
             arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv)
         planning_time = time.time() - start_time
 
-        print("Planning a motion takes {:.6f}".format(planning_time))
+        # print("Planning a motion takes {:.6f}".format(planning_time))
         return planning_time, arm_discretized_plan
 
     def sample_target_location(self):

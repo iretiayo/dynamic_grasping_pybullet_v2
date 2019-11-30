@@ -36,6 +36,10 @@ def get_args():
     parser.add_argument('--back_off', type=float, default=0.05)
     parser.add_argument('--disable_reachability', action='store_true', default=False)
     parser.add_argument('--conveyor_speed', type=float, default=0.01)
+    # dynamic hyper parameter
+    parser.add_argument('--grasp_threshold', type=float, default=0.03)
+    parser.add_argument('--lazy_threshold', type=float, default=0.3)
+    parser.add_argument('--close_delay', type=float, default=2)
     args = parser.parse_args()
 
     if args.realtime:
@@ -52,11 +56,6 @@ def get_args():
     if not os.path.exists(args.result_dir):
         os.makedirs(args.result_dir)
     args.result_file_path = os.path.join(args.result_dir, args.object_name + '.csv')
-
-    # dynamic hyper parameter
-    args.grasp_threshold = 0.03,
-    args.lazy_threshold = 0.3,
-    args.close_delay = 2
     return args
 
 
