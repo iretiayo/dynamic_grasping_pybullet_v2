@@ -76,3 +76,15 @@ Launch MoveIt! and RViz
 ```
 roslaunch m1n6s200_moveit_config m1n6s200_demo.launch
 ```
+
+## New Pipeline (Database Approach)
+1. Generate Raw Grasps
+2. Filter Good Grasps from Raw Grasps
+3. Evaluate static grasping
+
+- Generate Raw Grasps
+```bash
+source devel/setup.bash
+cd src/ur5_robotiq_grasping_pybullet
+./collect_raw_grasps.sh
+```
