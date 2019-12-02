@@ -31,7 +31,7 @@ def get_args():
     args = parser.parse_args()
 
     args.mesh_dir = os.path.abspath('assets/models')
-    args.gripper_urdf = os.path.abspath('assets/mico/mico_hand.urdf')
+    args.gripper_urdf = os.path.abspath('assets/robotiq_2f_85_hand/robotiq_arg2f_85_model.urdf')
 
     args.save_folder_path = os.path.join(args.save_folder_path, args.object_name)
     if not os.path.exists(args.save_folder_path):
@@ -54,15 +54,27 @@ def create_object_urdf(object_mesh_filepath, object_name,
 
 class Controller:
     EEF_LINK_INDEX = 0
-    GRIPPER_INDICES = [1, 2, 3, 4]
-    OPEN_POSITION = [0.0, 0.0, 0.0, 0.0]
-    CLOSED_POSITION = [1.1, 0.0, 1.1, 0.0]
-    LINK6_COM = [-0.002216, -0.000001, -0.058489]
+    GRIPPER_JOINT_NAMES = ['finger_joint', 'left_inner_knuckle_joint', 'left_inner_finger_joint',
+                           'right_outer_knuckle_joint', 'right_inner_knuckle_joint', 'right_inner_finger_joint']
+    OPEN_POSITION = [0] * 6
+    CLOSED_POSITION = 0.72 * np.array([1, 1, -1, 1, 1, -1])
+    LINK6_COM = [0.000000, -0.000097, 0.035953]
     LIFT_VALUE = 0.2
+
+    JOINT_INDICES_DICT = {}
+
+    MAX_FINGER_BASE_JOINT = 2.44
+    MAX_FINGER_TIP_JOINT = 0.84
+    PROXIMAL_TIP_RATIO = MAX_FINGER_BASE_JOINT / MAX_FINGER_TIP_JOINT
 
     def __init__(self, robot_id):
         self.robot_id = robot_id
         self.cid = None
+        joint_infos = [p.getJointInfo(robot_id, joint_index) for joint_index in range(p.getNumJoints(robot_id))]
+        self.JOINT_INDICES_DICT = {entry[1]: entry[0] for entry in joint_infos}
+        self.GRIPPER_INDICES = [self.JOINT_INDICES_DICT[name] for name in self.GRIPPER_JOINT_NAMES]
+
+        self.all_joints = range(p.getNumJoints(self.robot_id))
 
     def reset_to(self, pose):
         """ the pose is for the link6 center of mass """
@@ -74,8 +86,8 @@ class Controller:
         num_steps = 240
         current_pose = self.get_pose()
         positions = np.linspace(current_pose[0], pose[0], num_steps)
-        angles = np.linspace(p.getEulerFromQuaternion(current_pose[1]), p.getEulerFromQuaternion(pose[1]), num_steps)
-        quaternions = np.array([p.getQuaternionFromEuler(angle) for angle in angles])
+        quaternions = np.linspace(current_pose[1], pose[1], num_steps)
+
         if self.cid is None:
             self.cid = p.createConstraint(parentBodyUniqueId=self.robot_id, parentLinkIndex=-1, childBodyUniqueId=-1,
                                           childLinkIndex=-1, jointType=p.JOINT_FIXED, jointAxis=[0, 0, 0],
@@ -86,34 +98,45 @@ class Controller:
             p.stepSimulation()
         pu.step()
 
-    def close_gripper(self):
-        num_steps = 240
-        waypoints = np.linspace(self.OPEN_POSITION, self.CLOSED_POSITION, num_steps)
-        for wp in waypoints:
-            pu.control_joints(self.robot_id, self.GRIPPER_INDICES, wp)
-            p.stepSimulation()
-        pu.step()
-
-    def execute_grasp(self, grasp, back_off):
+    def execute_grasp(self, graspit_pose_msg, back_off):
         """ High level grasp interface using grasp 2d in world frame (link6_reference_frame)"""
-        link6_com_pose_2d = gu.change_end_effector_link_pose_2d(grasp, gu.link6_reference_to_link6_com)
-        pre_link6_com_pose_2d = gu.back_off_pose_2d(link6_com_pose_2d, back_off)
-        self.reset_to(pre_link6_com_pose_2d)
-        actual_pre_ee_pose_2d = pu.get_link_pose(self.robot_id, 0)
-        actual_pre_link6_ref_pose_2d = gu.change_end_effector_link_pose_2d(actual_pre_ee_pose_2d, gu.ee_to_link6_reference)
-        actual_pre_link6_com_pose_2d = pre_link6_com_pose_2d
+        link6_reference_to_link6_com = (np.array(self.LINK6_COM), [0.0, 0.0, 0.0, 1.0])
+        link6_com_pose_msg = gu.change_end_effector_link(graspit_pose_msg, link6_reference_to_link6_com)
+        pre_link6_com_pose_msg = gu.back_off(link6_com_pose_msg, -back_off)
 
-        self.move_to(link6_com_pose_2d)
+        pre_link6_com_pose_2d = tf_conversions.fromMsg(pre_link6_com_pose_msg)
+        link6_com_pose_2d = tf_conversions.fromMsg(link6_com_pose_msg)
+
+        # move to pre-grasp
+        self.reset_to(tf_conversions.toTf(pre_link6_com_pose_2d))
+        actual_pre_ee_pose_2d = pu.get_link_pose(self.robot_id, 0)
+        actual_pre_link6_ref_pose_2d = gu.change_end_effector_link_pose_2d(actual_pre_ee_pose_2d, gu.ee_to_link6_reference)  # what is ee_to_link6_reference?
+        planned_pre_link6_com_pose_2d = pre_link6_com_pose_2d
+
+        # move to grasp
+        self.move_to(tf_conversions.toTf(link6_com_pose_2d))
         actual_ee_pose_2d = pu.get_link_pose(self.robot_id, 0)
         actual_link6_ref_pose_2d = gu.change_end_effector_link_pose_2d(actual_ee_pose_2d, gu.ee_to_link6_reference)
-        actual_link6_com_pose_2d = link6_com_pose_2d
+        planned_link6_com_pose_2d = link6_com_pose_2d
+
         self.close_gripper()
         self.lift()
+
         # robust test
+        self.shake(0.05)
         self.lift(0.2)
         self.lift(-0.2)
         pu.step(2)
-        return actual_pre_ee_pose_2d, actual_pre_link6_ref_pose_2d, actual_pre_link6_com_pose_2d, actual_ee_pose_2d, actual_link6_ref_pose_2d, actual_link6_com_pose_2d
+        return actual_pre_ee_pose_2d, actual_pre_link6_ref_pose_2d, planned_pre_link6_com_pose_2d, actual_ee_pose_2d, actual_link6_ref_pose_2d, planned_link6_com_pose_2d
+
+    def execute_grasp_simple(self, graspit_pose_msp):
+        """ High level grasp interface using graspit pose in world frame (link6_reference_frame)"""
+        link6_reference_to_link6_com = (np.array(self.LINK6_COM), [0.0, 0.0, 0.0, 1.0])
+        link6_com_pose_msg = gu.change_end_effector_link(graspit_pose_msp, link6_reference_to_link6_com)
+        self.reset_to(tf_conversions.toTf(tf_conversions.fromMsg(link6_com_pose_msg)))
+        # self.reset_to(tf_conversions.toTf(tf_conversions.fromMsg(graspit_pose_msp)))
+        self.close_gripper()
+        self.lift()
 
     def execute_grasp_link6_com(self, grasp):
         """ High level grasp interface using grasp 2d in world frame (link6_com_frame)"""
@@ -132,15 +155,53 @@ class Controller:
         self.lift(-0.2)
         pu.step(2)
 
+    def get_gripper_joint_values(self):
+        return [p.getJointState(self.robot_id, self.JOINT_INDICES_DICT[name])[0] for name in self.GRIPPER_JOINT_NAMES]
+
     def open_gripper(self):
-        pu.set_joint_positions(self.robot_id, self.GRIPPER_INDICES, self.OPEN_POSITION)
-        pu.control_joints(self.robot_id, self.GRIPPER_INDICES, self.OPEN_POSITION)
+        num_steps = 240
+        current_gripper_joint = self.get_gripper_joint_values()
+        # import ipdb; ipdb.set_trace()
+        waypoints = np.linspace(current_gripper_joint, self.OPEN_POSITION, num_steps)
+        for wp in waypoints:
+            p.setJointMotorControlArray(bodyUniqueId=self.robot_id,
+                                        jointIndices=self.GRIPPER_INDICES,
+                                        controlMode=p.POSITION_CONTROL,
+                                        targetPositions=wp,
+                                        # positionGains=[self.grasp_joints_position_gains_during_inc_grasp]*len(hand_joint_values),
+                                        forces=[500] * len(wp)
+                                        )
+            p.stepSimulation()
+        pu.step()
+
+    def close_gripper(self):
+        num_steps = 240
+        waypoints = np.linspace(self.OPEN_POSITION, self.CLOSED_POSITION, num_steps)
+        for wp in waypoints:
+            p.setJointMotorControlArray(bodyUniqueId=self.robot_id,
+                                        jointIndices=self.GRIPPER_INDICES,
+                                        controlMode=p.POSITION_CONTROL,
+                                        targetPositions=wp,
+                                        # positionGains=[self.grasp_joints_position_gains_during_inc_grasp]*len(hand_joint_values),
+                                        forces=[100] * len(wp)
+                                        )
+            p.stepSimulation()
         pu.step()
 
     def lift(self, z=LIFT_VALUE):
         target_pose = self.get_pose()
         target_pose[0][2] += z
         self.move_to(target_pose)
+
+    def shake(self, z=LIFT_VALUE):
+        left_pose = self.get_pose()
+        right_pose = self.get_pose()
+
+        left_pose[0][0] -= z
+        right_pose[0][0] += z
+        for i in range(1):
+            self.move_to(left_pose)
+            self.move_to(right_pose)
 
     def get_pose(self):
         "the pose is for the link6 center of mass"
@@ -204,6 +265,7 @@ if __name__ == "__main__":
     num_grasps = 0
     num_successful_grasps = 0
     progressbar = tqdm.tqdm(initial=num_grasps, total=args.num_grasps)
+    old_ee_to_new_ee_translation_rotation = ([0.0, 0.0, 0.0], [0.0, 0.706825181105366, 0.0, 0.7073882691671998])
     while num_grasps < args.num_grasps:
         # start sampling grasps and evaluate
         world.reset()
@@ -213,10 +275,14 @@ if __name__ == "__main__":
             successes = []
             g_link6_ref_in_object = pu.split_7d(g_link6_ref_in_object)
             g_link6_ref_in_world = gu.convert_grasp_in_object_to_world(object_pose, g_link6_ref_in_object)
-            # pu.create_frame_marker(g_link6_ref_in_world)    # for visualization
+            pu.create_frame_marker(g_link6_ref_in_world)    # for visualization
+
+            graspit_grasp_pose_in_world = tf_conversions.toMsg(tf_conversions.fromTf(g_link6_ref_in_world))
+            pybullet_grasp_pose_in_world = gu.change_end_effector_link(graspit_grasp_pose_in_world, old_ee_to_new_ee_translation_rotation)
+
             for t in range(args.num_trials):  # test a single grasp
-                actual_pre_ee_pose_2d, actual_pre_link6_ref_pose_2d, actual_pre_link6_com_pose_2d, actual_ee_pose_2d, actual_link6_ref_pose_2d, actual_link6_com_pose_2d\
-                    = world.controller.execute_grasp(g_link6_ref_in_world, args.back_off)
+                actual_pre_ee_pose_2d, actual_pre_link6_ref_pose_2d, planned_pre_link6_com_pose_2d, actual_ee_pose_2d, actual_link6_ref_pose_2d, planned_link6_com_pose_2d\
+                    = world.controller.execute_grasp(pybullet_grasp_pose_in_world, args.back_off)
                 success = p.getBasePositionAndOrientation(world.target)[0][2] > success_height_threshold
                 successes.append(success)
                 # print(success)    # the place to put a break point
@@ -227,10 +293,10 @@ if __name__ == "__main__":
                 num_successful_grasps += 1
 
                 grasp_eef_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_ee_pose_2d)
-                grasp_link6_com_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_link6_com_pose_2d)
+                grasp_link6_com_in_object = gu.convert_grasp_in_world_to_object(object_pose, planned_link6_com_pose_2d)
                 grasp_link6_ref_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_link6_ref_pose_2d)
                 pre_grasp_eef_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_pre_ee_pose_2d)
-                pre_grasp_link6_com_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_pre_link6_com_pose_2d)
+                pre_grasp_link6_com_in_object = gu.convert_grasp_in_world_to_object(object_pose, planned_pre_link6_com_pose_2d)
                 pre_grasp_link6_ref_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_pre_link6_ref_pose_2d)
 
                 grasps_eef.append(pu.merge_pose_2d(grasp_eef_in_object))
