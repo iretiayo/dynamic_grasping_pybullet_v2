@@ -58,7 +58,10 @@ class Controller:
                            'right_outer_knuckle_joint', 'right_inner_knuckle_joint', 'right_inner_finger_joint']
     OPEN_POSITION = [0] * 6
     CLOSED_POSITION = 0.72 * np.array([1, 1, -1, 1, 1, -1])
-    LINK6_COM = [0.000000, -0.000097, 0.035953]
+    BASELINK_COM = [0.000000, -0.000097, 0.035953]
+    BASELINK_TO_COM = [[0.000000, -0.000097, 0.035953], [0, 0, 0, 1]]
+    GRASPIT_LINK_TO_MOVEIT_LINK = [[0, 0, 0], [0, 0, 0, 1]]
+    GRASPIT_LINK_TO_PYBULLET_LINK = ([0.0, 0.0, 0.0], [0.0, 0.706825181105366, 0.0, 0.7073882691671998])
     LIFT_VALUE = 0.2
 
     JOINT_INDICES_DICT = {}
@@ -98,27 +101,26 @@ class Controller:
             p.stepSimulation()
         pu.step()
 
+    def get_current_baselink_pose(self):
+        ee_com_pose_2d = pu.get_link_pose(self.robot_id, -1)
+        ee_pose_2d = tf_conversions.toTf(
+            tf_conversions.fromTf(ee_com_pose_2d) * tf_conversions.fromTf(self.BASELINK_TO_COM).Inverse())
+
+        return ee_com_pose_2d, ee_pose_2d
+
     def execute_grasp(self, graspit_pose_msg, back_off):
         """ High level grasp interface using grasp 2d in world frame (link6_reference_frame)"""
-        link6_reference_to_link6_com = (np.array(self.LINK6_COM), [0.0, 0.0, 0.0, 1.0])
-        link6_com_pose_msg = gu.change_end_effector_link(graspit_pose_msg, link6_reference_to_link6_com)
-        pre_link6_com_pose_msg = gu.back_off(link6_com_pose_msg, -back_off)
-
-        pre_link6_com_pose_2d = tf_conversions.fromMsg(pre_link6_com_pose_msg)
-        link6_com_pose_2d = tf_conversions.fromMsg(link6_com_pose_msg)
+        baselink_reference_to_com = (np.array(self.BASELINK_COM), [0.0, 0.0, 0.0, 1.0])
+        baselink_com_pose_msg = gu.change_end_effector_link(graspit_pose_msg, baselink_reference_to_com)
+        pregrasp_baselink_com_pose_msg = gu.back_off(baselink_com_pose_msg, -back_off)
 
         # move to pre-grasp
-        self.reset_to(tf_conversions.toTf(pre_link6_com_pose_2d))
-        actual_pre_ee_pose_2d = pu.get_link_pose(self.robot_id, 0)
-        actual_pre_link6_ref_pose_2d = gu.change_end_effector_link_pose_2d(actual_pre_ee_pose_2d, gu.ee_to_link6_reference)  # what is ee_to_link6_reference?
-        planned_pre_link6_com_pose_2d = pre_link6_com_pose_2d
+        self.reset_to(tf_conversions.toTf(tf_conversions.fromMsg(pregrasp_baselink_com_pose_msg)))
 
         # move to grasp
-        self.move_to(tf_conversions.toTf(link6_com_pose_2d))
-        actual_ee_pose_2d = pu.get_link_pose(self.robot_id, 0)
-        actual_link6_ref_pose_2d = gu.change_end_effector_link_pose_2d(actual_ee_pose_2d, gu.ee_to_link6_reference)
-        planned_link6_com_pose_2d = link6_com_pose_2d
+        self.move_to(tf_conversions.toTf(tf_conversions.fromMsg(baselink_com_pose_msg)))
 
+        # close and lift
         self.close_gripper()
         self.lift()
 
@@ -127,14 +129,12 @@ class Controller:
         self.lift(0.2)
         self.lift(-0.2)
         pu.step(2)
-        return actual_pre_ee_pose_2d, actual_pre_link6_ref_pose_2d, planned_pre_link6_com_pose_2d, actual_ee_pose_2d, actual_link6_ref_pose_2d, planned_link6_com_pose_2d
 
-    def execute_grasp_simple(self, graspit_pose_msp):
+    def execute_grasp_simple(self, graspit_pose_msg):
         """ High level grasp interface using graspit pose in world frame (link6_reference_frame)"""
-        link6_reference_to_link6_com = (np.array(self.LINK6_COM), [0.0, 0.0, 0.0, 1.0])
-        link6_com_pose_msg = gu.change_end_effector_link(graspit_pose_msp, link6_reference_to_link6_com)
-        self.reset_to(tf_conversions.toTf(tf_conversions.fromMsg(link6_com_pose_msg)))
-        # self.reset_to(tf_conversions.toTf(tf_conversions.fromMsg(graspit_pose_msp)))
+        baselink_reference_to_com = (np.array(self.BASELINK_COM), [0.0, 0.0, 0.0, 1.0])
+        baselink_com_pose_msg = gu.change_end_effector_link(graspit_pose_msg, baselink_reference_to_com)
+        self.reset_to(tf_conversions.toTf(tf_conversions.fromMsg(baselink_com_pose_msg)))
         self.close_gripper()
         self.lift()
 
@@ -161,7 +161,6 @@ class Controller:
     def open_gripper(self):
         num_steps = 240
         current_gripper_joint = self.get_gripper_joint_values()
-        # import ipdb; ipdb.set_trace()
         waypoints = np.linspace(current_gripper_joint, self.OPEN_POSITION, num_steps)
         for wp in waypoints:
             p.setJointMotorControlArray(bodyUniqueId=self.robot_id,
@@ -222,6 +221,11 @@ class World:
         self.robot = p.loadURDF(self.gripper_urdf, self.gripper_initial_pose[0], self.gripper_initial_pose[1],
                                 flags=p.URDF_USE_SELF_COLLISION)
 
+        p.changeDynamics(self.target, -1, mass=0.5)
+        for joint in range(p.getNumJoints(self.robot)):
+            p.changeDynamics(self.robot, joint, mass=1)
+        p.changeDynamics(self.robot, -1, mass=50)
+
         self.controller = Controller(self.robot)
 
     def reset(self):
@@ -253,71 +257,39 @@ if __name__ == "__main__":
 
     world = World(target_initial_pose, gripper_initial_pose, args.gripper_urdf, target_urdf)
 
-    grasps_link6_ref_in_object = np.load(os.path.join(args.load_folder_path, args.object_name + '.npy'))
-    # placeholder to save good grasps
-    grasps_eef = []
-    grasps_link6_com = []
-    grasps_link6_ref = []
-    pre_grasps_eef = []
-    pre_grasps_link6_com = []
-    pre_grasps_link6_ref = []
+    raw_graspit_grasps_in_object = np.load(os.path.join(args.load_folder_path, args.object_name + '.npy'))
+    good_graspit_grasps_in_object = []
 
-    num_grasps = 0
     num_successful_grasps = 0
-    progressbar = tqdm.tqdm(initial=num_grasps, total=args.num_grasps)
-    old_ee_to_new_ee_translation_rotation = ([0.0, 0.0, 0.0], [0.0, 0.706825181105366, 0.0, 0.7073882691671998])
-    while num_grasps < args.num_grasps:
-        # start sampling grasps and evaluate
-        world.reset()
-        object_pose = p.getBasePositionAndOrientation(world.target)
-        success_height_threshold = object_pose[0][2] + world.controller.LIFT_VALUE - 0.05
-        for g_link6_ref_in_object in grasps_link6_ref_in_object:
-            successes = []
-            g_link6_ref_in_object = pu.split_7d(g_link6_ref_in_object)
-            g_link6_ref_in_world = gu.convert_grasp_in_object_to_world(object_pose, g_link6_ref_in_object)
-            pu.create_frame_marker(g_link6_ref_in_world)    # for visualization
+    progressbar = tqdm.tqdm(total=len(raw_graspit_grasps_in_object))
+    world.reset()
+    object_pose = p.getBasePositionAndOrientation(world.target)
+    success_height_threshold = object_pose[0][2] + world.controller.LIFT_VALUE - 0.05
+    for grasp_id, graspit_grasp_in_object in enumerate(raw_graspit_grasps_in_object):
+        successes = []
+        g_link6_ref_in_object = pu.split_7d(graspit_grasp_in_object)
+        g_link6_ref_in_world = gu.convert_grasp_in_object_to_world(object_pose, g_link6_ref_in_object)
+        pu.create_frame_marker(g_link6_ref_in_world)  # for visualization
 
-            graspit_grasp_pose_in_world = tf_conversions.toMsg(tf_conversions.fromTf(g_link6_ref_in_world))
-            pybullet_grasp_pose_in_world = gu.change_end_effector_link(graspit_grasp_pose_in_world, old_ee_to_new_ee_translation_rotation)
+        graspit_grasp_pose_in_world = tf_conversions.toMsg(tf_conversions.fromTf(g_link6_ref_in_world))
+        pybullet_grasp_pose_in_world = gu.change_end_effector_link(graspit_grasp_pose_in_world,
+                                                                   world.controller.GRASPIT_LINK_TO_PYBULLET_LINK)
 
-            for t in range(args.num_trials):  # test a single grasp
-                actual_pre_ee_pose_2d, actual_pre_link6_ref_pose_2d, planned_pre_link6_com_pose_2d, actual_ee_pose_2d, actual_link6_ref_pose_2d, planned_link6_com_pose_2d\
-                    = world.controller.execute_grasp(pybullet_grasp_pose_in_world, args.back_off)
-                success = p.getBasePositionAndOrientation(world.target)[0][2] > success_height_threshold
-                successes.append(success)
-                # print(success)    # the place to put a break point
-                world.reset()
-            success_rate = np.average(successes)
-            num_successful_trials = np.count_nonzero(successes)
-            if success_rate >= args.min_success_rate:
-                num_successful_grasps += 1
+        for t in range(args.num_trials):  # test a single grasp
+            world.controller.execute_grasp(pybullet_grasp_pose_in_world, args.back_off)
+            success = p.getBasePositionAndOrientation(world.target)[0][2] > success_height_threshold
+            successes.append(success)
+            world.reset()
+        success_rate = np.average(successes)
+        num_successful_trials = np.count_nonzero(successes)
+        if success_rate >= args.min_success_rate:
+            num_successful_grasps += 1
+            good_graspit_grasps_in_object.append(graspit_grasp_in_object)
 
-                grasp_eef_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_ee_pose_2d)
-                grasp_link6_com_in_object = gu.convert_grasp_in_world_to_object(object_pose, planned_link6_com_pose_2d)
-                grasp_link6_ref_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_link6_ref_pose_2d)
-                pre_grasp_eef_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_pre_ee_pose_2d)
-                pre_grasp_link6_com_in_object = gu.convert_grasp_in_world_to_object(object_pose, planned_pre_link6_com_pose_2d)
-                pre_grasp_link6_ref_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_pre_link6_ref_pose_2d)
-
-                grasps_eef.append(pu.merge_pose_2d(grasp_eef_in_object))
-                grasps_link6_com.append(pu.merge_pose_2d(grasp_link6_com_in_object))
-                grasps_link6_ref.append(pu.merge_pose_2d(grasp_link6_ref_in_object))
-                pre_grasps_eef.append(pu.merge_pose_2d(pre_grasp_eef_in_object))
-                pre_grasps_link6_com.append(pu.merge_pose_2d(pre_grasp_link6_com_in_object))
-                pre_grasps_link6_ref.append(pu.merge_pose_2d(pre_grasp_link6_ref_in_object))
-
-            num_grasps += 1
-            progressbar.update(1)
-            progressbar.set_description("object name: {} | success rate {}/{} | overall success rate {}/{}".
-                                        format(args.object_name, num_successful_trials, args.num_trials,
-                                               num_successful_grasps, num_grasps))
-            if num_grasps == args.num_grasps:
-                break
+        progressbar.update(1)
+        progressbar.set_description("object name: {} | success rate {}/{} | overall success rate {}/{}".
+                                    format(args.object_name, num_successful_trials, args.num_trials,
+                                           num_successful_grasps, grasp_id))
     progressbar.close()
-    np.save(os.path.join(args.save_folder_path, 'grasps_eef.npy'), np.array(grasps_eef))
-    np.save(os.path.join(args.save_folder_path, 'grasps_link6_com.npy'), np.array(grasps_link6_com))
-    np.save(os.path.join(args.save_folder_path, 'grasps_link6_ref.npy'), np.array(grasps_link6_ref))
-    np.save(os.path.join(args.save_folder_path, 'pre_grasps_eef_'+str(args.back_off)+'.npy'), np.array(pre_grasps_eef))
-    np.save(os.path.join(args.save_folder_path, 'pre_grasps_link6_com_'+str(args.back_off)+'.npy'), np.array(pre_grasps_link6_com))
-    np.save(os.path.join(args.save_folder_path, 'pre_grasps_link6_ref_'+str(args.back_off)+'.npy'), np.array(pre_grasps_link6_ref))
+    np.save(os.path.join(args.save_folder_path, 'grasps_eef.npy'), np.array(good_graspit_grasps_in_object))
     print("finished")
