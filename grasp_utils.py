@@ -96,18 +96,20 @@ def get_transform(reference_frame, target_frame):
     return translation_rotation
 
 
-def back_off(grasp_pose, offset=-.05):
-    """ back off alone negative z axis """
-    pre_grasp_pose = tf_conversions.toMsg(
-        tf_conversions.fromMsg(grasp_pose) * tf_conversions.fromTf(((0, 0, offset), (0, 0, 0, 1))))
+def back_off(grasp_pose, offset=-.05, approach_dir='z'):
+    if approach_dir == 'x':
+        pre_grasp_pose = tf_conversions.toMsg(
+            tf_conversions.fromMsg(grasp_pose) * tf_conversions.fromTf(((offset, 0, 0), (0, 0, 0, 1))))
+    if approach_dir == 'z':
+        pre_grasp_pose = tf_conversions.toMsg(
+            tf_conversions.fromMsg(grasp_pose) * tf_conversions.fromTf(((0, 0, offset), (0, 0, 0, 1))))
     return pre_grasp_pose
 
 
-def back_off_pose_2d(grasp_pose_2d, offset=-.05):
+def back_off_pose_2d(grasp_pose_2d, offset=-.05, approach_dir='z'):
     """ back off alone negative z axis """
     grasp_pose = list_2_pose(grasp_pose_2d)
-    pre_grasp_pose = tf_conversions.toMsg(
-        tf_conversions.fromMsg(grasp_pose) * tf_conversions.fromTf(((0, 0, offset), (0, 0, 0, 1))))
+    pre_grasp_pose = back_off(grasp_pose, offset, approach_dir)
     return pose_2_list(pre_grasp_pose)
 
 

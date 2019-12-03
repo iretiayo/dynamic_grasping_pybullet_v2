@@ -8,9 +8,11 @@ import pybullet_utils as pu
 from mico_controller import MicoController
 import rospy
 import threading
+import tf_conversions
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import String
 from math import pi, cos, sin, sqrt, atan, radians
+from ur5_robotiq_pybullet import load_ur_robotiq_robot, UR5RobotiqPybulletController
 
 
 class DynamicGraspingWorld:
@@ -53,25 +55,33 @@ class DynamicGraspingWorld:
 
         self.grasp_database_path = grasp_database_path
         self.grasps_eef = np.load(os.path.join(self.grasp_database_path, self.target_name, 'grasps_eef.npy'))
-        self.grasps_link6_ref = np.load(
-            os.path.join(self.grasp_database_path, self.target_name, 'grasps_link6_ref.npy'))
-        self.grasps_link6_com = np.load(
-            os.path.join(self.grasp_database_path, self.target_name, 'grasps_link6_com.npy'))
-        self.pre_grasps_eef = np.load(
-            os.path.join(self.grasp_database_path, self.target_name, 'pre_grasps_eef_' + str(self.back_off) + '.npy'))
-        self.pre_grasps_link6_ref = np.load(
-            os.path.join(self.grasp_database_path, self.target_name,
-                         'pre_grasps_link6_ref_' + str(self.back_off) + '.npy'))
+        self.graspit_pose_msg = [tf_conversions.toMsg(tf_conversions.fromTf((grasps[:3], grasps[3:]))) for grasps in
+                                    self.grasps_eef]
+        self.pre_grasps_graspit_pose_msg = [gu.back_off(grasp_pose, self.back_off, approach_dir='x') for grasp_pose in
+                                        self.graspit_pose_msg]
 
-        self.reachability_data_dir = reachability_data_dir
-        self.sdf_reachability_space, self.mins, self.step_size, self.dims = gu.get_reachability_space(
-            self.reachability_data_dir)
+        self.graspit_ee_to_moveit_ee_Tf = [[0, 0, 0], [0, 0, 0, 1]]
+        self.grasps_eef_pose_msg = [gu.change_end_effector_link(grasps, self.graspit_ee_to_moveit_ee_Tf) for grasps in
+                                    self.graspit_pose_msg]
+        self.pre_grasps_eef_pose_msg = [gu.back_off(grasp_pose, self.back_off, approach_dir='x') for grasp_pose in
+                                        self.grasps_eef_pose_msg]
+
+        # self.reachability_data_dir = reachability_data_dir
+        # self.sdf_reachability_space, self.mins, self.step_size, self.dims = gu.get_reachability_space(
+        #     self.reachability_data_dir)
 
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         self.plane = p.loadURDF("plane.urdf")
-        self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
-        self.robot = MicoController(self.robot_initial_pose, self.robot_initial_state, self.robot_urdf)
+        if 'mico' in self.robot_urdf:
+            self.robot = MicoController(self.robot_initial_pose, self.robot_initial_state, self.robot_urdf)
+        if 'robotiq' in self.robot_urdf:
+            self.robot_id = load_ur_robotiq_robot(self.robot_initial_pose)
+            self.robot = UR5RobotiqPybulletController(self.robot_id)
         self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf, self.conveyor_speed)
+        self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
+
+        p.changeDynamics(self.target, -1, mass=0.5)
+
         self.reset('initial')  # the reset is needed to simulate for
 
         self.target_pose_pub = rospy.Publisher('target_pose', PoseStamped, queue_size=1)
@@ -172,19 +182,19 @@ class DynamicGraspingWorld:
         success = False
         grasp_attempted = False  # pre_grasp and grasp is reachable and motion is found
         pre_grasp_reached = False
-        grasp_reachaed = False
+        grasp_reached = False
         comment = " "
 
         # planning grasp
         grasp_idx, grasp_planning_time, num_ik_called, pre_grasp, pre_grasp_jv, grasp, grasp_jv = self.plan_grasp(
             predicted_pose, None)
         if grasp_jv is None or pre_grasp_jv is None:
-            return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no reachable grasp is found"
+            return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reached, grasp_planning_time, num_ik_called, "no reachable grasp is found"
 
         # planning motion
         motion_planning_time, plan = self.plan_arm_motion(pre_grasp_jv)
         if plan is None:
-            return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no motion found to the planned pre grasp jv"
+            return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reached, grasp_planning_time, num_ik_called, "no motion found to the planned pre grasp jv"
 
         # move
         self.robot.execute_arm_plan(plan, self.realtime)
@@ -199,22 +209,21 @@ class DynamicGraspingWorld:
         # print(grasp_jv)
 
         # approach
-        plan = self.robot.plan_arm_joint_values_simple(grasp_jv)
+        plan, fraction = self.robot.plan_straight_line(tf_conversions.toMsg(tf_conversions.fromTf(grasp)))
         self.robot.execute_arm_plan(plan, self.realtime)
-        grasp_reachaed = self.robot.equal_conf(self.robot.get_arm_joint_values(), grasp_jv, tol=0.01)
-        # plan, fraction = self.robot.plan_cartesian_control(z=0.05, frame='eef')
-        # self.robot.execute_plan(plan, self.realtime)
-        # print(fraction)
+        grasp_reached = self.robot.equal_conf(self.robot.get_arm_joint_values(), grasp_jv, tol=0.01)  # not valid
 
         # close and lift
         self.robot.close_gripper(self.realtime)
-        plan, fraction = self.robot.plan_cartesian_control(z=0.07)
+        lift_pose = tf_conversions.toMsg(tf_conversions.fromTf(grasp))
+        lift_pose.position.z += 0.07
+        plan, fraction = self.robot.plan_straight_line(lift_pose)
         if fraction != 1.0:
-            comment = "lift fration {} is not 1.0".format(fraction)
+            comment = "lift fraction {} is not 1.0".format(fraction)
         self.robot.execute_arm_plan(plan, self.realtime)
         success = self.check_success()
         pu.remove_all_markers()
-        return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, comment
+        return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reached, grasp_planning_time, num_ik_called, comment
 
     def check_success(self):
         if pu.get_body_pose(self.target)[0][2] >= self.target_initial_pose[0][2] + 0.03:
@@ -338,12 +347,13 @@ class DynamicGraspingWorld:
                     # print("Planning a grasp takes {:.6f}".format(planning_time))
                     return old_grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
 
-        pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
-                                         self.pre_grasps_link6_ref]
         if self.disable_reachability:
-            grasp_order_idxs = np.random.permutation(np.arange(len(pre_grasps_link6_ref_in_world)))
+            grasp_order_idxs = np.random.permutation(np.arange(len(self.grasps_eef_pose_msg)))
         else:
-            sdf_values = gu.get_reachability_of_grasps_pose_2d(pre_grasps_link6_ref_in_world,
+            pre_grasps_graspit_poses_in_world = [
+                tf_conversions.toTf(tf_conversions.fromTf(target_pose) * tf_conversions.fromMsg(g)) for g in
+                self.pre_grasps_graspit_pose_msg]
+            sdf_values = gu.get_reachability_of_grasps_pose_2d(pre_grasps_graspit_poses_in_world,
                                                                self.sdf_reachability_space,
                                                                self.mins,
                                                                self.step_size,
@@ -352,13 +362,15 @@ class DynamicGraspingWorld:
         for num_ik_called, grasp_idx in enumerate(grasp_order_idxs):
             if num_ik_called == self.max_check:
                 break
-            planned_pre_grasp_in_object = pu.split_7d(self.pre_grasps_eef[grasp_idx])
-            planned_pre_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_pre_grasp_in_object)
+
+            planned_pre_grasp_in_object = self.pre_grasps_eef_pose_msg[grasp_idx]
+            planned_pre_grasp = tf_conversions.toTf(tf_conversions.fromTf(target_pose) * tf_conversions.fromMsg(planned_pre_grasp_in_object))
             planned_pre_grasp_jv = self.robot.get_arm_ik(planned_pre_grasp)
             if planned_pre_grasp_jv is None:
                 continue
-            planned_grasp_in_object = pu.split_7d(self.grasps_eef[grasp_idx])
-            planned_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_grasp_in_object)
+
+            planned_grasp_in_object = self.grasps_eef_pose_msg[grasp_idx]
+            planned_grasp = tf_conversions.toTf(tf_conversions.fromTf(target_pose) * tf_conversions.fromMsg(planned_grasp_in_object))
             planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False,
                                                      arm_joint_values=planned_pre_grasp_jv)
             if planned_grasp_jv is None:
