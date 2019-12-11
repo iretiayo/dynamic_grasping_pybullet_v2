@@ -11,9 +11,13 @@ from collections import OrderedDict
 import csv
 import tqdm
 import tf_conversions
+from math import radians
+import copy
+import misc_utils as mu
+
 
 """ Use Graspit as backend to generate grasps and test in pybullet,
-    saved as pose lists in link6 reference link"""
+    saved as pose lists in link6 reference link """
 
 
 def get_args():
@@ -28,6 +32,7 @@ def get_args():
     parser.add_argument('--disable_gui', action='store_true', default=False)
     parser.add_argument('--min_success_rate', type=float, default=1)
     parser.add_argument('--back_off', type=float, default=0.05)
+    parser.add_argument('--apply_noise', action='store_true', default=False)
     args = parser.parse_args()
 
     args.mesh_dir = os.path.abspath('assets/models')
@@ -36,6 +41,7 @@ def get_args():
     args.save_folder_path = os.path.join(args.save_folder_path, args.object_name)
     if not os.path.exists(args.save_folder_path):
         os.makedirs(args.save_folder_path)
+    args.result_file_path = os.path.join(args.save_folder_path, args.object_name+'.csv')
 
     return args
 
@@ -150,11 +156,15 @@ class Controller:
 
 class World:
 
-    def __init__(self, target_initial_pose, gripper_initial_pose, gripper_urdf, target_urdf):
+    def __init__(self, target_initial_pose, gripper_initial_pose, gripper_urdf, target_urdf, apply_noise):
         self.target_initial_pose = target_initial_pose
         self.gripper_initial_pose = gripper_initial_pose
         self.gripper_urdf = gripper_urdf
         self.target_urdf = target_urdf
+        self.apply_noise = apply_noise
+        self.x_noise = 0.01
+        self.y_noise = 0.01
+        self.rotation_noise = 20
 
         self.plane = p.loadURDF("plane.urdf")
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
@@ -165,9 +175,20 @@ class World:
 
     def reset(self):
         p.resetBasePositionAndOrientation(self.target, self.target_initial_pose[0], self.target_initial_pose[1])
-        p.resetBasePositionAndOrientation(self.robot, self.gripper_initial_pose[0], self.gripper_initial_pose[1])
         self.controller.reset_to(self.gripper_initial_pose)
         self.controller.open_gripper()
+        if self.apply_noise:
+            sampled_x_noise = np.random.uniform(low=-self.x_noise, high=self.x_noise)
+            sampled_y_noise = np.random.uniform(low=-self.y_noise, high=self.y_noise)
+            sampled_rotation_noise = np.random.uniform(low=-self.rotation_noise, high=self.rotation_noise)
+            target_noise_pose = copy.deepcopy(pu.get_body_pose(self.target))
+            target_noise_pose[0][0] += sampled_x_noise
+            target_noise_pose[0][1] += sampled_y_noise
+            target_rpy = pu.get_euler_from_quaternion(target_noise_pose[1])
+            target_rpy[2] += radians(sampled_rotation_noise)
+            target_noise_pose[1] = pu.get_quaternion_from_euler(target_rpy)
+            p.resetBasePositionAndOrientation(self.target, target_noise_pose[0], target_noise_pose[1])
+            pu.step()
 
 
 if __name__ == "__main__":
@@ -190,7 +211,7 @@ if __name__ == "__main__":
     target_initial_pose = [[0, 0, -target_mesh.bounds.min(0)[2] + 0.01], [0, 0, 0, 1]]
     gripper_initial_pose = [[0, 0, 0.5], [0, 0, 0, 1]]
 
-    world = World(target_initial_pose, gripper_initial_pose, args.gripper_urdf, target_urdf)
+    world = World(target_initial_pose, gripper_initial_pose, args.gripper_urdf, target_urdf, args.apply_noise)
 
     grasps_link6_ref_in_object = np.load(os.path.join(args.load_folder_path, args.object_name + '.npy'))
     # placeholder to save good grasps
@@ -204,49 +225,51 @@ if __name__ == "__main__":
     num_grasps = 0
     num_successful_grasps = 0
     progressbar = tqdm.tqdm(initial=num_grasps, total=args.num_grasps)
-    while num_grasps < args.num_grasps:
-        # start sampling grasps and evaluate
-        world.reset()
-        object_pose = p.getBasePositionAndOrientation(world.target)
-        success_height_threshold = object_pose[0][2] + world.controller.LIFT_VALUE - 0.05
-        for g_link6_ref_in_object in grasps_link6_ref_in_object:
-            successes = []
-            g_link6_ref_in_object = pu.split_7d(g_link6_ref_in_object)
-            g_link6_ref_in_world = gu.convert_grasp_in_object_to_world(object_pose, g_link6_ref_in_object)
-            # pu.create_frame_marker(g_link6_ref_in_world)    # for visualization
-            for t in range(args.num_trials):  # test a single grasp
-                actual_pre_ee_pose_2d, actual_pre_link6_ref_pose_2d, actual_pre_link6_com_pose_2d, actual_ee_pose_2d, actual_link6_ref_pose_2d, actual_link6_com_pose_2d\
-                    = world.controller.execute_grasp(g_link6_ref_in_world, args.back_off)
-                success = p.getBasePositionAndOrientation(world.target)[0][2] > success_height_threshold
-                successes.append(success)
-                # print(success)    # the place to put a break point
-                world.reset()
-            success_rate = np.average(successes)
-            num_successful_trials = np.count_nonzero(successes)
-            if success_rate >= args.min_success_rate:
-                num_successful_grasps += 1
+    # start iterating grasps and evaluate
+    world.reset()
+    object_pose = p.getBasePositionAndOrientation(world.target)
+    success_height_threshold = object_pose[0][2] + world.controller.LIFT_VALUE - 0.05
+    for i, g_link6_ref_in_object in enumerate(grasps_link6_ref_in_object):
+        successes = []
+        g_link6_ref_in_object = pu.split_7d(g_link6_ref_in_object)
+        g_link6_ref_in_world = gu.convert_grasp_in_object_to_world(object_pose, g_link6_ref_in_object)
+        # pu.create_frame_marker(g_link6_ref_in_world)    # for visualization
+        for t in range(args.num_trials):  # test a single grasp
+            actual_pre_ee_pose_2d, actual_pre_link6_ref_pose_2d, actual_pre_link6_com_pose_2d, actual_ee_pose_2d, actual_link6_ref_pose_2d, actual_link6_com_pose_2d\
+                = world.controller.execute_grasp(g_link6_ref_in_world, args.back_off)
+            success = p.getBasePositionAndOrientation(world.target)[0][2] > success_height_threshold
+            successes.append(success)
+            # print(success)    # the place to put a break point
+            world.reset()
+        success_rate = np.average(successes)
+        num_successful_trials = np.count_nonzero(successes)
+        if success_rate >= args.min_success_rate:
+            num_successful_grasps += 1
 
-                grasp_eef_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_ee_pose_2d)
-                grasp_link6_com_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_link6_com_pose_2d)
-                grasp_link6_ref_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_link6_ref_pose_2d)
-                pre_grasp_eef_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_pre_ee_pose_2d)
-                pre_grasp_link6_com_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_pre_link6_com_pose_2d)
-                pre_grasp_link6_ref_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_pre_link6_ref_pose_2d)
+            grasp_eef_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_ee_pose_2d)
+            grasp_link6_com_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_link6_com_pose_2d)
+            grasp_link6_ref_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_link6_ref_pose_2d)
+            pre_grasp_eef_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_pre_ee_pose_2d)
+            pre_grasp_link6_com_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_pre_link6_com_pose_2d)
+            pre_grasp_link6_ref_in_object = gu.convert_grasp_in_world_to_object(object_pose, actual_pre_link6_ref_pose_2d)
 
-                grasps_eef.append(pu.merge_pose_2d(grasp_eef_in_object))
-                grasps_link6_com.append(pu.merge_pose_2d(grasp_link6_com_in_object))
-                grasps_link6_ref.append(pu.merge_pose_2d(grasp_link6_ref_in_object))
-                pre_grasps_eef.append(pu.merge_pose_2d(pre_grasp_eef_in_object))
-                pre_grasps_link6_com.append(pu.merge_pose_2d(pre_grasp_link6_com_in_object))
-                pre_grasps_link6_ref.append(pu.merge_pose_2d(pre_grasp_link6_ref_in_object))
+            grasps_eef.append(pu.merge_pose_2d(grasp_eef_in_object))
+            grasps_link6_com.append(pu.merge_pose_2d(grasp_link6_com_in_object))
+            grasps_link6_ref.append(pu.merge_pose_2d(grasp_link6_ref_in_object))
+            pre_grasps_eef.append(pu.merge_pose_2d(pre_grasp_eef_in_object))
+            pre_grasps_link6_com.append(pu.merge_pose_2d(pre_grasp_link6_com_in_object))
+            pre_grasps_link6_ref.append(pu.merge_pose_2d(pre_grasp_link6_ref_in_object))
 
-            num_grasps += 1
-            progressbar.update(1)
-            progressbar.set_description("object name: {} | success rate {}/{} | overall success rate {}/{}".
-                                        format(args.object_name, num_successful_trials, args.num_trials,
-                                               num_successful_grasps, num_grasps))
-            if num_grasps == args.num_grasps:
-                break
+        num_grasps += 1
+        progressbar.update(1)
+        progressbar.set_description("object name: {} | success rate {}/{} | overall success rate {}/{}".
+                                    format(args.object_name, num_successful_trials, args.num_trials,
+                                           num_successful_grasps, num_grasps))
+        # write results
+        result = [('grasp_index', i), ('success_rate', success_rate)]
+        mu.write_csv_line(args.result_file_path, result)
+        if num_grasps == args.num_grasps:
+            break
     progressbar.close()
     np.save(os.path.join(args.save_folder_path, 'grasps_eef.npy'), np.array(grasps_eef))
     np.save(os.path.join(args.save_folder_path, 'grasps_link6_com.npy'), np.array(grasps_link6_com))

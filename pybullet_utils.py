@@ -31,6 +31,14 @@ def merge_pose_2d(pose):
     return pose[0] + pose[1]
 
 
+def get_euler_from_quaternion(quaternion):
+    return list(p.getEulerFromQuaternion(quaternion))
+
+
+def get_quaternion_from_euler(euler):
+    return list(p.getQuaternionFromEuler(euler))
+
+
 # Constraints
 
 ConstraintInfo = namedtuple('ConstraintInfo', ['parentBodyUniqueId', 'parentJointIndex',
