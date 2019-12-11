@@ -9,8 +9,8 @@ import pybullet_utils as pu
 
 def write_csv_line(result_file_path, result):
     """ write a line in a csv file; create the file and write the first line if the file does not already exist """
-    pp = pprint.PrettyPrinter(indent=4)
-    pp.pprint(result)
+    # pp = pprint.PrettyPrinter(indent=4)
+    # pp.pprint(result)
     result = OrderedDict(result)
     file_exists = os.path.exists(result_file_path)
     with open(result_file_path, 'a') as csv_file:
