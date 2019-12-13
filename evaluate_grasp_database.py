@@ -48,7 +48,7 @@ if __name__ == "__main__":
         target_initial_pose = [[0, 0, -target_mesh.bounds.min(0)[2] + 0.01], [0, 0, 0, 1]]
         gripper_initial_pose = [[0, 0, 0.5], [0, 0, 0, 1]]
 
-        world = World(target_initial_pose, gripper_initial_pose, args.gripper_urdf, target_urdf)
+        world = World(target_initial_pose, gripper_initial_pose, args.gripper_urdf, target_urdf, False)
         link6_reference_to_ee = ([0.0, 0.0, -0.16], [1.0, 0.0, 0.0, 0])
         ee_to_link6_reference = ([0.0, -3.3091697137634315e-14, -0.16], [-1.0, 0.0, 0.0, -1.0341155355510722e-13])
 
