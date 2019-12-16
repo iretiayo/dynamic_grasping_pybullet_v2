@@ -14,10 +14,10 @@ import tf_conversions
 from math import radians
 import copy
 import misc_utils as mu
+import pandas as pd
 
 
-""" Use Graspit as backend to generate grasps and test in pybullet,
-    saved as pose lists in link6 reference link """
+""" Load pregenerated raw graspit grasps, evaluate and then keep those that succeed over a threshold """
 
 
 def get_args():
@@ -27,12 +27,16 @@ def get_args():
                         help="Target object to be grasped. Ex: cube")
     parser.add_argument('--load_folder_path', type=str, required=True)
     parser.add_argument('--save_folder_path', type=str, required=True)
-    parser.add_argument('--num_grasps', type=int, default=1000)
-    parser.add_argument('--num_trials', type=int, default=10)
+    parser.add_argument('--num_successful_grasps', type=int, default=100)
+    parser.add_argument('--num_grasps', type=int, default=5000)
+    parser.add_argument('--num_trials', type=int, default=50)
     parser.add_argument('--disable_gui', action='store_true', default=False)
-    parser.add_argument('--min_success_rate', type=float, default=1)
+    parser.add_argument('--min_success_rate', type=float, default=0.95)
     parser.add_argument('--back_off', type=float, default=0.05)
     parser.add_argument('--apply_noise', action='store_true', default=False)
+    parser.add_argument('--prior_folder_path', type=str,
+                        help="folder path to the prior csv files")
+    parser.add_argument('--prior_success_rate', type=float)
     args = parser.parse_args()
 
     args.mesh_dir = os.path.abspath('assets/models')
@@ -43,7 +47,21 @@ def get_args():
         os.makedirs(args.save_folder_path)
     args.result_file_path = os.path.join(args.save_folder_path, args.object_name+'.csv')
 
+    if args.prior_folder_path is not None:
+        if args.prior_success_rate is None:
+            args.prior_success_rate = args.min_success_rate
+        args.prior_csv_file_path = os.path.join(args.prior_folder_path, args.object_name, args.object_name+'.csv')
+        args.candidate_indices = get_candidate_indices(args.prior_csv_file_path, args.prior_success_rate)
+    else:
+        args.candidate_indices = []
+
     return args
+
+
+def get_candidate_indices(prior_csv_file_path, prior_success_rate):
+    df = pd.read_csv(prior_csv_file_path, index_col=0)
+    df_success = df.loc[df['success_rate'] >= prior_success_rate]
+    return list(df_success.index)
 
 
 def create_object_urdf(object_mesh_filepath, object_name,
@@ -230,6 +248,9 @@ if __name__ == "__main__":
     object_pose = p.getBasePositionAndOrientation(world.target)
     success_height_threshold = object_pose[0][2] + world.controller.LIFT_VALUE - 0.05
     for i, g_link6_ref_in_object in enumerate(grasps_link6_ref_in_object):
+        if len(args.candidate_indices) != 0 and i not in args.candidate_indices and i < args.candidate_indices[-1]:
+            progressbar.update(1)
+            continue
         successes = []
         g_link6_ref_in_object = pu.split_7d(g_link6_ref_in_object)
         g_link6_ref_in_world = gu.convert_grasp_in_object_to_world(object_pose, g_link6_ref_in_object)
@@ -268,7 +289,8 @@ if __name__ == "__main__":
         # write results
         result = [('grasp_index', i), ('success_rate', success_rate)]
         mu.write_csv_line(args.result_file_path, result)
-        if num_grasps == args.num_grasps:
+        # have collected required number of grasps or have evaluated required number of grasps
+        if num_successful_grasps == args.num_successful_grasps or num_grasps == args.num_grasps:
             break
     progressbar.close()
     np.save(os.path.join(args.save_folder_path, 'grasps_eef.npy'), np.array(grasps_eef))
