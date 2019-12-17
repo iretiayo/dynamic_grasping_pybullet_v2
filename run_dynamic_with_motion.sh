@@ -8,7 +8,7 @@ do
     --rendering \
     --num_trials 100 \
     --result_dir $timestr \
-    --grasp_database_path assets/grasps/filtered_grasps \
+    --grasp_database_path assets/grasps/filtered_grasps_noise_100 \
     --grasp_threshold 0.03 \
     --lazy_threshold  0.3 \
     --conveyor_speed 0.01 \
