@@ -8,6 +8,6 @@ do
     --rendering \
     --num_trials 500 \
     --result_dir $timestr \
-    --grasp_database_path assets/grasps/filtered_grasps_noise;
+    --grasp_database_path assets/grasps/filtered_grasps_noise_100;
     sleep 5
 done
