@@ -64,18 +64,6 @@ def get_candidate_indices(prior_csv_file_path, prior_success_rate):
     return list(df_success.index)
 
 
-def create_object_urdf(object_mesh_filepath, object_name,
-                       urdf_template_filepath='assets/object_template.urdf',
-                       urdf_target_object_filepath='assets/target_object.urdf'):
-    # set_up urdf
-    os.system('cp {} {}'.format(urdf_template_filepath, urdf_target_object_filepath))
-    sed_cmd = "sed -i 's|{}|{}|g' {}".format('object_name.obj', object_mesh_filepath, urdf_target_object_filepath)
-    os.system(sed_cmd)
-    sed_cmd = "sed -i 's|{}|{}|g' {}".format('object_name', object_name, urdf_target_object_filepath)
-    os.system(sed_cmd)
-    return urdf_target_object_filepath
-
-
 class Controller:
     EEF_LINK_INDEX = 0
     GRIPPER_INDICES = [1, 2, 3, 4]
@@ -223,7 +211,7 @@ if __name__ == "__main__":
 
     object_mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(args.object_name), '{}.obj'.format(args.object_name))
     object_mesh_filepath_ply = object_mesh_filepath.replace('.obj', '.ply')
-    target_urdf = create_object_urdf(object_mesh_filepath, args.object_name)
+    target_urdf = mu.create_object_urdf(object_mesh_filepath, args.object_name)
     target_mesh = trimesh.load_mesh(object_mesh_filepath)
     floor_offset = target_mesh.bounds.min(0)[2]
     target_initial_pose = [[0, 0, -target_mesh.bounds.min(0)[2] + 0.01], [0, 0, 0, 1]]

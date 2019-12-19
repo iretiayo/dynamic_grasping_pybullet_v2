@@ -31,3 +31,15 @@ def configure_pybullet(rendering=False):
     p.setPhysicsEngineParameter(enableFileCaching=0)
     p.resetSimulation()
     p.setGravity(0, 0, -9.8)
+
+
+def create_object_urdf(object_mesh_filepath, object_name,
+                       urdf_template_filepath='assets/object_template.urdf',
+                       urdf_target_object_filepath='assets/target_object.urdf'):
+    # set_up urdf
+    os.system('cp {} {}'.format(urdf_template_filepath, urdf_target_object_filepath))
+    sed_cmd = "sed -i 's|{}|{}|g' {}".format('object_name.obj', object_mesh_filepath, urdf_target_object_filepath)
+    os.system(sed_cmd)
+    sed_cmd = "sed -i 's|{}|{}|g' {}".format('object_name', object_name, urdf_target_object_filepath)
+    os.system(sed_cmd)
+    return urdf_target_object_filepath
