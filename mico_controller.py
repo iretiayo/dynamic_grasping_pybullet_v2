@@ -330,6 +330,9 @@ class MicoController:
 
         moveit_plan = self.plan_arm_joint_values_ros(start_joint_values_converted, goal_joint_values_converted,
                                                      maximum_planning_time=maximum_planning_time)  # STOMP does not convert goal joint values
+        if isinstance(moveit_plan, tuple):
+            # if using the chomp branch
+            moveit_plan = moveit_plan[1]
         # check if there exists a plan
         if len(moveit_plan.joint_trajectory.points) == 0:
             return None
