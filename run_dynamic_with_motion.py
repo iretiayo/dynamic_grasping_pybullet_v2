@@ -40,7 +40,7 @@ def get_args():
     parser.add_argument('--conveyor_speed', type=float, default=0.01)
     parser.add_argument('--grasp_threshold', type=float, default=0.03)
     parser.add_argument('--lazy_threshold', type=float, default=0.3)
-    parser.add_argument('--close_delay', type=float, default=2)
+    parser.add_argument('--close_delay', type=float, default=0.5)
     args = parser.parse_args()
 
     if args.realtime:
@@ -111,7 +111,14 @@ if __name__ == "__main__":
                                                   back_off=args.back_off)
 
     for i in range(args.num_trials):
-        distance, theta, length = dynamic_grasping_world.reset(mode='dynamic_linear')
+        # reset_dict = {
+        #     'distance': 0.2667522705215051,
+        #     'length': 1.0,
+        #     'theta': 346.1845961461583,
+        #     'target_quaternion': [0, 0, 0, 1]
+        # }
+        reset_dict = None
+        distance, theta, length, target_quaternion = dynamic_grasping_world.reset(mode='dynamic_linear', reset_dict=reset_dict)
         print(distance, theta, length)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         success, grasp_idx, dynamic_grasping_time = dynamic_grasping_world.dynamic_grasp(
@@ -125,5 +132,6 @@ if __name__ == "__main__":
                   ('dynamic_grasping_time', dynamic_grasping_time),
                   ('theta', theta),
                   ('length', length),
-                  ('distance', distance)]
+                  ('distance', distance),
+                  ('target_quaternion', target_quaternion)]
         mu.write_csv_line(result_file_path=args.result_file_path, result=result)

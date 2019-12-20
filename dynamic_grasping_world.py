@@ -96,7 +96,7 @@ class DynamicGraspingWorld:
             # self.robot.scene.add_mesh(self.target_name, gu.list_2_ps(target_pose), self.target_mesh_file_path)
             # self.robot.scene.add_box('conveyor', gu.list_2_ps(conveyor_pose), size=(.1, .1, .02))
 
-    def reset(self, mode):
+    def reset(self, mode, reset_dict=None):
         """
         mode:
             initial: reset the target to the fixed initial pose, not moving
@@ -131,18 +131,23 @@ class DynamicGraspingWorld:
             pu.remove_all_markers()
             self.conveyor.clear_motion()
 
-            distance, theta, length = self.sample_convey_linear_motion()
+            if reset_dict is None:
+                distance, theta, length = self.sample_convey_linear_motion()
+                target_quaternion = self.sample_target_angle()
+            else:
+                distance, theta, length = reset_dict['distance'], reset_dict['theta'], reset_dict['length']
+                target_quaternion = reset_dict['target_quaternion']
             self.conveyor.initialize_linear_motion(distance, theta, length)
             conveyor_pose = self.conveyor.start_pose
             target_pose = [[conveyor_pose[0][0], conveyor_pose[0][1], self.target_initial_pose[0][2]],
-                           self.sample_target_angle()]
+                           target_quaternion]
             p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
             self.conveyor.set_pose(conveyor_pose)
             self.robot.reset()
             pu.step(2)
 
             pu.draw_line(self.conveyor.start_pose[0], self.conveyor.target_pose[0])
-            return distance, theta, length
+            return distance, theta, length, target_quaternion
 
         elif mode == 'dynamic_circular':
             raise NotImplementedError
@@ -155,8 +160,9 @@ class DynamicGraspingWorld:
         for i in range(int(freeze_time * 240)):
             # step the robot
             self.robot.step()
+            # step conveyor
             self.conveyor.step()
-            # step python
+            # step physics
             p.stepSimulation()
             if self.realtime:
                 time.sleep(1.0 / 240.0)
@@ -248,7 +254,8 @@ class DynamicGraspingWorld:
 
             # plan a motion
             distance = np.linalg.norm(np.array(self.robot.get_eef_pose()[0]) - np.array(planned_pre_grasp[0]))
-            if distance > lazy_threshold and self.robot.arm_discretized_plan is not None:
+            if distance > lazy_threshold and self.robot.arm_discretized_plan is not None and \
+                    self.robot.arm_wp_target_index != len(self.robot.arm_discretized_plan):
                 # print("lazy plan")
                 continue
             motion_planning_time, plan = self.plan_arm_motion(planned_pre_grasp_jv)
@@ -270,7 +277,7 @@ class DynamicGraspingWorld:
 
     def plan_approach_motion(self, grasp_jv):
         """ Plan the discretized approach motion for both arm and gripper """
-        predicted_period = 0.2
+        predicted_period = 0.25
         start_time = time.time()
 
         if self.robot.arm_discretized_plan is not None:
@@ -290,8 +297,8 @@ class DynamicGraspingWorld:
         return planning_time, arm_discretized_plan, gripper_discretized_plan
 
     def execute_appraoch_and_grasp(self, arm_plan, gripper_plan, delay):
-        num_delay_steps = int(delay * 240.0)
         arm_len = len(arm_plan)
+        num_delay_steps = int(arm_len * delay)
         gripper_len = len(gripper_plan)
         final_len = max(arm_len, gripper_len + num_delay_steps)
 
@@ -304,7 +311,7 @@ class DynamicGraspingWorld:
         for arm_wp, gripper_wp in zip(arm_plan, gripper_plan):
             self.robot.control_arm_joints(arm_wp)
             self.robot.control_gripper_joints(gripper_wp)
-            # step conveyor
+            self.conveyor.step()
             p.stepSimulation()
 
     def execute_lift(self):
@@ -377,7 +384,7 @@ class DynamicGraspingWorld:
 
     def plan_arm_motion(self, grasp_jv):
         """ plan a discretized motion for the arm """
-        predicted_period = 0.2
+        predicted_period = 0.25
         start_time = time.time()
 
         if self.robot.arm_discretized_plan is not None:
@@ -410,7 +417,7 @@ class DynamicGraspingWorld:
         """ return quaternion """
         angle = np.random.uniform(-pi, pi)
         orientation = p.getQuaternionFromEuler([0, 0, angle])
-        return orientation
+        return list(orientation)
 
     def sample_convey_linear_motion(self, dist=None, theta=None, length=None):
         if dist is None:
