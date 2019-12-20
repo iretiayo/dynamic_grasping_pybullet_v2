@@ -12,6 +12,6 @@ do
     --grasp_threshold 0.03 \
     --lazy_threshold  0.3 \
     --conveyor_speed 0.01 \
-    --close_delay 2;
+    --close_delay 0.5;
     sleep 5
 done
