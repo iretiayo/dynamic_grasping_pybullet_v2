@@ -35,6 +35,7 @@ def get_args():
     parser.add_argument('--max_check', type=int, default=1)
     parser.add_argument('--back_off', type=float, default=0.05)
     parser.add_argument('--disable_reachability', action='store_true', default=False)
+    parser.add_argument('--record_videos', action='store_true', default=False)
 
     # dynamic hyper parameter
     parser.add_argument('--conveyor_speed', type=float, default=0.01)
@@ -53,10 +54,18 @@ def get_args():
     args.reachability_data_dir = os.path.join(rospkg.RosPack().get_path('mico_reachability_config'), 'data')
     # timestr = time.strftime("%Y-%m-%d-%H-%M-%S")
     # args.runstr = 'static-'+timestr
-    # args.result_dir = os.path.join(args.result_dir, args.runstr)
+
+    # create result folder
+    args.result_dir = os.path.join(args.result_dir, args.object_name)
     if not os.path.exists(args.result_dir):
         os.makedirs(args.result_dir)
     args.result_file_path = os.path.join(args.result_dir, args.object_name + '.csv')
+
+    # create a video folders
+    if args.record_videos:
+        args.video_dir = os.path.join(args.result_dir, 'videos')
+        if not os.path.exists(args.video_dir):
+            os.makedirs(args.video_dir)
     return args
 
 
@@ -121,11 +130,15 @@ if __name__ == "__main__":
         distance, theta, length, target_quaternion = dynamic_grasping_world.reset(mode='dynamic_linear', reset_dict=reset_dict)
         print(distance, theta, length)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
+        if args.record_videos:
+            logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, '{}.mp4'.format(i)))
         success, grasp_idx, dynamic_grasping_time = dynamic_grasping_world.dynamic_grasp(
             grasp_threshold=args.grasp_threshold,
             lazy_threshold=args.lazy_threshold,
             close_delay=args.close_delay
         )
+        if args.record_videos:
+            p.stopStateLogging(logging)
         result = [('exp_idx', i),
                   ('grasp_idx', grasp_idx),
                   ('success', success),
@@ -135,3 +148,5 @@ if __name__ == "__main__":
                   ('distance', distance),
                   ('target_quaternion', target_quaternion)]
         mu.write_csv_line(result_file_path=args.result_file_path, result=result)
+
+
