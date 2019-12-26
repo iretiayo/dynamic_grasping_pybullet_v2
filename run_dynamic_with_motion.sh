@@ -11,9 +11,9 @@ do
     --grasp_database_path assets/grasps/filtered_grasps_noise_100 \
     --grasp_threshold 0.03 \
     --lazy_threshold  0.3 \
-    --conveyor_speed 0.01 \
+    --conveyor_speed 0.03 \
     --close_delay 0.5 \
-    --pose_greq 5 \
+    --pose_freq 5 \
     --use_gt;
     sleep 5
 done
