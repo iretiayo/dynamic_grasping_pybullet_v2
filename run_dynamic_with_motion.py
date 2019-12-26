@@ -42,6 +42,9 @@ def get_args():
     parser.add_argument('--grasp_threshold', type=float, default=0.03)
     parser.add_argument('--lazy_threshold', type=float, default=0.3)
     parser.add_argument('--close_delay', type=float, default=0.5)
+    parser.add_argument('--use_kf', action='store_true', default=False)
+    parser.add_argument('--use_gt', action='store_true', default=False)
+    parser.add_argument('--pose_freq', type=int, default=5)
     args = parser.parse_args()
 
     if args.realtime:
@@ -117,7 +120,10 @@ if __name__ == "__main__":
                                                   realtime=args.realtime,
                                                   max_check=args.max_check,
                                                   disable_reachability=args.disable_reachability,
-                                                  back_off=args.back_off)
+                                                  back_off=args.back_off,
+                                                  pose_freq=args.pose_freq,
+                                                  use_kf=args.use_kf,
+                                                  use_gt=args.use_gt)
 
     for i in range(args.num_trials):
         # reset_dict = {
@@ -127,8 +133,8 @@ if __name__ == "__main__":
         #     'target_quaternion': [0, 0, 0, 1]
         # }
         reset_dict = None
-        distance, theta, length, target_quaternion = dynamic_grasping_world.reset(mode='dynamic_linear', reset_dict=reset_dict)
-        print(distance, theta, length)
+        distance, theta, length, direction, target_quaternion = dynamic_grasping_world.reset(mode='dynamic_linear', reset_dict=reset_dict)
+        print(distance, theta, length, direction)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         if args.record_videos:
             logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, '{}.mp4'.format(i)))
@@ -146,6 +152,7 @@ if __name__ == "__main__":
                   ('theta', theta),
                   ('length', length),
                   ('distance', distance),
+                  ('direction', direction),
                   ('target_quaternion', target_quaternion)]
         mu.write_csv_line(result_file_path=args.result_file_path, result=result)
 

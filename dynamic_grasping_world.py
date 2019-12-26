@@ -11,6 +11,8 @@ import threading
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import String
 from math import pi, cos, sin, sqrt, atan, radians
+from kalman_filter_3d import KalmanFilter, create_kalman_filter
+import random
 
 
 class DynamicGraspingWorld:
@@ -30,7 +32,10 @@ class DynamicGraspingWorld:
                  realtime,
                  max_check,
                  disable_reachability,
-                 back_off):
+                 back_off,
+                 pose_freq,
+                 use_kf,
+                 use_gt):
         self.target_name = target_name
         self.target_initial_pose = target_initial_pose
         self.robot_initial_pose = robot_initial_pose
@@ -47,6 +52,13 @@ class DynamicGraspingWorld:
         self.max_check = max_check
         self.back_off = back_off
         self.disable_reachability = disable_reachability
+        self.world_steps = 0
+        self.pose_freq = pose_freq
+        self.pose_duration = 1.0 / self.pose_freq
+        self.pose_steps = int(self.pose_duration * 240)
+        self.use_kf = use_kf
+        self.use_gt = use_gt
+        self.motion_predictor_kf = MotionPredictorKF(self.pose_duration)
 
         self.distance_low = 0.15
         self.distance_high = 0.4
@@ -72,7 +84,7 @@ class DynamicGraspingWorld:
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
         self.robot = MicoController(self.robot_initial_pose, self.robot_initial_state, self.robot_urdf)
         self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf, self.conveyor_speed)
-        self.reset('initial')  # the reset is needed to simulate for
+        self.reset('initial')  # the reset is needed to simulate the initial config
 
         self.target_pose_pub = rospy.Publisher('target_pose', PoseStamped, queue_size=1)
         self.conveyor_pose_pub = rospy.Publisher('conveyor_pose', PoseStamped, queue_size=1)
@@ -105,6 +117,7 @@ class DynamicGraspingWorld:
             dynamic_circular: initialize the conveyor with a circular motion
             hand_over: TODO
         """
+        self.world_steps = 0
         if mode == 'initial':
             pu.remove_all_markers()
             target_pose, distance = self.target_initial_pose, self.initial_distance
@@ -129,15 +142,17 @@ class DynamicGraspingWorld:
 
         elif mode == 'dynamic_linear':
             pu.remove_all_markers()
+            self.motion_predictor_kf.reset_predictor()
             self.conveyor.clear_motion()
 
             if reset_dict is None:
-                distance, theta, length = self.sample_convey_linear_motion()
+                distance, theta, length, direction = self.sample_convey_linear_motion()
                 target_quaternion = self.sample_target_angle()
             else:
-                distance, theta, length = reset_dict['distance'], reset_dict['theta'], reset_dict['length']
+                distance, theta, length, direction = reset_dict['distance'], reset_dict['theta'], reset_dict['length'], \
+                                                     reset_dict['direction']
                 target_quaternion = reset_dict['target_quaternion']
-            self.conveyor.initialize_linear_motion(distance, theta, length)
+            self.conveyor.initialize_linear_motion(distance, theta, length, direction)
             conveyor_pose = self.conveyor.start_pose
             target_pose = [[conveyor_pose[0][0], conveyor_pose[0][1], self.target_initial_pose[0][2]],
                            target_quaternion]
@@ -146,8 +161,9 @@ class DynamicGraspingWorld:
             self.robot.reset()
             pu.step(2)
 
+            self.motion_predictor_kf.initialize_predictor(target_pose)
             pu.draw_line(self.conveyor.start_pose[0], self.conveyor.target_pose[0])
-            return distance, theta, length, target_quaternion
+            return distance, theta, length, direction, target_quaternion
 
         elif mode == 'dynamic_circular':
             raise NotImplementedError
@@ -164,6 +180,9 @@ class DynamicGraspingWorld:
             self.conveyor.step()
             # step physics
             p.stepSimulation()
+            self.world_steps += 1
+            if self.world_steps % self.pose_steps == 0:
+                self.motion_predictor_kf.update(pu.get_body_pose(self.target))
             if self.realtime:
                 time.sleep(1.0 / 240.0)
         if arm_motion_plan is not None:
@@ -236,17 +255,27 @@ class DynamicGraspingWorld:
         grasp_idx = None
         done = False
         dynamic_grasp_time = 0
+        distance = None
         while not done:
             done = self.check_done()
             target_pose = pu.get_body_pose(self.target)
-            predicted_pose = target_pose
+            duration = self.calculate_prediction_time(distance, lazy_threshold)  # TODO variate this
+            if self.use_kf:
+                predicted_pose = self.motion_predictor_kf.predict(duration)
+            elif self.use_gt:
+                predicted_conveyor_pose = self.conveyor.predict(duration)
+                predicted_position = [predicted_conveyor_pose[0][0], predicted_conveyor_pose[0][1], target_pose[0][2]]
+                predicted_pose = [predicted_position, target_pose[1]]
+            else:
+                # no prediction
+                predicted_pose = target_pose
 
             # plan a grasp
-            grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv \
+            grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched \
                 = self.plan_grasp(predicted_pose, grasp_idx)
             dynamic_grasp_time += grasp_planning_time
             if planned_grasp_jv is None or planned_pre_grasp_jv is None:
-                # print('no reachable grasp found')
+                print('no reachable grasp found')
                 self.step(grasp_planning_time, None, None)
                 continue
             self.step(grasp_planning_time, None, None)
@@ -254,8 +283,7 @@ class DynamicGraspingWorld:
 
             # plan a motion
             distance = np.linalg.norm(np.array(self.robot.get_eef_pose()[0]) - np.array(planned_pre_grasp[0]))
-            if distance > lazy_threshold and self.robot.arm_discretized_plan is not None and \
-                    self.robot.arm_wp_target_index != len(self.robot.arm_discretized_plan):
+            if self.check_lazy_plan(distance, lazy_threshold, grasp_switched):
                 # print("lazy plan")
                 continue
             motion_planning_time, plan = self.plan_arm_motion(planned_pre_grasp_jv)
@@ -313,6 +341,9 @@ class DynamicGraspingWorld:
             self.robot.control_gripper_joints(gripper_wp)
             self.conveyor.step()
             p.stepSimulation()
+            self.world_steps += 1
+            if self.world_steps % self.pose_steps == 0:
+                self.motion_predictor_kf.update(pu.get_body_pose(self.target))
 
     def execute_lift(self):
         plan, fraction = self.robot.plan_cartesian_control(z=0.07)
@@ -329,6 +360,7 @@ class DynamicGraspingWorld:
         planned_pre_grasp_jv = None
         planned_grasp = None
         planned_grasp_jv = None
+        grasp_switched = False
 
         # if an old grasp index is provided
         if old_grasp_idx is not None:
@@ -343,7 +375,7 @@ class DynamicGraspingWorld:
                 if planned_grasp_jv is not None:
                     planning_time = time.time() - start_time
                     # print("Planning a grasp takes {:.6f}".format(planning_time))
-                    return old_grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
+                    return old_grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
 
         pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
                                          self.pre_grasps_link6_ref]
@@ -371,6 +403,7 @@ class DynamicGraspingWorld:
             if planned_grasp_jv is None:
                 continue
             num_ik_called += 1
+            grasp_switched = True
             break
 
         # grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
@@ -380,7 +413,7 @@ class DynamicGraspingWorld:
         #                                      maximum=max(sdf_values), minimum=min(sdf_values))
         planning_time = time.time() - start_time
         # print("Planning a grasp takes {:.6f}".format(planning_time))
-        return grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
+        return grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
 
     def plan_arm_motion(self, grasp_jv):
         """ plan a discretized motion for the arm """
@@ -419,14 +452,16 @@ class DynamicGraspingWorld:
         orientation = p.getQuaternionFromEuler([0, 0, angle])
         return list(orientation)
 
-    def sample_convey_linear_motion(self, dist=None, theta=None, length=None):
+    def sample_convey_linear_motion(self, dist=None, theta=None, length=None, direction=None):
         if dist is None:
             dist = np.random.uniform(low=self.distance_low, high=self.distance_high)
         if theta is None:
             theta = np.random.uniform(low=0, high=360)
         if length is None:
             length = 1.0
-        return dist, theta, length
+        if direction is None:
+            direction = random.sample([-1, 1], 1)[0]
+        return dist, theta, length, direction
 
     def check_done(self):
         done = False
@@ -437,6 +472,39 @@ class DynamicGraspingWorld:
             # target knocked down
             done = True
         return done
+
+    def check_lazy_plan(self, distance, lazy_threshold, grasp_switched):
+        """ check whether we should do lazy plan """
+        do_lazy_plan = distance > lazy_threshold and \
+                       self.robot.arm_discretized_plan is not None and \
+                       self.robot.arm_wp_target_index != len(self.robot.arm_discretized_plan) and \
+                       not grasp_switched
+        return do_lazy_plan
+
+    def calculate_prediction_time(self, distance, lazy_threshold):
+        # if self.robot.arm_discretized_plan is not None and self.robot.arm_wp_target_index != len(self.robot.arm_discretized_plan):
+        #     prediction_time = (len(self.robot.arm_discretized_plan) - self.robot.arm_wp_target_index) / 240.0
+        #     if prediction_time <= 1:
+        #         # if the remaining time is small enough, stop prediction and fine tune the grasp
+        #         prediction_time = 0
+        # else:
+        #     # if there is no motion plan found or initially plan is None
+        #     prediction_time = 5
+        # print(prediction_time)
+        # return prediction_time
+        no_prediction_threshold = 0.1
+        if distance is None:
+            prediction_time = 2
+        else:
+            if no_prediction_threshold < distance <= lazy_threshold:
+                prediction_time = 1
+            elif distance <= no_prediction_threshold:
+                prediction_time = 0
+            else:
+                prediction_time = 2
+        return prediction_time
+
+
 
 
 class Conveyor:
@@ -454,11 +522,11 @@ class Conveyor:
         self.start_pose = None
         self.target_pose = None
         self.discretized_trajectory = None
-        self.distance = None
         self.wp_target_index = 0
         self.distance = None
         self.theta = None
         self.length = None
+        self.direction = None
 
     def set_pose(self, pose):
         pu.set_pose(self.id, pose)
@@ -477,15 +545,19 @@ class Conveyor:
             self.control_pose(self.discretized_trajectory[self.wp_target_index])
             self.wp_target_index += 1
 
-    def initialize_linear_motion(self, dist, theta, length):
+    def initialize_linear_motion(self, dist, theta, length, direction):
         """
         :param dist: distance to robot center,
         :param theta: the angle of rotation, (0, 360)
         :param length: the length of the motion
+        :param direction: the direction of the motion
+            1: from smaller theta to larger theta
+            -1: from larger theta to smaller theta
         """
         self.distance = dist
         self.theta = theta
         self.length = length
+        self.direction = direction
         # uses the z value and orientation of the current pose
         z = self.get_pose()[0][-1]
         orientation = self.get_pose()[1]
@@ -493,11 +565,17 @@ class Conveyor:
         new_dist = sqrt(dist ** 2 + (length / 2.0) ** 2)
         delta_theta = atan((length / 2.0) / dist)
 
-        theta_1 = radians(self.theta) + delta_theta
-        theta_2 = radians(self.theta) - delta_theta
+        theta_large = radians(self.theta) + delta_theta
+        theta_small = radians(self.theta) - delta_theta
 
-        start_xy = [new_dist * cos(theta_1), new_dist * sin(theta_1)]
-        target_xy = [new_dist * cos(theta_2), new_dist * sin(theta_2)]
+        if direction == -1:
+            start_xy = [new_dist * cos(theta_large), new_dist * sin(theta_large)]
+            target_xy = [new_dist * cos(theta_small), new_dist * sin(theta_small)]
+        elif direction == 1:
+            target_xy = [new_dist * cos(theta_large), new_dist * sin(theta_large)]
+            start_xy = [new_dist * cos(theta_small), new_dist * sin(theta_small)]
+        else:
+            raise ValueError('direction must be in {-1, 1}')
         start_position = start_xy + [z]
         target_position = target_xy + [z]
 
@@ -506,7 +584,8 @@ class Conveyor:
 
         num_steps = int(self.length / self.speed * 240)
         position_trajectory = np.linspace(start_position, target_position, num_steps)
-        self.discretized_trajectory = [[p, orientation] for p in position_trajectory]
+        self.discretized_trajectory = [[list(p), orientation] for p in position_trajectory]
+        self.wp_target_index = 1
 
     def clear_motion(self):
         self.start_pose = None
@@ -516,3 +595,106 @@ class Conveyor:
         self.distance = None
         self.theta = None
         self.length = None
+        self.direction = None
+
+    def predict(self, duration):
+        # predict the ground truth future pose of the conveyor
+        num_predicted_steps = int(duration * 240)
+        predicted_step_index = self.wp_target_index - 1 + num_predicted_steps
+        if predicted_step_index < len(self.discretized_trajectory):
+            return self.discretized_trajectory[predicted_step_index]
+        else:
+            return self.discretized_trajectory[-1]
+
+
+class MotionPredictorKF:
+    def __init__(self, time_step):
+        # the predictor takes a pose estimation once every time step
+        self.time_step = time_step
+        self.target_pose = None
+        self.kf = None
+        self.initialized = False
+
+    def initialize_predictor(self, initial_pose):
+        self.target_pose = initial_pose
+        x0 = np.zeros(9)
+        x0[:3] = initial_pose[0]
+        # x0[3] = 0.03
+        x0 = x0[:, None]
+        self.kf = create_kalman_filter(x0=x0)
+        self.initialized = True
+
+    def reset_predictor(self):
+        self.target_pose = None
+        self.kf = None
+
+    def update(self, current_pose):
+        # TODO quaternion is not considered yet
+        if not self.initialized:
+            raise ValueError("predictor not initialized!")
+        self.target_pose = current_pose
+        current_position = current_pose[0]
+        self.kf.predict(dt=self.time_step)
+        self.kf.update(np.array(current_position)[:, None])
+
+    def predict(self, duration):
+        """ return just a predicted pose """
+        if not self.initialized:
+            raise ValueError("predictor not initialized!")
+        # print("current position: {}".format(self.target_pose[0]))
+        future_estimate = np.dot(self.kf.H, self.kf.predict(dt=duration, predict_only=True))
+        future_position = list(np.squeeze(future_estimate))
+        # print("future position: {}\n".format(future_position))
+        future_orientation = self.target_pose[1]
+        return [future_position, future_orientation]
+
+
+# not accurate
+# class MotionPredictorGTLinear:
+#     def __init__(self):
+#         # ground truth linear motion predictor
+#         self.target_pose = None
+#         self.distance = None
+#         self.theta = None
+#         self.speed = None
+#         self.direction = None
+#         self.initialized = False
+#
+#     def initialize_predictor(self, initial_pose, distance, theta, direction, speed):
+#         self.target_pose = initial_pose
+#         self.distance = distance
+#         self.theta = theta
+#         self.speed = speed
+#         self.direction = direction
+#         self.initialized = True
+#
+#     def reset_predictor(self):
+#         self.target_pose = None
+#         self.distance = None
+#         self.theta = None
+#         self.speed = None
+#         self.direction = None
+#
+#     def update(self, current_pose):
+#         # TODO quaternion is not considered yet
+#         if not self.initialized:
+#             raise ValueError("predictor not initialized!")
+#         self.target_pose = current_pose
+#
+#     def predict(self, duration):
+#         if not self.initialized:
+#             raise ValueError("predictor not initialized!")
+#         print("gt current position: {}".format(self.target_pose[0]))
+#         delta_distance = duration * self.speed
+#         if self.direction == -1:
+#             vector_theta = self.theta - 90.0
+#         else:
+#             vector_theta = self.theta + 90.0
+#         delta_x = delta_distance * cos(vector_theta)
+#         delta_y = delta_distance * sin(vector_theta)
+#         new_x = self.target_pose[0][0] + delta_x
+#         new_y = self.target_pose[0][1] + delta_y
+#         future_position = [new_x, new_y, self.target_pose[0][2]]
+#         print("gt future position: {}\n".format(future_position))
+#         future_orientation = self.target_pose[1]
+#         return [future_position, future_orientation]
