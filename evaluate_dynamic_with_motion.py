@@ -57,9 +57,9 @@ def get_overall_stats(stat_list):
 if __name__ == '__main__':
     args = get_args()
 
-    csv_names = os.listdir(args.result_dir)
+    csv_path = [os.path.join(object_name, object_name+'.csv') for object_name in os.listdir(args.result_dir)]
     stat_list = []
-    for n in csv_names:
+    for n in csv_path:
         result_file_path = os.path.join(args.result_dir, n)
         df = pd.read_csv(result_file_path, index_col=0)
         stats = evaluate_results(df)
