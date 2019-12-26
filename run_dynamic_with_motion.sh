@@ -14,6 +14,7 @@ do
     --conveyor_speed 0.03 \
     --close_delay 0.5 \
     --pose_freq 5 \
+    --record_videos \
     --use_gt;
     sleep 5
 done
