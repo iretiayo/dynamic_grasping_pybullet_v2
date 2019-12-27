@@ -127,10 +127,11 @@ if __name__ == "__main__":
 
     for i in range(args.num_trials):
         # reset_dict = {
-        #     'distance': 0.2667522705215051,
+        #     'distance': 0.29647511081229105,
         #     'length': 1.0,
-        #     'theta': 346.1845961461583,
-        #     'target_quaternion': [0, 0, 0, 1]
+        #     'theta': 68.07271909237184,
+        #     'direction': 1,
+        #     'target_quaternion': [0.0, 0.0, -0.6337979080046422, 0.7734986824868799]
         # }
         reset_dict = None
         distance, theta, length, direction, target_quaternion = dynamic_grasping_world.reset(mode='dynamic_linear', reset_dict=reset_dict)

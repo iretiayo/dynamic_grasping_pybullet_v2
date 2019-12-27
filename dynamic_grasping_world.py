@@ -481,17 +481,8 @@ class DynamicGraspingWorld:
                        not grasp_switched
         return do_lazy_plan
 
-    def calculate_prediction_time(self, distance, lazy_threshold):
-        # if self.robot.arm_discretized_plan is not None and self.robot.arm_wp_target_index != len(self.robot.arm_discretized_plan):
-        #     prediction_time = (len(self.robot.arm_discretized_plan) - self.robot.arm_wp_target_index) / 240.0
-        #     if prediction_time <= 1:
-        #         # if the remaining time is small enough, stop prediction and fine tune the grasp
-        #         prediction_time = 0
-        # else:
-        #     # if there is no motion plan found or initially plan is None
-        #     prediction_time = 5
-        # print(prediction_time)
-        # return prediction_time
+    @ staticmethod
+    def calculate_prediction_time(distance, lazy_threshold):
         no_prediction_threshold = 0.1
         if distance is None:
             prediction_time = 2
@@ -503,8 +494,6 @@ class DynamicGraspingWorld:
             else:
                 prediction_time = 2
         return prediction_time
-
-
 
 
 class Conveyor:
