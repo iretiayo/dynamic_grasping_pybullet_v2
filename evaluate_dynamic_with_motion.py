@@ -6,6 +6,8 @@ import os
 import ast
 import matplotlib.pyplot as plt
 import pprint
+import json
+from collections import OrderedDict
 
 """
 Given a directory of results for grasping dynamic object with planned motion,
@@ -34,14 +36,14 @@ def evaluate_results(df):
     return stats
 
 
-def get_overall_stats(stat_list):
+def get_overall_stats(stat_dict):
     overall_stats = {}
 
     num_successes_list = []
     num_trials_list = []
     success_rate_list = []
     dynamic_grasping_time_list = []
-    for stats in stat_list:
+    for name, stats in stat_dict.items():
         num_successes_list.append(stats['num_successes'])
         num_trials_list.append(stats['num_trials'])
         success_rate_list.append(stats['success_rate'])
@@ -57,24 +59,18 @@ def get_overall_stats(stat_list):
 if __name__ == '__main__':
     args = get_args()
 
-    csv_path = [os.path.join(object_name, object_name+'.csv') for object_name in os.listdir(args.result_dir)]
-    stat_list = []
-    for n in csv_path:
-        result_file_path = os.path.join(args.result_dir, n)
+    object_names = [n for n in os.listdir(args.result_dir) if os.path.isdir(os.path.join(args.result_dir, n))]
+    csv_paths = [os.path.join(object_name, object_name+'.csv') for object_name in object_names]
+    stat_dict = OrderedDict()
+    for name, path in zip(object_names, csv_paths):
+        result_file_path = os.path.join(args.result_dir, path)
         df = pd.read_csv(result_file_path, index_col=0)
         stats = evaluate_results(df)
-        stat_list.append(stats)
+        stat_dict[name] = stats
 
-        print('')
-        print(n)
-        print("Statistics:")
-        pp = pprint.PrettyPrinter(indent=4)
-        pp.pprint(stats)
-
-    overall_stats = get_overall_stats(stat_list)
-    print('')
-    print('Summary')
-    print("Statistics:")
-    pp = pprint.PrettyPrinter(indent=4)
-    pp.pprint(overall_stats)
+    overall_stats = get_overall_stats(stat_dict)
+    stat_dict['summary'] = overall_stats
+    print(json.dumps(stat_dict, indent=4))
+    with open(os.path.join(args.result_dir, 'results.json'), "w") as f:
+        json.dump(stat_dict, f, indent=4)
 

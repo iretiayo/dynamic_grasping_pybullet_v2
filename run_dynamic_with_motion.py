@@ -20,6 +20,7 @@ from geometry_msgs.msg import PoseStamped
 from math import pi
 import pprint
 from dynamic_grasping_world import DynamicGraspingWorld
+import json
 
 
 def get_args():
@@ -86,6 +87,7 @@ def create_object_urdf(object_mesh_filepath, object_name,
 
 if __name__ == "__main__":
     args = get_args()
+    json.dump(vars(args), open(os.path.join(args.result_dir, args.object_name + '.json'), 'w'), indent=4)
     mu.configure_pybullet(args.rendering)
     rospy.init_node('dynamic_grasping')
 
