@@ -482,7 +482,7 @@ class MicoController:
         steps = np.abs(np.divide(diffs, self.MOVEIT_ARM_MAX_VELOCITY)) * 240
         num_steps = int(max(steps))
         waypoints = MicoController.refine_path(start_joint_values, diffs, num_steps)
-        print(self.adapt_conf(goal_joint_values, waypoints[-1]))
+        # print(self.adapt_conf(goal_joint_values, waypoints[-1]))
         return waypoints
 
     @staticmethod
