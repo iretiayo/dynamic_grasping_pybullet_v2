@@ -137,7 +137,6 @@ if __name__ == "__main__":
         # }
         reset_dict = None
         distance, theta, length, direction, target_quaternion = dynamic_grasping_world.reset(mode='dynamic_linear', reset_dict=reset_dict)
-        print(distance, theta, length, direction)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         if args.record_videos:
             logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, '{}.mp4'.format(i)))
