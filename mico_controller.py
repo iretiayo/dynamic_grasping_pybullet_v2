@@ -15,9 +15,10 @@ import moveit_commander as mc
 from moveit_msgs.srv import GetPositionIK, GetPositionFK
 
 import rospy
-from moveit_msgs.msg import DisplayTrajectory, PositionIKRequest, RobotState
+from moveit_msgs.msg import DisplayTrajectory, PositionIKRequest, RobotState, GenericTrajectory
 from sensor_msgs.msg import JointState
 from moveit_msgs.srv import GetPositionIK, GetPositionFK
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
 from std_msgs.msg import Header
@@ -315,7 +316,26 @@ class MicoController:
         discretized_plan = np.linspace(start_joint_values, goal_joint_values, num_steps)
         return discretized_plan
 
-    def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None, maximum_planning_time=0.5):
+    def create_seed_trajectory(self, seed_discretized_plan):
+
+        joint_trajectory_seed = JointTrajectory()
+        # joint_trajectory_seed.header.frame_id = ''
+        joint_trajectory_seed.joint_names = self.GROUPS['arm']
+        joint_trajectory_seed.points = []
+        skip = max(1, len(seed_discretized_plan) // 100)
+        waypoint_indices = [i for i in range(0, len(seed_discretized_plan), skip)] + [len(seed_discretized_plan) - 1]
+        for idx in waypoint_indices:
+            point = JointTrajectoryPoint()
+            point.positions = seed_discretized_plan[idx].tolist()
+            joint_trajectory_seed.points.append(point)
+
+        generic_trajectory = GenericTrajectory()
+        generic_trajectory.joint_trajectory.append(joint_trajectory_seed)
+        reference_trajectories = [generic_trajectory]
+
+        return reference_trajectories
+
+    def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None, maximum_planning_time=0.5, previous_discretized_plan=None):
         """
         Plan a trajectory from current joint values to goal joint values
         :param goal_joint_values: a list of goal joint values
@@ -327,9 +347,15 @@ class MicoController:
 
         start_joint_values_converted = self.convert_range(start_joint_values)
         goal_joint_values_converted = self.convert_range(goal_joint_values)
+        seed_trajectory = None
+        if previous_discretized_plan is not None and len(previous_discretized_plan) > 2:
+            seed_discretized_plan = previous_discretized_plan + [goal_joint_values_converted]  # TODO: is there a need to normalize range of joint values? i.e. undo process_plan
+            seed_discretized_plan[0] = start_joint_values_converted
+            seed_trajectory = self.create_seed_trajectory(seed_discretized_plan)
 
         moveit_plan = self.plan_arm_joint_values_ros(start_joint_values_converted, goal_joint_values_converted,
-                                                     maximum_planning_time=maximum_planning_time)  # STOMP does not convert goal joint values
+                                                     maximum_planning_time=maximum_planning_time,
+                                                     seed_trajectory=seed_trajectory)  # STOMP does not convert goal joint values
         if isinstance(moveit_plan, tuple):
             # if using the chomp branch
             moveit_plan = moveit_plan[1]
@@ -341,7 +367,7 @@ class MicoController:
         discretized_plan = MicoController.discretize_plan(motion_plan)
         return discretized_plan
 
-    def plan_arm_joint_values_ros(self, start_joint_values, goal_joint_values, maximum_planning_time=0.5):
+    def plan_arm_joint_values_ros(self, start_joint_values, goal_joint_values, maximum_planning_time=0.5, seed_trajectory=None):
         """ No matter what start and goal are, the returned plan start and goal will
             make circular joints within [-pi, pi] """
         # setup moveit_start_state
@@ -353,7 +379,10 @@ class MicoController:
         self.arm_commander_group.set_joint_value_target(goal_joint_values)
         self.arm_commander_group.set_planning_time(maximum_planning_time)
         # takes around 0.11 second
-        plan = self.arm_commander_group.plan()
+        if seed_trajectory is not None:
+            plan = self.arm_commander_group.plan(reference_trajectories=seed_trajectory)
+        else:
+            plan = self.arm_commander_group.plan()
         return plan
 
     def plan_straight_line(self, goal_eef_pose, start_joint_values=None, ee_step=0.05, jump_threshold=3.0,

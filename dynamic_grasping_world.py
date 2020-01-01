@@ -424,7 +424,9 @@ class DynamicGraspingWorld:
             future_target_index = min(int(predicted_period * 240 + self.robot.arm_wp_target_index),
                                       len(self.robot.arm_discretized_plan) - 1)
             start_joint_values = self.robot.arm_discretized_plan[future_target_index]
-            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values)
+            previous_discretized_plan = self.robot.arm_discretized_plan[future_target_index:]
+            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values,
+                                                                    previous_discretized_plan=previous_discretized_plan)
         else:
             arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv)
         planning_time = time.time() - start_time
