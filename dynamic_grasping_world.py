@@ -34,6 +34,7 @@ class DynamicGraspingWorld:
                  disable_reachability,
                  back_off,
                  pose_freq,
+                 use_seed_trajectory,
                  use_kf,
                  use_gt):
         self.target_name = target_name
@@ -56,6 +57,7 @@ class DynamicGraspingWorld:
         self.pose_freq = pose_freq
         self.pose_duration = 1.0 / self.pose_freq
         self.pose_steps = int(self.pose_duration * 240)
+        self.use_seed_trajectory = use_seed_trajectory
         self.use_kf = use_kf
         self.use_gt = use_gt
         self.motion_predictor_kf = MotionPredictorKF(self.pose_duration)
@@ -424,7 +426,10 @@ class DynamicGraspingWorld:
             future_target_index = min(int(predicted_period * 240 + self.robot.arm_wp_target_index),
                                       len(self.robot.arm_discretized_plan) - 1)
             start_joint_values = self.robot.arm_discretized_plan[future_target_index]
-            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values)
+            previous_discretized_plan = self.robot.arm_discretized_plan[
+                                        future_target_index:] if self.use_seed_trajectory else None
+            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values,
+                                                                    previous_discretized_plan=previous_discretized_plan)
         else:
             arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv)
         planning_time = time.time() - start_time
