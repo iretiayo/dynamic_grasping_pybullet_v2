@@ -86,7 +86,7 @@ class DynamicGraspingWorld:
         self.plane = p.loadURDF("plane.urdf")
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
         self.robot = MicoController(self.robot_initial_pose, self.robot_initial_state, self.robot_urdf)
-        self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf, self.conveyor_speed)
+        self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf)
         self.reset('initial')  # the reset is needed to simulate the initial config
 
         self.target_pose_pub = rospy.Publisher('target_pose', PoseStamped, queue_size=1)
@@ -155,7 +155,7 @@ class DynamicGraspingWorld:
                 distance, theta, length, direction = reset_dict['distance'], reset_dict['theta'], reset_dict['length'], \
                                                      reset_dict['direction']
                 target_quaternion = reset_dict['target_quaternion']
-            self.conveyor.initialize_linear_motion(distance, theta, length, direction)
+            self.conveyor.initialize_linear_motion(distance, theta, length, direction, self.conveyor_speed)
             conveyor_pose = self.conveyor.start_pose
             target_pose = [[conveyor_pose[0][0], conveyor_pose[0][1], self.target_initial_pose[0][2]],
                            target_quaternion]
