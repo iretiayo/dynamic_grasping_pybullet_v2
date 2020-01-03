@@ -13,6 +13,7 @@ from std_msgs.msg import String
 from math import pi, cos, sin, sqrt, atan, radians
 from kalman_filter_3d import KalmanFilter, create_kalman_filter
 import random
+import tf_conversions as tfc
 
 
 class DynamicGraspingWorld:
@@ -34,6 +35,7 @@ class DynamicGraspingWorld:
                  disable_reachability,
                  back_off,
                  pose_freq,
+                 use_seed_trajectory,
                  use_kf,
                  use_gt):
         self.target_name = target_name
@@ -56,6 +58,7 @@ class DynamicGraspingWorld:
         self.pose_freq = pose_freq
         self.pose_duration = 1.0 / self.pose_freq
         self.pose_steps = int(self.pose_duration * 240)
+        self.use_seed_trajectory = use_seed_trajectory
         self.use_kf = use_kf
         self.use_gt = use_gt
         self.motion_predictor_kf = MotionPredictorKF(self.pose_duration)
@@ -424,7 +427,10 @@ class DynamicGraspingWorld:
             future_target_index = min(int(predicted_period * 240 + self.robot.arm_wp_target_index),
                                       len(self.robot.arm_discretized_plan) - 1)
             start_joint_values = self.robot.arm_discretized_plan[future_target_index]
-            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values)
+            previous_discretized_plan = self.robot.arm_discretized_plan[
+                                        future_target_index:] if self.use_seed_trajectory else None
+            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values,
+                                                                    previous_discretized_plan=previous_discretized_plan)
         else:
             arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv)
         planning_time = time.time() - start_time
@@ -497,17 +503,17 @@ class DynamicGraspingWorld:
 
 
 class Conveyor:
-    def __init__(self, initial_pose, urdf_path, speed):
+    def __init__(self, initial_pose, urdf_path):
         self.initial_pose = initial_pose
         self.urdf_path = urdf_path
         self.id = p.loadURDF(self.urdf_path, initial_pose[0], initial_pose[1])
-        self.speed = speed
 
         self.cid = p.createConstraint(parentBodyUniqueId=self.id, parentLinkIndex=-1, childBodyUniqueId=-1,
                                       childLinkIndex=-1, jointType=p.JOINT_FIXED, jointAxis=[0, 0, 0],
                                       parentFramePosition=[0, 0, 0], childFramePosition=initial_pose[0],
                                       childFrameOrientation=initial_pose[1])
 
+        # motion related
         self.start_pose = None
         self.target_pose = None
         self.discretized_trajectory = None
@@ -516,6 +522,7 @@ class Conveyor:
         self.theta = None
         self.length = None
         self.direction = None
+        self.speed = None
 
     def set_pose(self, pose):
         pu.set_pose(self.id, pose)
@@ -534,7 +541,7 @@ class Conveyor:
             self.control_pose(self.discretized_trajectory[self.wp_target_index])
             self.wp_target_index += 1
 
-    def initialize_linear_motion(self, dist, theta, length, direction):
+    def initialize_linear_motion(self, dist, theta, length, direction, speed):
         """
         :param dist: distance to robot center,
         :param theta: the angle of rotation, (0, 360)
@@ -542,11 +549,13 @@ class Conveyor:
         :param direction: the direction of the motion
             1: from smaller theta to larger theta
             -1: from larger theta to smaller theta
+        :param speed: the speed of the conveyor
         """
         self.distance = dist
         self.theta = theta
         self.length = length
         self.direction = direction
+        self.speed = speed
         # uses the z value and orientation of the current pose
         z = self.get_pose()[0][-1]
         orientation = self.get_pose()[1]
@@ -575,6 +584,32 @@ class Conveyor:
         position_trajectory = np.linspace(start_position, target_position, num_steps)
         self.discretized_trajectory = [[list(p), orientation] for p in position_trajectory]
         self.wp_target_index = 1
+
+    def initialize_linear_motion_v2(self, angle, speed, distance, start_pose=None):
+        """
+        Initialize a motion using the start pose as initial pose, in the direction of the angle.
+
+        :param angle: the angle of the motion direction in the conveyor frame, in degrees
+        :param speed: the speed of the motion
+        """
+        start_pose_in_world = conveyor_pose = self.get_pose() if start_pose is None else start_pose
+        start_pose_in_conveyor = [[0, 0, 0], [0, 0, 0, 1]]
+
+        target_x = cos(radians(angle)) * distance
+        target_y = sin(radians(angle)) * distance
+        target_pose_in_conveyor = [[target_x, target_y, 0], [0, 0, 0, 1]]
+        target_pose_in_world = tfc.toMatrix(tfc.fromTf(conveyor_pose)).dot(tfc.toMatrix(tfc.fromTf(target_pose_in_conveyor)))
+        target_pose_in_world = tfc.toTf(tfc.fromMatrix(target_pose_in_world))
+        target_pose_in_world = [list(target_pose_in_world[0]), list(target_pose_in_world[1])]
+
+        start_pose = start_pose_in_world
+        target_pose = target_pose_in_world
+
+        num_steps = int(distance / speed * 240)
+        position_trajectory = np.linspace(start_pose[0], target_pose[0], num_steps)
+        self.discretized_trajectory = [[list(p), start_pose[1]] for p in position_trajectory]
+        self.wp_target_index = 1
+        return start_pose, target_pose
 
     def clear_motion(self):
         self.start_pose = None
@@ -637,53 +672,3 @@ class MotionPredictorKF:
         future_orientation = self.target_pose[1]
         return [future_position, future_orientation]
 
-
-# not accurate
-# class MotionPredictorGTLinear:
-#     def __init__(self):
-#         # ground truth linear motion predictor
-#         self.target_pose = None
-#         self.distance = None
-#         self.theta = None
-#         self.speed = None
-#         self.direction = None
-#         self.initialized = False
-#
-#     def initialize_predictor(self, initial_pose, distance, theta, direction, speed):
-#         self.target_pose = initial_pose
-#         self.distance = distance
-#         self.theta = theta
-#         self.speed = speed
-#         self.direction = direction
-#         self.initialized = True
-#
-#     def reset_predictor(self):
-#         self.target_pose = None
-#         self.distance = None
-#         self.theta = None
-#         self.speed = None
-#         self.direction = None
-#
-#     def update(self, current_pose):
-#         # TODO quaternion is not considered yet
-#         if not self.initialized:
-#             raise ValueError("predictor not initialized!")
-#         self.target_pose = current_pose
-#
-#     def predict(self, duration):
-#         if not self.initialized:
-#             raise ValueError("predictor not initialized!")
-#         print("gt current position: {}".format(self.target_pose[0]))
-#         delta_distance = duration * self.speed
-#         if self.direction == -1:
-#             vector_theta = self.theta - 90.0
-#         else:
-#             vector_theta = self.theta + 90.0
-#         delta_x = delta_distance * cos(vector_theta)
-#         delta_y = delta_distance * sin(vector_theta)
-#         new_x = self.target_pose[0][0] + delta_x
-#         new_y = self.target_pose[0][1] + delta_y
-#         future_position = [new_x, new_y, self.target_pose[0][2]]
-#         print("gt future position: {}\n".format(future_position))
-#         future_orientation = self.target_pose[1]
-#         return [future_position, future_orientation]

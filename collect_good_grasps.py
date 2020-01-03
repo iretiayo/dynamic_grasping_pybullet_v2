@@ -2,19 +2,13 @@ import os
 import numpy as np
 import pybullet as p
 import pybullet_data
-import time
 import trimesh
 import argparse
 import grasp_utils as gu
 import pybullet_utils as pu
-from collections import OrderedDict
-import csv
 import tqdm
-import tf_conversions
-from math import radians
-import copy
 import misc_utils as mu
-import pandas as pd
+from eef_only_grasping_world import EEFOnlyStaticWorld
 
 
 """ Load pregenerated raw graspit grasps, evaluate and then keep those that succeed over a threshold """
@@ -25,8 +19,10 @@ def get_args():
 
     parser.add_argument('--object_name', type=str, default='bleach_cleanser',
                         help="Target object to be grasped. Ex: cube")
-    parser.add_argument('--load_folder_path', type=str, required=True)
-    parser.add_argument('--save_folder_path', type=str, required=True)
+    parser.add_argument('--load_folder_path', type=str, required=True,
+                        help="folder path to load raw grasps from graspit")
+    parser.add_argument('--save_folder_path', type=str, required=True,
+                        help="folder path to save collected good grasps")
     parser.add_argument('--num_successful_grasps', type=int, default=100)
     parser.add_argument('--num_grasps', type=int, default=5000)
     parser.add_argument('--num_trials', type=int, default=50)
@@ -51,150 +47,11 @@ def get_args():
         if args.prior_success_rate is None:
             args.prior_success_rate = args.min_success_rate
         args.prior_csv_file_path = os.path.join(args.prior_folder_path, args.object_name, args.object_name+'.csv')
-        args.candidate_indices = get_candidate_indices(args.prior_csv_file_path, args.prior_success_rate)
+        args.candidate_indices = mu.get_candidate_indices(args.prior_csv_file_path, args.prior_success_rate)
     else:
         args.candidate_indices = []
 
     return args
-
-
-def get_candidate_indices(prior_csv_file_path, prior_success_rate):
-    df = pd.read_csv(prior_csv_file_path, index_col=0)
-    df_success = df.loc[df['success_rate'] >= prior_success_rate]
-    return list(df_success.index)
-
-
-class Controller:
-    EEF_LINK_INDEX = 0
-    GRIPPER_INDICES = [1, 2, 3, 4]
-    OPEN_POSITION = [0.0, 0.0, 0.0, 0.0]
-    CLOSED_POSITION = [1.1, 0.0, 1.1, 0.0]
-    LINK6_COM = [-0.002216, -0.000001, -0.058489]
-    LIFT_VALUE = 0.2
-
-    def __init__(self, robot_id):
-        self.robot_id = robot_id
-        self.cid = None
-
-    def reset_to(self, pose):
-        """ the pose is for the link6 center of mass """
-        p.resetBasePositionAndOrientation(self.robot_id, pose[0], pose[1])
-        self.move_to(pose)
-
-    def move_to(self, pose):
-        """ the pose is for the link6 center of mass """
-        num_steps = 240
-        current_pose = self.get_pose()
-        positions = np.linspace(current_pose[0], pose[0], num_steps)
-        angles = np.linspace(p.getEulerFromQuaternion(current_pose[1]), p.getEulerFromQuaternion(pose[1]), num_steps)
-        quaternions = np.array([p.getQuaternionFromEuler(angle) for angle in angles])
-        if self.cid is None:
-            self.cid = p.createConstraint(parentBodyUniqueId=self.robot_id, parentLinkIndex=-1, childBodyUniqueId=-1,
-                                          childLinkIndex=-1, jointType=p.JOINT_FIXED, jointAxis=[0, 0, 0],
-                                          parentFramePosition=[0, 0, 0], childFramePosition=current_pose[0],
-                                          childFrameOrientation=current_pose[1])
-        for pos, ori in zip(positions, quaternions):
-            p.changeConstraint(self.cid, jointChildPivot=pos, jointChildFrameOrientation=ori)
-            p.stepSimulation()
-        pu.step()
-
-    def close_gripper(self):
-        num_steps = 240
-        waypoints = np.linspace(self.OPEN_POSITION, self.CLOSED_POSITION, num_steps)
-        for wp in waypoints:
-            pu.control_joints(self.robot_id, self.GRIPPER_INDICES, wp)
-            p.stepSimulation()
-        pu.step()
-
-    def execute_grasp(self, grasp, back_off):
-        """ High level grasp interface using grasp 2d in world frame (link6_reference_frame)"""
-        link6_com_pose_2d = gu.change_end_effector_link_pose_2d(grasp, gu.link6_reference_to_link6_com)
-        pre_link6_com_pose_2d = gu.back_off_pose_2d(link6_com_pose_2d, back_off)
-        self.reset_to(pre_link6_com_pose_2d)
-        actual_pre_ee_pose_2d = pu.get_link_pose(self.robot_id, 0)
-        actual_pre_link6_ref_pose_2d = gu.change_end_effector_link_pose_2d(actual_pre_ee_pose_2d, gu.ee_to_link6_reference)
-        actual_pre_link6_com_pose_2d = pre_link6_com_pose_2d
-
-        self.move_to(link6_com_pose_2d)
-        actual_ee_pose_2d = pu.get_link_pose(self.robot_id, 0)
-        actual_link6_ref_pose_2d = gu.change_end_effector_link_pose_2d(actual_ee_pose_2d, gu.ee_to_link6_reference)
-        actual_link6_com_pose_2d = link6_com_pose_2d
-        self.close_gripper()
-        self.lift()
-        # robust test
-        self.lift(0.2)
-        self.lift(-0.2)
-        pu.step(2)
-        return actual_pre_ee_pose_2d, actual_pre_link6_ref_pose_2d, actual_pre_link6_com_pose_2d, actual_ee_pose_2d, actual_link6_ref_pose_2d, actual_link6_com_pose_2d
-
-    def execute_grasp_link6_com(self, grasp):
-        """ High level grasp interface using grasp 2d in world frame (link6_com_frame)"""
-        self.reset_to(grasp)
-        self.close_gripper()
-        self.lift()
-        pu.step(2)
-
-    def execute_grasp_link6_com_with_pre_grasp(self, grasp, pre_grasp):
-        """ High level grasp interface using grasp 2d in world frame (link6_com_frame)"""
-        self.reset_to(pre_grasp)
-        self.move_to(grasp)
-        self.close_gripper()
-        self.lift()
-        self.lift(0.2)
-        self.lift(-0.2)
-        pu.step(2)
-
-    def open_gripper(self):
-        pu.set_joint_positions(self.robot_id, self.GRIPPER_INDICES, self.OPEN_POSITION)
-        pu.control_joints(self.robot_id, self.GRIPPER_INDICES, self.OPEN_POSITION)
-        pu.step()
-
-    def lift(self, z=LIFT_VALUE):
-        target_pose = self.get_pose()
-        target_pose[0][2] += z
-        self.move_to(target_pose)
-
-    def get_pose(self):
-        "the pose is for the link6 center of mass"
-        return [list(p.getBasePositionAndOrientation(self.robot_id)[0]),
-                list(p.getBasePositionAndOrientation(self.robot_id)[1])]
-
-
-class World:
-
-    def __init__(self, target_initial_pose, gripper_initial_pose, gripper_urdf, target_urdf, apply_noise):
-        self.target_initial_pose = target_initial_pose
-        self.gripper_initial_pose = gripper_initial_pose
-        self.gripper_urdf = gripper_urdf
-        self.target_urdf = target_urdf
-        self.apply_noise = apply_noise
-        self.x_noise = 0.01
-        self.y_noise = 0.01
-        self.rotation_noise = 20
-
-        self.plane = p.loadURDF("plane.urdf")
-        self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
-        self.robot = p.loadURDF(self.gripper_urdf, self.gripper_initial_pose[0], self.gripper_initial_pose[1],
-                                flags=p.URDF_USE_SELF_COLLISION)
-
-        self.controller = Controller(self.robot)
-
-    def reset(self):
-        p.resetBasePositionAndOrientation(self.target, self.target_initial_pose[0], self.target_initial_pose[1])
-        self.controller.reset_to(self.gripper_initial_pose)
-        self.controller.open_gripper()
-        if self.apply_noise:
-            sampled_x_noise = np.random.uniform(low=-self.x_noise, high=self.x_noise)
-            sampled_y_noise = np.random.uniform(low=-self.y_noise, high=self.y_noise)
-            sampled_rotation_noise = np.random.uniform(low=-self.rotation_noise, high=self.rotation_noise)
-            target_noise_pose = copy.deepcopy(pu.get_body_pose(self.target))
-            target_noise_pose[0][0] += sampled_x_noise
-            target_noise_pose[0][1] += sampled_y_noise
-            target_rpy = pu.get_euler_from_quaternion(target_noise_pose[1])
-            target_rpy[2] += radians(sampled_rotation_noise)
-            target_noise_pose[1] = pu.get_quaternion_from_euler(target_rpy)
-            p.resetBasePositionAndOrientation(self.target, target_noise_pose[0], target_noise_pose[1])
-            pu.step()
 
 
 if __name__ == "__main__":
@@ -217,7 +74,7 @@ if __name__ == "__main__":
     target_initial_pose = [[0, 0, -target_mesh.bounds.min(0)[2] + 0.01], [0, 0, 0, 1]]
     gripper_initial_pose = [[0, 0, 0.5], [0, 0, 0, 1]]
 
-    world = World(target_initial_pose, gripper_initial_pose, args.gripper_urdf, target_urdf, args.apply_noise)
+    world = EEFOnlyStaticWorld(target_initial_pose, gripper_initial_pose, args.gripper_urdf, target_urdf, args.apply_noise)
 
     grasps_link6_ref_in_object = np.load(os.path.join(args.load_folder_path, args.object_name + '.npy'))
     # placeholder to save good grasps
