@@ -335,7 +335,7 @@ class MicoController:
 
         return reference_trajectories
 
-    def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None, maximum_planning_time=0.5, previous_discretized_plan=None):
+    def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None, maximum_planning_time=0.5, previous_discretized_plan=None, start_joint_velocities=None):
         """
         Plan a trajectory from current joint values to goal joint values
         :param goal_joint_values: a list of goal joint values
@@ -355,6 +355,7 @@ class MicoController:
 
         moveit_plan = self.plan_arm_joint_values_ros(start_joint_values_converted, goal_joint_values_converted,
                                                      maximum_planning_time=maximum_planning_time,
+                                                     start_joint_velocities=start_joint_velocities,
                                                      seed_trajectory=seed_trajectory)  # STOMP does not convert goal joint values
         if isinstance(moveit_plan, tuple):
             # if using the chomp branch
@@ -367,7 +368,7 @@ class MicoController:
         discretized_plan = MicoController.discretize_plan(motion_plan)
         return discretized_plan
 
-    def plan_arm_joint_values_ros(self, start_joint_values, goal_joint_values, maximum_planning_time=0.5, seed_trajectory=None):
+    def plan_arm_joint_values_ros(self, start_joint_values, goal_joint_values, maximum_planning_time=0.5, seed_trajectory=None, start_joint_velocities=None):
         """ No matter what start and goal are, the returned plan start and goal will
             make circular joints within [-pi, pi] """
         # setup moveit_start_state
@@ -383,6 +384,12 @@ class MicoController:
             plan = self.arm_commander_group.plan(reference_trajectories=seed_trajectory)
         else:
             plan = self.arm_commander_group.plan()
+        if isinstance(plan, tuple):
+            # if using the chomp branch
+            plan = plan[1]
+        if start_joint_velocities is not None and len(plan.joint_trajectory.points) > 0:
+            plan.joint_trajectory.points[0].velocities = start_joint_velocities
+            plan = mgc_arm.retime_trajectory(start_robot_state, plan)
         return plan
 
     def plan_straight_line(self, goal_eef_pose, start_joint_values=None, ee_step=0.05, jump_threshold=3.0,

@@ -35,6 +35,7 @@ class DynamicGraspingWorld:
                  back_off,
                  pose_freq,
                  use_seed_trajectory,
+                 use_previous_jv,
                  use_kf,
                  use_gt):
         self.target_name = target_name
@@ -58,6 +59,7 @@ class DynamicGraspingWorld:
         self.pose_duration = 1.0 / self.pose_freq
         self.pose_steps = int(self.pose_duration * 240)
         self.use_seed_trajectory = use_seed_trajectory
+        self.use_previous_jv = use_previous_jv
         self.use_kf = use_kf
         self.use_gt = use_gt
         self.motion_predictor_kf = MotionPredictorKF(self.pose_duration)
@@ -426,10 +428,15 @@ class DynamicGraspingWorld:
             future_target_index = min(int(predicted_period * 240 + self.robot.arm_wp_target_index),
                                       len(self.robot.arm_discretized_plan) - 1)
             start_joint_values = self.robot.arm_discretized_plan[future_target_index]
+            start_joint_velocities = None
+            if self.use_previous_jv:
+                next_joint_values = self.robot.arm_discretized_plan[min(future_target_index+1, len(self.robot.arm_discretized_plan) - 1)]
+                start_joint_velocities = (next_joint_values-start_joint_values) / (1./ 240)     # TODO: confirm that getting joint velocity this way is right
             previous_discretized_plan = self.robot.arm_discretized_plan[
                                         future_target_index:] if self.use_seed_trajectory else None
             arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values,
-                                                                    previous_discretized_plan=previous_discretized_plan)
+                                                                    previous_discretized_plan=previous_discretized_plan,
+                                                                    start_joint_velocities=start_joint_velocities)
         else:
             arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv)
         planning_time = time.time() - start_time
