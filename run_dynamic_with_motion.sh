@@ -15,6 +15,8 @@ do
     --close_delay 0.5 \
     --pose_freq 5 \
     --record_videos \
-    --use_gt;
+    --use_kf;
     sleep 5
 done
+
+cp run_dynamic_with_motion.sh $timestr

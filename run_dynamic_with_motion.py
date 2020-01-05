@@ -20,6 +20,7 @@ from geometry_msgs.msg import PoseStamped
 from math import pi
 import pprint
 from dynamic_grasping_world import DynamicGraspingWorld
+import json
 
 
 def get_args():
@@ -88,6 +89,7 @@ def create_object_urdf(object_mesh_filepath, object_name,
 
 if __name__ == "__main__":
     args = get_args()
+    json.dump(vars(args), open(os.path.join(args.result_dir, args.object_name + '.json'), 'w'), indent=4)
     mu.configure_pybullet(args.rendering)
     rospy.init_node('dynamic_grasping')
 
@@ -139,7 +141,6 @@ if __name__ == "__main__":
         # }
         reset_dict = None
         distance, theta, length, direction, target_quaternion = dynamic_grasping_world.reset(mode='dynamic_linear', reset_dict=reset_dict)
-        print(distance, theta, length, direction)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         if args.record_videos:
             logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, '{}.mp4'.format(i)))
