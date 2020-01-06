@@ -262,8 +262,9 @@ class DynamicGraspingWorld:
         while not done:
             done = self.check_done()
             target_pose = pu.get_body_pose(self.target)
-            duration = self.calculate_prediction_time(distance, lazy_threshold)  # TODO variate this
+            duration = self.calculate_prediction_time(distance, lazy_threshold)
             if self.use_kf:
+                # TODO verify that when duration is 0
                 predicted_pose = self.motion_predictor_kf.predict(duration)
             elif self.use_gt:
                 predicted_conveyor_pose = self.conveyor.predict(duration)
@@ -278,7 +279,6 @@ class DynamicGraspingWorld:
                 = self.plan_grasp(predicted_pose, grasp_idx)
             dynamic_grasp_time += grasp_planning_time
             if planned_grasp_jv is None or planned_pre_grasp_jv is None:
-                print('no reachable grasp found')
                 self.step(grasp_planning_time, None, None)
                 continue
             self.step(grasp_planning_time, None, None)
@@ -292,7 +292,6 @@ class DynamicGraspingWorld:
             motion_planning_time, plan = self.plan_arm_motion(planned_pre_grasp_jv)
             dynamic_grasp_time += motion_planning_time
             if plan is None:
-                # print('no motion is found')
                 self.step(motion_planning_time, None, None)
                 continue
             self.step(motion_planning_time, plan, None)
@@ -416,6 +415,10 @@ class DynamicGraspingWorld:
         #                                      maximum=max(sdf_values), minimum=min(sdf_values))
         planning_time = time.time() - start_time
         # print("Planning a grasp takes {:.6f}".format(planning_time))
+        if planned_pre_grasp_jv is None:
+            print('pre grasp planning fails')
+        if planned_pre_grasp_jv is not None and planned_grasp_jv is None:
+            print('pre grasp planning succeeds but grasp planning fails')
         return grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
 
     def plan_arm_motion(self, grasp_jv):
