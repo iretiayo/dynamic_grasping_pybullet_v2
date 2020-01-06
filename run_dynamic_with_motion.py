@@ -44,6 +44,7 @@ def get_args():
     parser.add_argument('--lazy_threshold', type=float, default=0.3)
     parser.add_argument('--close_delay', type=float, default=0.5)
     parser.add_argument('--use_seed_trajectory', action='store_true', default=False)
+    parser.add_argument('--use_previous_jv', action='store_true', default=False)
     parser.add_argument('--use_kf', action='store_true', default=False)
     parser.add_argument('--use_gt', action='store_true', default=False)
     parser.add_argument('--pose_freq', type=int, default=5)
@@ -126,6 +127,7 @@ if __name__ == "__main__":
                                                   back_off=args.back_off,
                                                   pose_freq=args.pose_freq,
                                                   use_seed_trajectory=args.use_seed_trajectory,
+                                                  use_previous_jv=args.use_previous_jv,
                                                   use_kf=args.use_kf,
                                                   use_gt=args.use_gt)
 
@@ -139,7 +141,6 @@ if __name__ == "__main__":
         # }
         reset_dict = None
         distance, theta, length, direction, target_quaternion = dynamic_grasping_world.reset(mode='dynamic_linear', reset_dict=reset_dict)
-        print(distance, theta, length, direction)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         if args.record_videos:
             logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, '{}.mp4'.format(i)))

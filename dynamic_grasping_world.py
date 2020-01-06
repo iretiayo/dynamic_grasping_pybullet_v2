@@ -36,6 +36,7 @@ class DynamicGraspingWorld:
                  back_off,
                  pose_freq,
                  use_seed_trajectory,
+                 use_previous_jv,
                  use_kf,
                  use_gt):
         self.target_name = target_name
@@ -59,6 +60,7 @@ class DynamicGraspingWorld:
         self.pose_duration = 1.0 / self.pose_freq
         self.pose_steps = int(self.pose_duration * 240)
         self.use_seed_trajectory = use_seed_trajectory
+        self.use_previous_jv = use_previous_jv
         self.use_kf = use_kf
         self.use_gt = use_gt
         self.motion_predictor_kf = MotionPredictorKF(self.pose_duration)
@@ -86,7 +88,7 @@ class DynamicGraspingWorld:
         self.plane = p.loadURDF("plane.urdf")
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
         self.robot = MicoController(self.robot_initial_pose, self.robot_initial_state, self.robot_urdf)
-        self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf, self.conveyor_speed)
+        self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf)
         self.reset('initial')  # the reset is needed to simulate the initial config
 
         self.target_pose_pub = rospy.Publisher('target_pose', PoseStamped, queue_size=1)
@@ -155,7 +157,7 @@ class DynamicGraspingWorld:
                 distance, theta, length, direction = reset_dict['distance'], reset_dict['theta'], reset_dict['length'], \
                                                      reset_dict['direction']
                 target_quaternion = reset_dict['target_quaternion']
-            self.conveyor.initialize_linear_motion(distance, theta, length, direction)
+            self.conveyor.initialize_linear_motion(distance, theta, length, direction, self.conveyor_speed)
             conveyor_pose = self.conveyor.start_pose
             target_pose = [[conveyor_pose[0][0], conveyor_pose[0][1], self.target_initial_pose[0][2]],
                            target_quaternion]
@@ -430,10 +432,15 @@ class DynamicGraspingWorld:
             future_target_index = min(int(predicted_period * 240 + self.robot.arm_wp_target_index),
                                       len(self.robot.arm_discretized_plan) - 1)
             start_joint_values = self.robot.arm_discretized_plan[future_target_index]
+            start_joint_velocities = None
+            if self.use_previous_jv:
+                next_joint_values = self.robot.arm_discretized_plan[min(future_target_index+1, len(self.robot.arm_discretized_plan) - 1)]
+                start_joint_velocities = (next_joint_values-start_joint_values) / (1./ 240)     # TODO: confirm that getting joint velocity this way is right
             previous_discretized_plan = self.robot.arm_discretized_plan[
                                         future_target_index:] if self.use_seed_trajectory else None
             arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values,
-                                                                    previous_discretized_plan=previous_discretized_plan)
+                                                                    previous_discretized_plan=previous_discretized_plan,
+                                                                    start_joint_velocities=start_joint_velocities)
         else:
             arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv)
         planning_time = time.time() - start_time
