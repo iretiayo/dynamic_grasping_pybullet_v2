@@ -317,6 +317,11 @@ class DynamicGraspingWorld:
         if self.robot.arm_discretized_plan is not None:
             future_target_index = min(int(predicted_period * 240 + self.robot.arm_wp_target_index),
                                       len(self.robot.arm_discretized_plan) - 1)
+            if future_target_index == -1:
+                # catch error
+                print(self.robot.arm_discretized_plan)
+                import ipdb
+                ipdb.set_trace()
             start_joint_values = self.robot.arm_discretized_plan[future_target_index]
             arm_discretized_plan = self.robot.plan_arm_joint_values_simple(grasp_jv,
                                                                            start_joint_values=start_joint_values)
@@ -436,8 +441,10 @@ class DynamicGraspingWorld:
             start_joint_values = self.robot.arm_discretized_plan[future_target_index]
             start_joint_velocities = None
             if self.use_previous_jv:
-                next_joint_values = self.robot.arm_discretized_plan[min(future_target_index+1, len(self.robot.arm_discretized_plan) - 1)]
-                start_joint_velocities = (next_joint_values-start_joint_values) / (1./ 240)     # TODO: confirm that getting joint velocity this way is right
+                next_joint_values = self.robot.arm_discretized_plan[
+                    min(future_target_index + 1, len(self.robot.arm_discretized_plan) - 1)]
+                start_joint_velocities = (next_joint_values - start_joint_values) / (
+                            1. / 240)  # TODO: confirm that getting joint velocity this way is right
             previous_discretized_plan = self.robot.arm_discretized_plan[
                                         future_target_index:] if self.use_seed_trajectory else None
             arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values,
@@ -499,7 +506,7 @@ class DynamicGraspingWorld:
                        not grasp_switched
         return do_lazy_plan
 
-    @ staticmethod
+    @staticmethod
     def calculate_prediction_time(distance, lazy_threshold):
         no_prediction_threshold = 0.1
         if distance is None:
@@ -610,7 +617,8 @@ class Conveyor:
         target_x = cos(radians(angle)) * distance
         target_y = sin(radians(angle)) * distance
         target_pose_in_conveyor = [[target_x, target_y, 0], [0, 0, 0, 1]]
-        target_pose_in_world = tfc.toMatrix(tfc.fromTf(conveyor_pose)).dot(tfc.toMatrix(tfc.fromTf(target_pose_in_conveyor)))
+        target_pose_in_world = tfc.toMatrix(tfc.fromTf(conveyor_pose)).dot(
+            tfc.toMatrix(tfc.fromTf(target_pose_in_conveyor)))
         target_pose_in_world = tfc.toTf(tfc.fromMatrix(target_pose_in_world))
         target_pose_in_world = [list(target_pose_in_world[0]), list(target_pose_in_world[1])]
 
@@ -683,4 +691,3 @@ class MotionPredictorKF:
         # print("future position: {}\n".format(future_position))
         future_orientation = self.target_pose[1]
         return [future_position, future_orientation]
-

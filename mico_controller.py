@@ -390,7 +390,7 @@ class MicoController:
             plan = plan[1]
         if start_joint_velocities is not None and len(plan.joint_trajectory.points) > 0:
             plan.joint_trajectory.points[0].velocities = start_joint_velocities
-            plan = mgc_arm.retime_trajectory(start_robot_state, plan)
+            plan = self.arm_commander_group.retime_trajectory(start_robot_state, plan)
         return plan
 
     def plan_straight_line(self, goal_eef_pose, start_joint_values=None, ee_step=0.05, jump_threshold=3.0,
@@ -473,6 +473,11 @@ class MicoController:
                 discretized_plan = np.vstack((discretized_plan, segment))
             else:
                 discretized_plan = np.vstack((discretized_plan, segment[:-1]))
+        if len(discretized_plan) == 0 or len(motion_plan.position_trajectory) == 1:
+            print(len(discretized_plan))
+            print(len(motion_plan.position_trajectory))
+            import ipdb
+            ipdb.set_trace()
         return discretized_plan
 
     def clear_scene(self):
