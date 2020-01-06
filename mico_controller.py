@@ -362,6 +362,7 @@ class MicoController:
             moveit_plan = moveit_plan[1]
         # check if there exists a plan
         if len(moveit_plan.joint_trajectory.points) == 0:
+            print('plan_arm_joint_values fails')
             return None
 
         motion_plan = MicoController.process_plan(moveit_plan, start_joint_values)

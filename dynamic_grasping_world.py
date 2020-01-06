@@ -28,6 +28,7 @@ class DynamicGraspingWorld:
                  conveyor_speed,
                  target_urdf,
                  target_mesh_file_path,
+                 target_extents,
                  grasp_database_path,
                  reachability_data_dir,
                  realtime,
@@ -51,6 +52,7 @@ class DynamicGraspingWorld:
         self.conveyor_speed = conveyor_speed
         self.target_urdf = target_urdf
         self.target_mesh_file_path = target_mesh_file_path
+        self.target_extents = target_extents
         self.realtime = realtime
         self.max_check = max_check
         self.back_off = back_off
@@ -93,7 +95,8 @@ class DynamicGraspingWorld:
 
         self.target_pose_pub = rospy.Publisher('target_pose', PoseStamped, queue_size=1)
         self.conveyor_pose_pub = rospy.Publisher('conveyor_pose', PoseStamped, queue_size=1)
-        self.target_mesh_file_path_pub = rospy.Publisher('target_mesh', String, queue_size=1)
+        rospy.set_param('target_mesh_file_path', self.target_mesh_file_path)
+        rospy.set_param('target_extents', self.target_extents)
 
         update_scene_thread = threading.Thread(target=self.update_scene_threading)
         update_scene_thread.daemon = True
@@ -106,7 +109,6 @@ class DynamicGraspingWorld:
             conveyor_pose = pu.get_body_pose(self.conveyor.id)
             self.target_pose_pub.publish(gu.list_2_ps(target_pose))
             self.conveyor_pose_pub.publish(gu.list_2_ps(conveyor_pose))
-            self.target_mesh_file_path_pub.publish(self.target_mesh_file_path)
             r.sleep()
             # target_pose = pu.get_body_pose(self.target)
             # conveyor_pose = pu.get_body_pose(self.conveyor)
