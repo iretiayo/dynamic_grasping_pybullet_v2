@@ -97,12 +97,14 @@ if __name__ == "__main__":
     print("Arguments:")
     pp = pprint.PrettyPrinter(indent=4)
     pp.pprint(vars(args))
-    print()
+    print('\n')
 
     object_mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(args.object_name), '{}.obj'.format(args.object_name))
     object_mesh_filepath_ply = object_mesh_filepath.replace('.obj', '.ply')
     target_urdf = create_object_urdf(object_mesh_filepath, args.object_name)
     target_mesh = trimesh.load_mesh(object_mesh_filepath)
+    target_mesh_bounds = target_mesh.bounds
+    target_extents = target_mesh.bounding_box.extents.tolist()
     floor_offset = target_mesh.bounds.min(0)[2]
     target_z = -target_mesh.bounds.min(0)[2] + 0.02
     target_initial_pose = [[0.3, 0.3, target_z], [0, 0, 0, 1]]
@@ -119,6 +121,7 @@ if __name__ == "__main__":
                                                   conveyor_speed=args.conveyor_speed,
                                                   target_urdf=target_urdf,
                                                   target_mesh_file_path=object_mesh_filepath,
+                                                  target_extents=target_extents,
                                                   grasp_database_path=args.grasp_database_path,
                                                   reachability_data_dir=args.reachability_data_dir,
                                                   realtime=args.realtime,
@@ -133,9 +136,9 @@ if __name__ == "__main__":
 
     for i in range(args.num_trials):
         # reset_dict = {
-        #     'distance': 0.29647511081229105,
+        #     'distance': 0.3,
         #     'length': 1.0,
-        #     'theta': 68.07271909237184,
+        #     'theta': 0,
         #     'direction': 1,
         #     'target_quaternion': [0.0, 0.0, -0.6337979080046422, 0.7734986824868799]
         # }
