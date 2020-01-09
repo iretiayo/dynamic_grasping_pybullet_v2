@@ -809,16 +809,17 @@ rgb_colors_255 = [(230, 25, 75),  # red
 rgb_colors_1 = np.array(rgb_colors_255) / 255.
 
 
-def draw_line(start_pos, end_pos, color=(1, 0, 0), width=3, lifetime=0):
-    p.addUserDebugLine(lineFromXYZ=start_pos,
-                       lineToXYZ=end_pos,
-                       lineColorRGB=color,
-                       lineWidth=width,
-                       lifeTime=lifetime)
+def draw_line(start_pos, end_pos, rgb_color=(1, 0, 0), width=3, lifetime=0):
+    lid = p.addUserDebugLine(lineFromXYZ=start_pos,
+                             lineToXYZ=end_pos,
+                             lineColorRGB=rgb_color,
+                             lineWidth=width,
+                             lifeTime=lifetime)
+    return lid
 
 
-def draw_sphere_body(position, radius, color):
-    vs_id = p.createVisualShape(p.GEOM_SPHERE, radius=radius, rgbaColor=color)
+def draw_sphere_body(position, radius, rgba_color):
+    vs_id = p.createVisualShape(p.GEOM_SPHERE, radius=radius, rgbaColor=rgba_color)
     body_id = p.createMultiBody(basePosition=position, baseCollisionShapeIndex=-1, baseVisualShapeIndex=vs_id)
     return body_id
 
@@ -834,4 +835,3 @@ def remove_markers(marker_ids):
 
 def remove_all_markers():
     p.removeAllUserDebugItems()
-
