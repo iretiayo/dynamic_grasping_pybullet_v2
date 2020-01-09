@@ -367,6 +367,9 @@ class MicoController:
 
         motion_plan = MicoController.process_plan(moveit_plan, start_joint_values)
         discretized_plan = MicoController.discretize_plan(motion_plan)
+        if len(discretized_plan) == 0:
+            print('start joint values is the same as goal joint values, so plan_arm_joint_values fails')
+            return None
         return discretized_plan
 
     def plan_arm_joint_values_ros(self, start_joint_values, goal_joint_values, maximum_planning_time=0.5, seed_trajectory=None, start_joint_velocities=None):
@@ -473,11 +476,11 @@ class MicoController:
                 discretized_plan = np.vstack((discretized_plan, segment))
             else:
                 discretized_plan = np.vstack((discretized_plan, segment[:-1]))
-        if len(discretized_plan) == 0 or len(motion_plan.position_trajectory) == 1:
-            print(len(discretized_plan))
-            print(len(motion_plan.position_trajectory))
-            import ipdb
-            ipdb.set_trace()
+        # if len(discretized_plan) == 0 or len(motion_plan.position_trajectory) == 1:
+        #     print(len(discretized_plan))
+        #     print(len(motion_plan.position_trajectory))
+        #     import ipdb
+        #     ipdb.set_trace()
         return discretized_plan
 
     def clear_scene(self):
