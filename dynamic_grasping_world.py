@@ -317,11 +317,11 @@ class DynamicGraspingWorld:
         if self.robot.arm_discretized_plan is not None:
             future_target_index = min(int(predicted_period * 240 + self.robot.arm_wp_target_index),
                                       len(self.robot.arm_discretized_plan) - 1)
-            # if future_target_index == -1:
-            #     # catch error
-            #     print(self.robot.arm_discretized_plan)
-            #     import ipdb
-            #     ipdb.set_trace()
+            if future_target_index == -1:
+                # catch error
+                print(self.robot.arm_discretized_plan)
+                import ipdb
+                ipdb.set_trace()
             start_joint_values = self.robot.arm_discretized_plan[future_target_index]
             arm_discretized_plan = self.robot.plan_arm_joint_values_simple(grasp_jv,
                                                                            start_joint_values=start_joint_values)
