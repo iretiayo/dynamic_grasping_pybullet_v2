@@ -6,10 +6,11 @@ import pandas as pd
 import tqdm
 import pybullet as p
 import pybullet_data
-from collect_good_grasps import World, create_object_urdf
+from collect_good_grasps import EEFOnlyStaticWorld
 import trimesh
 import pybullet_utils as pu
 import grasp_utils as gu
+import misc_utils as mu
 
 
 """ Given a grasp database, evaluate the success rate of each object """
@@ -42,13 +43,13 @@ if __name__ == "__main__":
         p.setGravity(0, 0, -9.8)
         object_mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(object_name), '{}.obj'.format(object_name))
         object_mesh_filepath_ply = object_mesh_filepath.replace('.obj', '.ply')
-        target_urdf = create_object_urdf(object_mesh_filepath, object_name)
+        target_urdf = mu.create_object_urdf(object_mesh_filepath, object_name)
         target_mesh = trimesh.load_mesh(object_mesh_filepath)
         floor_offset = target_mesh.bounds.min(0)[2]
         target_initial_pose = [[0, 0, -target_mesh.bounds.min(0)[2] + 0.01], [0, 0, 0, 1]]
         gripper_initial_pose = [[0, 0, 0.5], [0, 0, 0, 1]]
 
-        world = World(target_initial_pose, gripper_initial_pose, args.gripper_urdf, target_urdf, False)
+        world = EEFOnlyStaticWorld(target_initial_pose, gripper_initial_pose, args.gripper_urdf, target_urdf, False)
         link6_reference_to_ee = ([0.0, 0.0, -0.16], [1.0, 0.0, 0.0, 0])
         ee_to_link6_reference = ([0.0, -3.3091697137634315e-14, -0.16], [-1.0, 0.0, 0.0, -1.0341155355510722e-13])
 

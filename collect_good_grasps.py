@@ -87,6 +87,7 @@ if __name__ == "__main__":
 
     num_grasps = 0
     num_successful_grasps = 0
+    args.num_grasps = min(args.num_grasps, len(grasps_link6_ref_in_object))
     progressbar = tqdm.tqdm(initial=num_grasps, total=args.num_grasps)
     # start iterating grasps and evaluate
     world.reset()

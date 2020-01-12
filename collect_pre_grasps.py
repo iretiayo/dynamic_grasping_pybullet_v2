@@ -6,7 +6,6 @@ import pandas as pd
 import tqdm
 import pybullet as p
 import pybullet_data
-from collect_good_grasps import World, create_object_urdf
 import trimesh
 import pybullet_utils as pu
 import grasp_utils as gu

@@ -208,7 +208,7 @@ class DynamicGraspingWorld:
         comment = " "
 
         # planning grasp
-        grasp_idx, grasp_planning_time, num_ik_called, pre_grasp, pre_grasp_jv, grasp, grasp_jv = self.plan_grasp(
+        grasp_idx, grasp_planning_time, num_ik_called, pre_grasp, pre_grasp_jv, grasp, grasp_jv, grasp_switched = self.plan_grasp(
             predicted_pose, None)
         if grasp_jv is None or pre_grasp_jv is None:
             return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no reachable grasp is found"
