@@ -41,6 +41,9 @@ def get_args():
                         help="Directory to store grasps and results. Ex: grasps_dir")
     parser.add_argument('--num_grasps', type=int, default=5000)
     parser.add_argument('--max_steps', type=int, default=40000)
+    parser.add_argument('--robot_name', type=str, required=True)
+    parser.add_argument('--uniform_grasp', action='store_true', default=False)
+    parser.add_argument('--rotate_roll', action='store_true', default=False)
     args = parser.parse_args()
 
     args.mesh_dir = os.path.abspath('assets/models')
@@ -65,17 +68,21 @@ if __name__ == "__main__":
     num_grasp = 0
     while num_grasp < args.num_grasps:
         graspit_grasps, graspit_grasp_poses_in_world, graspit_grasp_poses_in_object \
-            = gu.generate_grasps(object_mesh=object_mesh_filepath_ply,
-                                 uniform_grasp=False,
+            = gu.generate_grasps(robot_name=args.robot_name,
+                                 object_mesh=object_mesh_filepath_ply,
+                                 uniform_grasp=args.uniform_grasp,
                                  floor_offset=floor_offset,
-                                 max_steps=args.max_steps)
+                                 max_steps=args.max_steps,
+                                 rotate_roll=args.rotate_roll)
         for g_pose in graspit_grasp_poses_in_object:
             g_2d = gu.pose_2_list(g_pose)
             raw_grasps.append(g_2d[0] + g_2d[1])
             num_grasp += 1
             progressbar.update(1)
-            if num_grasp >= args.num_grasps:
+            if num_grasp >= args.num_grasps and not args.uniform_grasp:
                 break
+        if args.uniform_grasp:
+            break
     progressbar.close()
     raw_grasps_npy = np.array(raw_grasps)
     dest_path = os.path.join(args.grasp_folder_path, args.object_name+'.npy')
