@@ -168,10 +168,7 @@ class EEFOnlyStaticWorld:
 
         self.plane = p.loadURDF("plane.urdf")
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
-        self.robot = p.loadURDF(self.gripper_urdf, self.gripper_initial_pose[0], self.gripper_initial_pose[1],
-                                flags=p.URDF_USE_SELF_COLLISION)
-
-        self.controller = EEFController(self.robot)
+        self.controller = EEFController(self.gripper_urdf, self.gripper_initial_pose)
 
     def reset(self):
         p.resetBasePositionAndOrientation(self.target, self.target_initial_pose[0], self.target_initial_pose[1])

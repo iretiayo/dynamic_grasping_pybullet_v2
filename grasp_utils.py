@@ -154,7 +154,7 @@ def change_end_effector_link(graspit_grasp_msg_pose, old_link_to_new_link_transl
 
 def get_grasps(robot_name='MicoGripper', object_mesh='cube', object_pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
                floor_offset=None, max_steps=35000, search_energy='GUIDED_POTENTIAL_QUALITY_ENERGY', seed_grasp=None,
-               uniform_grasp=True):
+               uniform_grasp=True, rotate_roll=False):
     gc = graspit_commander.GraspitCommander()
     gc.clearWorld()
 
@@ -171,6 +171,10 @@ def get_grasps(robot_name='MicoGripper', object_mesh='cube', object_pose=Pose(Po
         # grid_sample
         pre_grasps = []
         pre_grasps.extend(grid_sample_client.GridSampleClient.computePreGrasps(resolution=25, sampling_type=0).grasps)
+        if rotate_roll:
+            rot_trans = tf_conversions.fromTf(((0, 0, 0), tf_conversions.Rotation.RPY(np.pi / 2, 0, 0).GetQuaternion()))
+            for pg in pre_grasps:
+                pg.pose = tf_conversions.toMsg(tf_conversions.fromMsg(pg.pose) * rot_trans)
         pre_grasps.extend(grid_sample_client.GridSampleClient.computePreGrasps(resolution=4, sampling_type=1).grasps)
         grasps = grid_sample_client.GridSampleClient.evaluatePreGrasps(pre_grasps)
         good_grasps = [g for g in grasps if g.volume_quality > 0]
@@ -203,10 +207,10 @@ def extract_grasp_poses_from_graspit_grasps(graspit_grasps, object_pose=Pose(Poi
     return grasp_poses_in_world, grasp_poses_in_object
 
 
-def generate_grasps(load_fnm=None, save_fnm=None, object_mesh="cube",
+def generate_grasps(robot_name='MicoGripper', load_fnm=None, save_fnm=None, object_mesh="cube",
                     object_pose=Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)),
                     floor_offset=0, max_steps=35000, search_energy='GUIDED_POTENTIAL_QUALITY_ENERGY', seed_grasp=None,
-                    uniform_grasp=True):
+                    uniform_grasp=True, rotate_roll=False):
     """
     :return grasps: a list of graspit Grasps
     :return grasp_poses_in_world: a list of ROS poses, poses of graspit end-effector in graspit world frame
@@ -217,9 +221,9 @@ def generate_grasps(load_fnm=None, save_fnm=None, object_mesh="cube",
         grasp_poses_in_world, grasp_poses_in_object = extract_grasp_poses_from_graspit_grasps(graspit_grasps=grasps,
                                                                                               object_pose=object_pose)
     else:
-        grasp_results = get_grasps(object_mesh=object_mesh, object_pose=object_pose, floor_offset=floor_offset,
-                                   max_steps=max_steps, search_energy=search_energy, seed_grasp=seed_grasp,
-                                   uniform_grasp=uniform_grasp)
+        grasp_results = get_grasps(robot_name=robot_name, object_mesh=object_mesh, object_pose=object_pose,
+                                   floor_offset=floor_offset, max_steps=max_steps, search_energy=search_energy,
+                                   seed_grasp=seed_grasp, uniform_grasp=uniform_grasp, rotate_roll=rotate_roll)
         grasps, grasp_poses_in_world, grasp_poses_in_object = grasp_results
         if save_fnm:
             pickle.dump(grasps, open(save_fnm, "wb"))

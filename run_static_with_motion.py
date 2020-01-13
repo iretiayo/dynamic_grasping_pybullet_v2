@@ -129,6 +129,7 @@ if __name__ == "__main__":
     object_mesh_filepath_ply = object_mesh_filepath.replace('.obj', '.ply')
     target_urdf = create_object_urdf(object_mesh_filepath, args.object_name)
     target_mesh = trimesh.load_mesh(object_mesh_filepath)
+    target_extents = target_mesh.bounding_box.extents.tolist()
     floor_offset = target_mesh.bounds.min(0)[2]
     target_z = -target_mesh.bounds.min(0)[2] + 0.02
     target_initial_pose = [[0.3, 0.3, target_z], [0, 0, 0, 1]]
@@ -142,15 +143,21 @@ if __name__ == "__main__":
                                                   conveyor_initial_pose=conveyor_initial_pose,
                                                   robot_urdf=args.robot_urdf,
                                                   conveyor_urdf=args.conveyor_urdf,
+                                                  conveyor_speed=0,
                                                   target_urdf=target_urdf,
                                                   target_mesh_file_path=object_mesh_filepath,
+                                                  target_extents=target_extents,
                                                   grasp_database_path=args.grasp_database_path,
                                                   reachability_data_dir=args.reachability_data_dir,
                                                   realtime=args.realtime,
                                                   max_check=args.max_check,
                                                   disable_reachability=args.disable_reachability,
                                                   back_off=args.back_off,
-                                                  conveyor_speed=0)
+                                                  pose_freq=5,
+                                                  use_seed_trajectory=None,
+                                                  use_previous_jv=None,
+                                                  use_kf=None,
+                                                  use_gt=None)
 
     for i in range(args.num_trials):
         target_pose, distance = dynamic_grasping_world.reset(mode='static_random')
