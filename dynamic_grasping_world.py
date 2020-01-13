@@ -428,7 +428,7 @@ class DynamicGraspingWorld:
             if planned_grasp_jv is None:
                 continue
             num_ik_called += 1
-            grasp_switched = True
+            grasp_switched = (grasp_idx != old_grasp_idx)  # old grasp becoming unavailable does not always mean a grasp switch
             break
 
         # grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
