@@ -98,6 +98,8 @@ class DynamicGraspingWorld:
         rospy.set_param('target_mesh_file_path', self.target_mesh_file_path)
         rospy.set_param('target_extents', self.target_extents)
 
+        self.predicted_target_pose = None
+        self.predicted_conveyor_pose = None
         update_scene_thread = threading.Thread(target=self.update_scene_threading)
         update_scene_thread.daemon = True
         update_scene_thread.start()
@@ -107,8 +109,13 @@ class DynamicGraspingWorld:
         while True:
             target_pose = pu.get_body_pose(self.target)
             conveyor_pose = pu.get_body_pose(self.conveyor.id)
-            self.target_pose_pub.publish(gu.list_2_ps(target_pose))
-            self.conveyor_pose_pub.publish(gu.list_2_ps(conveyor_pose))
+            if (self.use_gt or self.use_kf) and self.predicted_conveyor_pose is not None and \
+                    self.predicted_target_pose is not None:
+                self.target_pose_pub.publish(gu.list_2_ps(self.predicted_target_pose))
+                self.conveyor_pose_pub.publish(gu.list_2_ps(self.predicted_conveyor_pose))
+            else:
+                self.target_pose_pub.publish(gu.list_2_ps(target_pose))
+                self.conveyor_pose_pub.publish(gu.list_2_ps(conveyor_pose))
             r.sleep()
             # target_pose = pu.get_body_pose(self.target)
             # conveyor_pose = pu.get_body_pose(self.conveyor)
@@ -125,6 +132,8 @@ class DynamicGraspingWorld:
             hand_over: TODO
         """
         self.world_steps = 0
+        self.predicted_conveyor_pose = None
+        self.predicted_target_pose = None
         if mode == 'initial':
             pu.remove_all_markers()
             target_pose, distance = self.target_initial_pose, self.initial_distance
@@ -265,22 +274,27 @@ class DynamicGraspingWorld:
         distance = None
         while not done:
             done = self.check_done()
-            target_pose = pu.get_body_pose(self.target)
+            current_target_pose = pu.get_body_pose(self.target)
+            current_conveyor_pose = pu.get_body_pose(self.conveyor.id)
             duration = self.calculate_prediction_time(distance, lazy_threshold)
             if self.use_kf:
                 # TODO verify that when duration is 0
-                predicted_pose = self.motion_predictor_kf.predict(duration)
+                self.predicted_target_pose = self.motion_predictor_kf.predict(duration)
+                predicted_conveyor_position = list(self.predicted_target_pose[0])
+                predicted_conveyor_position[2] = 0.01
+                self.predicted_conveyor_pose = [predicted_conveyor_position, [0, 0, 0, 1]]
             elif self.use_gt:
-                predicted_conveyor_pose = self.conveyor.predict(duration)
-                predicted_position = [predicted_conveyor_pose[0][0], predicted_conveyor_pose[0][1], target_pose[0][2]]
-                predicted_pose = [predicted_position, target_pose[1]]
+                self.predicted_conveyor_pose = self.conveyor.predict(duration)
+                predicted_target_position = [self.predicted_conveyor_pose[0][0], self.predicted_conveyor_pose[0][1], current_target_pose[0][2]]
+                self.predicted_target_pose = [predicted_target_position, current_target_pose[1]]
             else:
                 # no prediction
-                predicted_pose = target_pose
+                self.predicted_target_pose = current_target_pose
+                self.predicted_conveyor_pose = current_conveyor_pose
 
             # plan a grasp
             grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched \
-                = self.plan_grasp(predicted_pose, grasp_idx)
+                = self.plan_grasp(self.predicted_target_pose, grasp_idx)
             dynamic_grasp_time += grasp_planning_time
             if planned_grasp_jv is None or planned_pre_grasp_jv is None:
                 self.step(grasp_planning_time, None, None)
@@ -510,13 +524,17 @@ class DynamicGraspingWorld:
     def calculate_prediction_time(distance, lazy_threshold):
         no_prediction_threshold = 0.1
         if distance is None:
+            # print('large')
             prediction_time = 2
         else:
             if no_prediction_threshold < distance <= lazy_threshold:
+                # print('medium')
                 prediction_time = 1
             elif distance <= no_prediction_threshold:
+                # print('small')
                 prediction_time = 0
             else:
+                # print('large')
                 prediction_time = 2
         return prediction_time
 
