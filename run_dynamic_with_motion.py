@@ -21,6 +21,8 @@ from math import pi
 import pprint
 from dynamic_grasping_world import DynamicGraspingWorld
 import json
+import pandas as pd
+import ast
 
 
 def get_args():
@@ -37,6 +39,7 @@ def get_args():
     parser.add_argument('--back_off', type=float, default=0.05)
     parser.add_argument('--disable_reachability', action='store_true', default=False)
     parser.add_argument('--record_videos', action='store_true', default=False)
+    parser.add_argument('--baseline_experiment_path', type=str, help='use motion path in this file for the run')
 
     # dynamic hyper parameter
     parser.add_argument('--conveyor_speed', type=float, default=0.01)
@@ -134,7 +137,21 @@ if __name__ == "__main__":
                                                   use_kf=args.use_kf,
                                                   use_gt=args.use_gt)
 
+    # adding option to use previous experiment as config
+    baseline_experiment_config_df = None
+    if args.baseline_experiment_path and os.path.exists(args.baseline_experiment_path):
+        args.baseline_experiment_path = os.path.join(args.baseline_experiment_path, args.object_name,
+                                                     '{}.csv'.format(args.object_name))
+        if os.path.exists(args.baseline_experiment_path):
+            baseline_experiment_config_df = pd.read_csv(args.baseline_experiment_path, index_col=0)
+            baseline_experiment_config_df['target_quaternion'] = baseline_experiment_config_df[
+                'target_quaternion'].apply(
+                lambda x: ast.literal_eval(x))
+
+            args.num_trials = len(baseline_experiment_config_df)
+
     for i in range(args.num_trials):
+        reset_dict = None
         # reset_dict = {
         #     'distance': 0.3,
         #     'length': 1.0,
@@ -142,7 +159,9 @@ if __name__ == "__main__":
         #     'direction': 1,
         #     'target_quaternion': [0.0, 0.0, -0.6337979080046422, 0.7734986824868799]
         # }
-        reset_dict = None
+        if baseline_experiment_config_df is not None:
+            reset_dict = baseline_experiment_config_df.loc[i].to_dict()
+
         distance, theta, length, direction, target_quaternion = dynamic_grasping_world.reset(mode='dynamic_linear', reset_dict=reset_dict)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         if args.record_videos:
