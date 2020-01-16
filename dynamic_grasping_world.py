@@ -355,7 +355,7 @@ class DynamicGraspingWorld:
 
     def plan_approach_motion(self, grasp_jv):
         """ Plan the discretized approach motion for both arm and gripper """
-        predicted_period = 0.25
+        predicted_period = 0.25     # TODO this might not be necessary because plan simple takes about 0.001
         start_time = time.time()
 
         if self.robot.arm_discretized_plan is not None:
@@ -376,7 +376,7 @@ class DynamicGraspingWorld:
         gripper_discretized_plan = self.robot.plan_gripper_joint_values(self.robot.CLOSED_POSITION)
 
         planning_time = time.time() - start_time
-        # print("Planning a motion takes {:.6f}".format(planning_time))
+        print("Planning a motion takes {:.6f}".format(planning_time))
         return planning_time, arm_discretized_plan, gripper_discretized_plan
 
     def execute_appraoch_and_grasp(self, arm_plan, gripper_plan):
@@ -499,7 +499,7 @@ class DynamicGraspingWorld:
             arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv)
         planning_time = time.time() - start_time
 
-        # print("Planning a motion takes {:.6f}".format(planning_time))
+        print("Planning a motion takes {:.6f}".format(planning_time))
         return planning_time, arm_discretized_plan
 
     def sample_target_location(self):
