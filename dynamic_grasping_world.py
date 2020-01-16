@@ -287,7 +287,7 @@ class DynamicGraspingWorld:
         done = False
         dynamic_grasp_time = 0
         distance = None
-        initial_iteration = True
+        initial_motion_plan_attempted = False    # not necessarily succeed
         while not done:
             done = self.check_done()
             current_target_pose = pu.get_body_pose(self.target)
@@ -321,28 +321,24 @@ class DynamicGraspingWorld:
             dynamic_grasp_time += grasp_planning_time
             if planned_grasp_jv is None or planned_pre_grasp_jv is None:
                 self.step(grasp_planning_time, None, None)
-                initial_iteration = False
                 continue
             self.step(grasp_planning_time, None, None)
             pu.create_arrow_marker(planned_pre_grasp, color_index=grasp_idx)
 
             # plan a motion
             distance = np.linalg.norm(np.array(self.robot.get_eef_pose()[0]) - np.array(planned_pre_grasp[0]))
-            distance_travelled = 0 if initial_iteration else np.linalg.norm(
-                np.array(current_target_pose[0]) - np.array(lazy_plan_start_pos))
+            distance_travelled = np.linalg.norm(np.array(current_target_pose[0]) - np.array(last_motion_plan_attempted_pos)) if initial_motion_plan_attempted else 0
             if self.check_lazy_plan(distance, grasp_switched, distance_travelled):
                 # print("lazy plan")
-                initial_iteration = False
                 continue
-            lazy_plan_start_pos = current_target_pose[0]
+            last_motion_plan_attempted_pos = current_target_pose[0]
+            initial_motion_plan_attempted = True
             motion_planning_time, plan = self.plan_arm_motion(planned_pre_grasp_jv)
             dynamic_grasp_time += motion_planning_time
             if plan is None:
                 self.step(motion_planning_time, None, None)
-                initial_iteration = False
                 continue
             self.step(motion_planning_time, plan, None)
-            initial_iteration = False
 
             # check can grasp or not
             if self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=self.grasp_threshold):
