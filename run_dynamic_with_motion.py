@@ -160,16 +160,16 @@ if __name__ == "__main__":
             args.num_trials = len(baseline_experiment_config_df)
 
     for i in range(args.num_trials):
-        reset_dict = None
-        # reset_dict = {
-        #     'distance': 0.3,
-        #     'length': 1.0,
-        #     'theta': 0,
-        #     'direction': 1,
-        #     'target_quaternion': [0.0, 0.0, -0.6337979080046422, 0.7734986824868799]
-        # }
-        if baseline_experiment_config_df is not None:
-            reset_dict = baseline_experiment_config_df.loc[i].to_dict()
+        # reset_dict = None
+        reset_dict = {
+            'distance': 0.2787919083152529,
+            'length': 1.0,
+            'theta': 110.23333162496952,
+            'direction': 1,
+            'target_quaternion': [0.0, 0.0, 0.8092568854035559, 0.5874549288472571]
+        }
+        # if baseline_experiment_config_df is not None:
+        #     reset_dict = baseline_experiment_config_df.loc[i].to_dict()
 
         distance, theta, length, direction, target_quaternion = dynamic_grasping_world.reset(mode='dynamic_linear', reset_dict=reset_dict)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
