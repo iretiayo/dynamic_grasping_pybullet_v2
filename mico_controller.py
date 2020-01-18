@@ -316,17 +316,17 @@ class MicoController:
         discretized_plan = np.linspace(start_joint_values, goal_joint_values, num_steps)
         return discretized_plan
 
-    def create_seed_trajectory(self, seed_discretized_plan):
+    def create_seed_trajectory(self, seed_discretized_plan, start_joint_values, goal_joint_values):
 
         joint_trajectory_seed = JointTrajectory()
         # joint_trajectory_seed.header.frame_id = ''
         joint_trajectory_seed.joint_names = self.GROUPS['arm']
         joint_trajectory_seed.points = []
         skip = max(1, len(seed_discretized_plan) // 100)
-        waypoint_indices = [i for i in range(0, len(seed_discretized_plan), skip)] + [len(seed_discretized_plan) - 1]
-        for idx in waypoint_indices:
+        waypoints = [start_joint_values] + seed_discretized_plan[::skip].tolist() + [goal_joint_values]
+        for wp in waypoints:
             point = JointTrajectoryPoint()
-            point.positions = seed_discretized_plan[idx].tolist()
+            point.positions = wp
             joint_trajectory_seed.points.append(point)
 
         generic_trajectory = GenericTrajectory()
@@ -349,9 +349,8 @@ class MicoController:
         goal_joint_values_converted = self.convert_range(goal_joint_values)
         seed_trajectory = None
         if previous_discretized_plan is not None and len(previous_discretized_plan) > 2:
-            seed_discretized_plan = previous_discretized_plan + [goal_joint_values_converted]  # TODO: is there a need to normalize range of joint values? i.e. undo process_plan
-            seed_discretized_plan[0] = start_joint_values_converted
-            seed_trajectory = self.create_seed_trajectory(seed_discretized_plan)
+            seed_discretized_plan = previous_discretized_plan  # TODO: is there a need to normalize range of joint values? i.e. undo process_plan
+            seed_trajectory = self.create_seed_trajectory(seed_discretized_plan, start_joint_values_converted, goal_joint_values_converted)
 
         moveit_plan = self.plan_arm_joint_values_ros(start_joint_values_converted, goal_joint_values_converted,
                                                      maximum_planning_time=maximum_planning_time,
