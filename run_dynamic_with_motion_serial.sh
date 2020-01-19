@@ -17,6 +17,7 @@ do
     --pose_freq 5 \
     --record_videos \
     --max_check 3 \
+    --use_box \
     --use_kf;
     sleep 5
 done
