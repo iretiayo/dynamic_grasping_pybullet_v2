@@ -15,20 +15,29 @@ from geometry_msgs.msg import Pose, Point, Quaternion, PoseStamped
 from reachability_utils.reachability_resolution_analysis import interpolate_pose_in_reachability_space_grid
 from reachability_utils.process_reachability_data_from_csv import load_reachability_data_from_dir
 import plyfile
+from collections import namedtuple
 
-# link6_reference_to_ee = ([0.0, 0.0, -0.16], [1.0, 0.0, 0.0, 0])
-# ee_to_link6_reference = ([0.0, -3.3091697137634315e-14, -0.16], [-1.0, 0.0, 0.0, -1.0341155355510722e-13])
-ee_to_link6_reference = ([-3.1554436208840472e-30, -3.309169713763431e-14, -0.15999999999999998],
-                         [-0.7071067811882787,
-                          -0.7071067811848163,
-                          7.312301077167311e-14,
-                          -7.312301077203115e-14])
-link6_reference_to_ee = ([0.0, 0.0, -0.16],
-                         [0.7071067811882787,
-                          0.7071067811848163,
-                          -7.312301077167311e-14,
-                          -7.312301077203115e-14])
-link6_reference_to_link6_com = ([-0.002216, -0.000001, -0.058489], [0.0, 0.0, 0.0, 1.0])
+mico_configs = {
+    'ee_to_link6_reference': ([-3.1554436208840472e-30, -3.309169713763431e-14, -0.15999999999999998],
+                              [-0.7071067811882787, -0.7071067811848163, 7.312301077167311e-14,
+                               -7.312301077203115e-14]),
+    'link6_reference_to_ee': ([0.0, 0.0, -0.16],
+                              [-0.7071067811882787, -0.7071067811848163, 7.312301077167311e-14,
+                               -7.312301077203115e-14]),
+    'link6_reference_to_link6_com': ([-0.002216, -0.000001, -0.058489], [0.0, 0.0, 0.0, 1.0]),
+
+    'gripper_urdf': os.path.abspath('assets/mico/mico_hand.urdf'),
+    'EEF_LINK_INDEX': 0,
+    'GRIPPER_JOINT_NAMES': ['m1n6s200_joint_finger_1', 'm1n6s200_joint_finger_tip_1', 'm1n6s200_joint_finger_2',
+                            'm1n6s200_joint_finger_tip_2'],
+    'OPEN_POSITION': [0.0, 0.0, 0.0, 0.0],
+    'CLOSED_POSITION': [1.1, 0.0, 1.1, 0.0],
+    'LINK6_COM': [-0.002216, -0.000001, -0.058489],
+}
+
+robot_configs = {'mico': namedtuple('RobotConfigs', mico_configs.keys())(*mico_configs.values()),
+                 'ur5_robotiq': namedtuple('RobotConfigs', mico_configs.keys())(*mico_configs.values())
+                 }
 
 
 def pose_2_list(pose):
@@ -111,7 +120,7 @@ def back_off_pose_2d(grasp_pose_2d, offset=-.05):
     return pose_2_list(pre_grasp_pose)
 
 
-def change_end_effector_link_pose_2d(grasp_pose, old_link_to_new_link=link6_reference_to_ee):
+def change_end_effector_link_pose_2d(grasp_pose, old_link_to_new_link):
     """
 
     :param grasp_pose: pose 2d

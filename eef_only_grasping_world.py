@@ -15,15 +15,10 @@ from random import uniform
 class EEFController:
     """ The controller for EEF only """
 
-    EEF_LINK_INDEX = 0
-    GRIPPER_INDICES = [1, 2, 3, 4]
-    OPEN_POSITION = [0.0, 0.0, 0.0, 0.0]
-    CLOSED_POSITION = [1.1, 0.0, 1.1, 0.0]
-    LINK6_COM = [-0.002216, -0.000001, -0.058489]
     LIFT_VALUE = 0.2
 
-    def __init__(self, gripper_urdf, gripper_initial_pose):
-        self.gripper_urdf = gripper_urdf
+    def __init__(self, robot_config_name, gripper_initial_pose):
+        self.load_robot_configs(robot_config_name)
         self.gripper_initial_pose = gripper_initial_pose
         self.id = p.loadURDF(self.gripper_urdf, self.gripper_initial_pose[0], self.gripper_initial_pose[1],
                              flags=p.URDF_USE_SELF_COLLISION)
@@ -31,12 +26,28 @@ class EEFController:
                                       childLinkIndex=-1, jointType=p.JOINT_FIXED, jointAxis=[0, 0, 0],
                                       parentFramePosition=[0, 0, 0], childFramePosition=self.gripper_initial_pose[0],
                                       childFrameOrientation=self.gripper_initial_pose[1])
+        joint_infos = [p.getJointInfo(self.id, joint_index) for joint_index in range(p.getNumJoints(self.id))]
+        self.JOINT_INDICES_DICT = {entry[1]: entry[0] for entry in joint_infos}
+        self.GRIPPER_INDICES = [self.JOINT_INDICES_DICT[name] for name in self.GRIPPER_JOINT_NAMES]
 
         # step plans
         self.arm_discretized_plan = None
         self.gripper_discretized_plan = None
         self.arm_wp_target_index = 0
         self.gripper_wp_target_index = 0
+
+    def load_robot_configs(self, robot_config_name):
+        self.robot_config_name = robot_config_name
+        self.robot_configs = gu.robot_configs[self.robot_config_name]
+        self.gripper_urdf = self.robot_configs.gripper_urdf
+        self.EEF_LINK_INDEX = self.robot_configs.EEF_LINK_INDEX
+        self.GRIPPER_JOINT_NAMES = self.robot_configs.GRIPPER_JOINT_NAMES
+        self.OPEN_POSITION = self.robot_configs.OPEN_POSITION
+        self.CLOSED_POSITION = self.robot_configs.CLOSED_POSITION
+        self.LINK6_COM = self.robot_configs.LINK6_COM
+        self.ee_to_link6_reference = self.robot_configs.ee_to_link6_reference
+        self.link6_reference_to_ee = self.robot_configs.link6_reference_to_ee
+        self.link6_reference_to_link6_com = self.robot_configs.link6_reference_to_link6_com
 
     def reset(self):
         # step plans
@@ -78,17 +89,17 @@ class EEFController:
 
     def execute_grasp(self, grasp, back_off):
         """ High level grasp interface using grasp 2d in world frame (link6_reference_frame)"""
-        link6_com_pose_2d = gu.change_end_effector_link_pose_2d(grasp, gu.link6_reference_to_link6_com)
+        link6_com_pose_2d = gu.change_end_effector_link_pose_2d(grasp, self.link6_reference_to_link6_com)
         pre_link6_com_pose_2d = gu.back_off_pose_2d(link6_com_pose_2d, back_off)
         self.reset_to(pre_link6_com_pose_2d)
         actual_pre_ee_pose_2d = pu.get_link_pose(self.id, 0)
         actual_pre_link6_ref_pose_2d = gu.change_end_effector_link_pose_2d(actual_pre_ee_pose_2d,
-                                                                           gu.ee_to_link6_reference)
+                                                                           self.ee_to_link6_reference)
         actual_pre_link6_com_pose_2d = pre_link6_com_pose_2d
 
         self.move_to(link6_com_pose_2d)
         actual_ee_pose_2d = pu.get_link_pose(self.id, 0)
-        actual_link6_ref_pose_2d = gu.change_end_effector_link_pose_2d(actual_ee_pose_2d, gu.ee_to_link6_reference)
+        actual_link6_ref_pose_2d = gu.change_end_effector_link_pose_2d(actual_ee_pose_2d, self.ee_to_link6_reference)
         actual_link6_com_pose_2d = link6_com_pose_2d
         self.close_gripper()
         self.lift()
@@ -130,7 +141,7 @@ class EEFController:
         return [list(p.getBasePositionAndOrientation(self.id)[0]),
                 list(p.getBasePositionAndOrientation(self.id)[1])]
 
-    def initialize_gripper_plan(self, start_joint_values=OPEN_POSITION, goal_joint_values=CLOSED_POSITION):
+    def initialize_gripper_plan(self, start_joint_values, goal_joint_values):
         num_steps = 240
         self.gripper_discretized_plan = np.linspace(start_joint_values, goal_joint_values, num_steps)
         self.gripper_wp_target_index = 1
@@ -156,10 +167,10 @@ class EEFController:
 class EEFOnlyStaticWorld:
     """ EEF only world with static target """
 
-    def __init__(self, target_initial_pose, gripper_initial_pose, gripper_urdf, target_urdf, apply_noise):
+    def __init__(self, target_initial_pose, gripper_initial_pose, robot_config_name, target_urdf, apply_noise):
         self.target_initial_pose = target_initial_pose
         self.gripper_initial_pose = gripper_initial_pose
-        self.gripper_urdf = gripper_urdf
+        self.robot_config_name = robot_config_name
         self.target_urdf = target_urdf
         self.apply_noise = apply_noise
         self.x_noise = 0.01
@@ -168,7 +179,7 @@ class EEFOnlyStaticWorld:
 
         self.plane = p.loadURDF("plane.urdf")
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
-        self.controller = EEFController(self.gripper_urdf, self.gripper_initial_pose)
+        self.controller = EEFController(self.robot_config_name, self.gripper_initial_pose)
 
     def reset(self):
         p.resetBasePositionAndOrientation(self.target, self.target_initial_pose[0], self.target_initial_pose[1])
@@ -257,7 +268,7 @@ class EEFOnlyDynamicWorld:
 
         self.controller.reset_to(pre_grasp_link6_com_in_world)
         self.controller.initialize_hand_plan(grasp_link6_com_in_world, pre_grasp_link6_com_in_world, )
-        self.controller.initialize_gripper_plan()
+        self.controller.initialize_gripper_plan(self.OPEN_POSITION, self.CLOSED_POSITION)
 
         done = False
         while not done:

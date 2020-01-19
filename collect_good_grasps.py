@@ -19,6 +19,8 @@ def get_args():
 
     parser.add_argument('--object_name', type=str, default='bleach_cleanser',
                         help="Target object to be grasped. Ex: cube")
+    parser.add_argument('--robot_config_name', type=str, default='mico',
+                        help="name of robot configs to load from grasputils. Ex: mico or ur5_robotiq")
     parser.add_argument('--load_folder_path', type=str, required=True,
                         help="folder path to load raw grasps from graspit")
     parser.add_argument('--save_folder_path', type=str, required=True,
@@ -36,7 +38,6 @@ def get_args():
     args = parser.parse_args()
 
     args.mesh_dir = os.path.abspath('assets/models')
-    args.gripper_urdf = os.path.abspath('assets/mico/mico_hand.urdf')
 
     args.save_folder_path = os.path.join(args.save_folder_path, args.object_name)
     if not os.path.exists(args.save_folder_path):
@@ -74,7 +75,7 @@ if __name__ == "__main__":
     target_initial_pose = [[0, 0, -target_mesh.bounds.min(0)[2] + 0.01], [0, 0, 0, 1]]
     gripper_initial_pose = [[0, 0, 0.5], [0, 0, 0, 1]]
 
-    world = EEFOnlyStaticWorld(target_initial_pose, gripper_initial_pose, args.gripper_urdf, target_urdf, args.apply_noise)
+    world = EEFOnlyStaticWorld(target_initial_pose, gripper_initial_pose, args.robot_config_name, target_urdf, args.apply_noise)
 
     grasps_link6_ref_in_object = np.load(os.path.join(args.load_folder_path, args.object_name + '.npy'))
     # placeholder to save good grasps
