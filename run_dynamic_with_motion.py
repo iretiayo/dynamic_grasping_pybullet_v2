@@ -51,6 +51,7 @@ def get_args():
     parser.add_argument('--close_delay', type=float, default=0.5)
     parser.add_argument('--use_seed_trajectory', action='store_true', default=False)
     parser.add_argument('--use_previous_jv', action='store_true', default=False)
+    parser.add_argument('--use_box', action='store_true', default=False)
     parser.add_argument('--use_kf', action='store_true', default=False)
     parser.add_argument('--use_gt', action='store_true', default=False)
     parser.add_argument('--pose_freq', type=int, default=5)
@@ -144,7 +145,8 @@ if __name__ == "__main__":
                                                   large_prediction_threshold=args.large_prediction_threshold,
                                                   small_prediction_threshold=args.small_prediction_threshold,
                                                   close_delay=args.close_delay,
-                                                  distance_travelled_threshold=args.distance_travelled_threshold)
+                                                  distance_travelled_threshold=args.distance_travelled_threshold,
+                                                  use_box=args.use_box)
 
     # adding option to use previous experiment as config
     baseline_experiment_config_df = None
@@ -161,15 +163,15 @@ if __name__ == "__main__":
 
     for i in range(args.num_trials):
         # reset_dict = None
-        reset_dict = {
-            'distance': 0.2787919083152529,
-            'length': 1.0,
-            'theta': 110.23333162496952,
-            'direction': 1,
-            'target_quaternion': [0.0, 0.0, 0.8092568854035559, 0.5874549288472571]
-        }
-        # if baseline_experiment_config_df is not None:
-        #     reset_dict = baseline_experiment_config_df.loc[i].to_dict()
+        # reset_dict = {
+        #     'distance': 0.2787919083152529,
+        #     'length': 1.0,
+        #     'theta': 110.23333162496952,
+        #     'direction': 1,
+        #     'target_quaternion': [0.0, 0.0, 0.8092568854035559, 0.5874549288472571]
+        # }
+        if baseline_experiment_config_df is not None:
+            reset_dict = baseline_experiment_config_df.loc[i].to_dict()
 
         distance, theta, length, direction, target_quaternion = dynamic_grasping_world.reset(mode='dynamic_linear', reset_dict=reset_dict)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power

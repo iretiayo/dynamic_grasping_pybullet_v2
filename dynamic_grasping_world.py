@@ -46,7 +46,8 @@ class DynamicGraspingWorld:
                  large_prediction_threshold,
                  small_prediction_threshold,
                  close_delay,
-                 distance_travelled_threshold):
+                 distance_travelled_threshold,
+                 use_box):
         self.target_name = target_name
         self.target_initial_pose = target_initial_pose
         self.robot_initial_pose = robot_initial_pose
@@ -107,6 +108,7 @@ class DynamicGraspingWorld:
         self.large_prediction_threshold = large_prediction_threshold
         self.small_prediction_threshold = small_prediction_threshold
         self.distance_travelled_threshold = distance_travelled_threshold
+        self.use_box = use_box
 
         # self.target_pose_pub = rospy.Publisher('target_pose', PoseStamped, queue_size=1)
         # self.conveyor_pose_pub = rospy.Publisher('conveyor_pose', PoseStamped, queue_size=1)
@@ -287,7 +289,7 @@ class DynamicGraspingWorld:
         done = False
         dynamic_grasp_time = 0
         distance = None
-        initial_motion_plan_attempted = False    # not necessarily succeed
+        initial_motion_plan_success = False    # not necessarily succeed
         while not done:
             done = self.check_done()
             current_target_pose = pu.get_body_pose(self.target)
@@ -312,7 +314,10 @@ class DynamicGraspingWorld:
 
             # update the scene. it will not reach the next line if the scene is not updated
             update_start_time = time.time()
-            self.scene.add_mesh('target', gu.list_2_ps(self.predicted_target_pose), self.target_mesh_file_path)
+            if self.use_box:
+                self.scene.add_box('target', gu.list_2_ps(self.predicted_target_pose), size=self.target_extents)
+            else:
+                self.scene.add_mesh('target', gu.list_2_ps(self.predicted_target_pose), self.target_mesh_file_path)
             self.scene.add_box('conveyor', gu.list_2_ps(self.predicted_conveyor_pose), size=(.1, .1, .02))
             # print('Updating scene takes {} second'.format(time.time() - update_start_time))
 
@@ -324,23 +329,22 @@ class DynamicGraspingWorld:
                 self.step(grasp_planning_time, None, None)
                 continue
             self.step(grasp_planning_time, None, None)
-
             pu.create_arrow_marker(planned_pre_grasp, color_index=grasp_idx)
 
             # plan a motion
             distance = np.linalg.norm(np.array(self.robot.get_eef_pose()[0]) - np.array(planned_pre_grasp[0]))
-            distance_travelled = np.linalg.norm(np.array(current_target_pose[0]) - np.array(last_motion_plan_attempted_pos)) if initial_motion_plan_attempted else 0
+            distance_travelled = np.linalg.norm(np.array(current_target_pose[0]) - np.array(last_motion_plan_success_pos)) if initial_motion_plan_success else 0
             if self.check_lazy_plan(distance, grasp_switched, distance_travelled):
                 # print("lazy plan")
                 continue
-            last_motion_plan_attempted_pos = current_target_pose[0]
-            initial_motion_plan_attempted = True
             motion_planning_time, plan = self.plan_arm_motion(planned_pre_grasp_jv)
             dynamic_grasp_time += motion_planning_time
             if plan is None:
                 self.step(motion_planning_time, None, None)
                 continue
             self.step(motion_planning_time, plan, None)
+            last_motion_plan_success_pos = current_target_pose[0]
+            initial_motion_plan_success = True
 
             # check can grasp or not
             if self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=self.grasp_threshold):
