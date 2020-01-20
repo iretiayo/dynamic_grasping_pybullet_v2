@@ -491,3 +491,9 @@ def load_grasp_database(grasp_database_path, object_name, back_off):
     pre_grasps_link6_com = np.load(os.path.join(grasp_database_path, object_name, 'pre_grasps_link6_com_'+str(back_off)+'.npy'))
     pre_grasps_link6_ref = np.load(os.path.join(grasp_database_path, object_name, 'pre_grasps_link6_ref_'+str(back_off)+'.npy'))
     return grasps_eef, grasps_link6_ref, grasps_link6_com, pre_grasps_eef, pre_grasps_link6_ref, pre_grasps_link6_com
+
+
+def load_grasp_database_new(grasp_database_path, object_name):
+    actual_grasps = np.load(os.path.join(grasp_database_path, object_name, 'actual_grasps.npy'))
+    graspit_grasps = np.load(os.path.join(grasp_database_path, object_name, 'graspit_grasps.npy'))
+    return actual_grasps, graspit_grasps
