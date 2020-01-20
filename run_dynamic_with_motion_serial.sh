@@ -22,4 +22,4 @@ do
     sleep 5
 done
 
-cp run_dynamic_with_motion.sh $timestr
+cp run_dynamic_with_motion_serial.sh $timestr
