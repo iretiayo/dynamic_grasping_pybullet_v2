@@ -31,8 +31,22 @@ mico_configs = {
     'CLOSED_POSITION': [1.1, 0.0, 1.1, 0.0],
 }
 
+ur5_robotiq_configs = {
+    'GRASPIT_LINK_TO_MOVEIT_LINK': ([0, 0, 0], [0, 0, 0, 1]),
+    'GRASPIT_LINK_TO_PYBULLET_LINK': ([0.0, 0.0, 0.0], [0.0, 0.706825181105366, 0.0, 0.7073882691671998]),
+    'PYBULLET_LINK_TO_COM': ([0.0, 0.0, 0.031451], [0.0, 0.0, 0.0, 1.0]),
+    'PYBULLET_LINK_COM': [0.0, 0.0, 0.031451],
+
+    'gripper_urdf': os.path.abspath('assets/robotiq_2f_85_hand/robotiq_arg2f_85_model.urdf'),
+    'EEF_LINK_INDEX': 0,
+    'GRIPPER_JOINT_NAMES': ['finger_joint', 'left_inner_knuckle_joint', 'left_inner_finger_joint',
+                            'right_outer_knuckle_joint', 'right_inner_knuckle_joint', 'right_inner_finger_joint'],
+    'OPEN_POSITION': [0] * 6,
+    'CLOSED_POSITION': 0.72 * np.array([1, 1, -1, 1, 1, -1]),
+}
+
 robot_configs = {'mico': namedtuple('RobotConfigs', mico_configs.keys())(*mico_configs.values()),
-                 'ur5_robotiq': namedtuple('RobotConfigs', mico_configs.keys())(*mico_configs.values())
+                 'ur5_robotiq': namedtuple('RobotConfigs', ur5_robotiq_configs.keys())(*ur5_robotiq_configs.values())
                  }
 
 
