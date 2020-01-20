@@ -15,6 +15,7 @@ from kalman_filter_3d import KalmanFilter, create_kalman_filter
 import random
 import tf_conversions as tfc
 import moveit_commander as mc
+from ur5_robotiq_pybullet import load_ur_robotiq_robot, UR5RobotiqPybulletController
 
 
 class DynamicGraspingWorld:
@@ -99,7 +100,11 @@ class DynamicGraspingWorld:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         self.plane = p.loadURDF("plane.urdf")
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
-        self.robot = MicoController(self.robot_initial_pose, self.robot_initial_state, self.robot_urdf)
+        if 'mico' in self.robot_config_name:
+            self.robot = MicoController(self.robot_initial_pose, self.robot_initial_state, self.robot_urdf)
+        if 'robotiq' in self.robot_config_name:
+            self.robot_id = load_ur_robotiq_robot(self.robot_initial_pose)
+            self.robot = UR5RobotiqPybulletController(self.robot_id)
         self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf)
         self.reset('initial')  # the reset is needed to simulate the initial config
 
