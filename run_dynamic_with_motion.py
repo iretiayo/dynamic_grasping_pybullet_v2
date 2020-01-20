@@ -40,6 +40,7 @@ def get_args():
     parser.add_argument('--disable_reachability', action='store_true', default=False)
     parser.add_argument('--record_videos', action='store_true', default=False)
     parser.add_argument('--baseline_experiment_path', type=str, help='use motion path in this file for the run')
+    parser.add_argument('--failure_only', action='store_true', default=False)
 
     # dynamic hyper parameter
     parser.add_argument('--conveyor_speed', type=float, default=0.01)
@@ -158,7 +159,6 @@ if __name__ == "__main__":
             baseline_experiment_config_df['target_quaternion'] = baseline_experiment_config_df[
                 'target_quaternion'].apply(
                 lambda x: ast.literal_eval(x))
-
             args.num_trials = len(baseline_experiment_config_df)
 
     for i in range(args.num_trials):
@@ -172,6 +172,9 @@ if __name__ == "__main__":
         # }
         if baseline_experiment_config_df is not None:
             reset_dict = baseline_experiment_config_df.loc[i].to_dict()
+            if args.failure_only and reset_dict['success']:
+                print('skipping trial {}'.format(i))
+                continue
 
         distance, theta, length, direction, target_quaternion = dynamic_grasping_world.reset(mode='dynamic_linear', reset_dict=reset_dict)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
