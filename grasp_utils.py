@@ -18,13 +18,10 @@ import plyfile
 from collections import namedtuple
 
 mico_configs = {
-    'ee_to_link6_reference': ([-3.1554436208840472e-30, -3.309169713763431e-14, -0.15999999999999998],
-                              [-0.7071067811882787, -0.7071067811848163, 7.312301077167311e-14,
-                               -7.312301077203115e-14]),
-    'link6_reference_to_ee': ([0.0, 0.0, -0.16],
-                              [-0.7071067811882787, -0.7071067811848163, 7.312301077167311e-14,
-                               -7.312301077203115e-14]),
-    'link6_reference_to_link6_com': ([-0.002216, -0.000001, -0.058489], [0.0, 0.0, 0.0, 1.0]),
+    'GRASPIT_LINK_TO_MOVEIT_LINK': ([0.0, 0.0, -0.16], [-0.7071067811882787, -0.7071067811848163, 0.0, 0.0]),
+    'GRASPIT_LINK_TO_PYBULLET_LINK': ([0, 0, 0], [0.0, 0.0, 0.0, 1.0]),
+    'PYBULLET_LINK_TO_COM': ([-0.002216, -0.000001, -0.06], [0.0, 0.0, 0.0, 1.0]),
+    'PYBULLET_LINK_COM': [-0.002216, -0.000001, -0.06],
 
     'gripper_urdf': os.path.abspath('assets/mico/mico_hand.urdf'),
     'EEF_LINK_INDEX': 0,
@@ -32,7 +29,6 @@ mico_configs = {
                             'm1n6s200_joint_finger_tip_2'],
     'OPEN_POSITION': [0.0, 0.0, 0.0, 0.0],
     'CLOSED_POSITION': [1.1, 0.0, 1.1, 0.0],
-    'LINK6_COM': [-0.002216, -0.000001, -0.058489],
 }
 
 robot_configs = {'mico': namedtuple('RobotConfigs', mico_configs.keys())(*mico_configs.values()),

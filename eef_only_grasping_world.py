@@ -10,6 +10,7 @@ import copy
 from dynamic_grasping_world import Conveyor
 import misc_utils as mu
 from random import uniform
+import tf_conversions
 
 
 class EEFController:
@@ -44,10 +45,16 @@ class EEFController:
         self.GRIPPER_JOINT_NAMES = self.robot_configs.GRIPPER_JOINT_NAMES
         self.OPEN_POSITION = self.robot_configs.OPEN_POSITION
         self.CLOSED_POSITION = self.robot_configs.CLOSED_POSITION
-        self.LINK6_COM = self.robot_configs.LINK6_COM
-        self.ee_to_link6_reference = self.robot_configs.ee_to_link6_reference
-        self.link6_reference_to_ee = self.robot_configs.link6_reference_to_ee
-        self.link6_reference_to_link6_com = self.robot_configs.link6_reference_to_link6_com
+
+        self.GRASPIT_LINK_TO_MOVEIT_LINK = self.robot_configs.GRASPIT_LINK_TO_MOVEIT_LINK
+        self.GRASPIT_LINK_TO_PYBULLET_LINK = self.robot_configs.GRASPIT_LINK_TO_PYBULLET_LINK
+        self.PYBULLET_LINK_TO_COM = self.robot_configs.PYBULLET_LINK_TO_COM
+
+        self.GRASPIT_LINK_TO_PYBULLET_LINK_COM = tf_conversions.toTf(
+            tf_conversions.fromTf(self.GRASPIT_LINK_TO_PYBULLET_LINK) * tf_conversions.fromTf(
+                self.PYBULLET_LINK_TO_COM))
+        self.PYBULLET_LINK_COM_TO_GRASPIT_LINK = tf_conversions.toTf(
+            tf_conversions.fromTf(self.GRASPIT_LINK_TO_PYBULLET_LINK_COM).Inverse())
 
     def reset(self):
         # step plans
@@ -87,27 +94,29 @@ class EEFController:
             p.stepSimulation()
         pu.step()
 
+    def get_current_grasp_pose(self):
+        pybullet_base_com_pose_2d = pu.get_link_pose(self.id, -1)
+        graspit_pose_2d = gu.change_end_effector_link_pose_2d(pybullet_base_com_pose_2d, self.PYBULLET_LINK_COM_TO_GRASPIT_LINK)
+        return graspit_pose_2d
+
     def execute_grasp(self, grasp, back_off):
         """ High level grasp interface using grasp 2d in world frame (link6_reference_frame)"""
-        link6_com_pose_2d = gu.change_end_effector_link_pose_2d(grasp, self.link6_reference_to_link6_com)
-        pre_link6_com_pose_2d = gu.back_off_pose_2d(link6_com_pose_2d, back_off)
-        self.reset_to(pre_link6_com_pose_2d)
-        actual_pre_ee_pose_2d = pu.get_link_pose(self.id, 0)
-        actual_pre_link6_ref_pose_2d = gu.change_end_effector_link_pose_2d(actual_pre_ee_pose_2d,
-                                                                           self.ee_to_link6_reference)
-        actual_pre_link6_com_pose_2d = pre_link6_com_pose_2d
+        com_pose_2d = gu.change_end_effector_link_pose_2d(grasp, self.GRASPIT_LINK_TO_PYBULLET_LINK_COM)
+        pregrasp_com_pose_2d = gu.back_off_pose_2d(com_pose_2d, back_off)
 
-        self.move_to(link6_com_pose_2d)
-        actual_ee_pose_2d = pu.get_link_pose(self.id, 0)
-        actual_link6_ref_pose_2d = gu.change_end_effector_link_pose_2d(actual_ee_pose_2d, self.ee_to_link6_reference)
-        actual_link6_com_pose_2d = link6_com_pose_2d
+        self.reset_to(pregrasp_com_pose_2d)
+        actual_pregrasp = self.get_current_grasp_pose()
+
+        self.move_to(com_pose_2d)
+        actual_grasp = self.get_current_grasp_pose()
+
         self.close_gripper()
         self.lift()
         # robust test
         self.lift(0.2)
         self.lift(-0.2)
         pu.step(2)
-        return actual_pre_ee_pose_2d, actual_pre_link6_ref_pose_2d, actual_pre_link6_com_pose_2d, actual_ee_pose_2d, actual_link6_ref_pose_2d, actual_link6_com_pose_2d
+        return actual_pregrasp, actual_grasp
 
     def execute_grasp_link6_com(self, grasp):
         """ High level grasp interface using grasp 2d in world frame (link6_com_frame)"""
