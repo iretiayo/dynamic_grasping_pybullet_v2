@@ -14,7 +14,6 @@ import tqdm
 import tf_conversions
 from mico_controller import MicoController
 import rospy
-import rospkg
 import threading
 from geometry_msgs.msg import PoseStamped
 from math import pi
@@ -30,6 +29,8 @@ def get_args():
 
     parser.add_argument('--object_name', type=str, default='bleach_cleanser',
                         help="Target object to be grasped. Ex: cube")
+    parser.add_argument('--robot_config_name', type=str, default='mico',
+                        help="name of robot configs to load from grasputils. Ex: mico or ur5_robotiq")
     parser.add_argument('--grasp_database_path', type=str, required=True)
     parser.add_argument('--rendering', action='store_true', default=False)
     parser.add_argument('--realtime', action='store_true', default=False)
@@ -61,10 +62,11 @@ def get_args():
         args.rendering = True
 
     args.mesh_dir = os.path.abspath('assets/models')
-    args.robot_urdf = os.path.abspath('assets/mico/mico.urdf')
     args.conveyor_urdf = os.path.abspath('assets/conveyor.urdf')
 
-    args.reachability_data_dir = os.path.join(rospkg.RosPack().get_path('mico_reachability_config'), 'data')
+    robot_configs = gu.robot_configs[args.robot_config_name]
+    args.__dict__.update(robot_configs.__dict__)
+
     # timestr = time.strftime("%Y-%m-%d-%H-%M-%S")
     # args.runstr = 'static-'+timestr
 
@@ -119,6 +121,7 @@ if __name__ == "__main__":
     conveyor_initial_pose = [[0.3, 0.3, 0.01], [0, 0, 0, 1]]
 
     dynamic_grasping_world = DynamicGraspingWorld(target_name=args.object_name,
+                                                  robot_config_name=args.robot_config_name,
                                                   target_initial_pose=target_initial_pose,
                                                   robot_initial_pose=robot_initial_pose,
                                                   robot_initial_state=MicoController.HOME,

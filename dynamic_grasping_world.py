@@ -20,6 +20,7 @@ import moveit_commander as mc
 class DynamicGraspingWorld:
     def __init__(self,
                  target_name,
+                 robot_config_name,
                  target_initial_pose,
                  robot_initial_pose,
                  robot_initial_state,
@@ -49,6 +50,7 @@ class DynamicGraspingWorld:
                  distance_travelled_threshold,
                  use_box):
         self.target_name = target_name
+        self.robot_config_name = robot_config_name
         self.target_initial_pose = target_initial_pose
         self.robot_initial_pose = robot_initial_pose
         self.initial_distance = np.linalg.norm(
