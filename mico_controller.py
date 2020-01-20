@@ -155,11 +155,17 @@ class MicoController:
     def get_eef_pose(self):
         return pu.get_link_pose(self.id, self.EEF_LINK_INDEX)
 
-    def get_arm_ik(self, pose_2d, timeout=0.1, avoid_collisions=True, arm_joint_values=None,
+    def get_arm_ik(self, pose_2d, timeout=0.1, restarts=1, avoid_collisions=True, arm_joint_values=None,
                    gripper_joint_values=None):
         gripper_joint_values = self.get_gripper_joint_values() if gripper_joint_values is None else gripper_joint_values
         arm_joint_values = self.get_arm_joint_values() if arm_joint_values is None else arm_joint_values
-        j = self.get_arm_ik_ros(pose_2d, timeout, avoid_collisions, arm_joint_values, gripper_joint_values)
+        j = None
+        for i in range(restarts):
+            # s = time.time()
+            j = self.get_arm_ik_ros(pose_2d, timeout, avoid_collisions, arm_joint_values, gripper_joint_values)
+            # print('ik call takes {}'.format(time.time() - s))
+            if j is not None:
+                break
         if j is None:
             # print("No ik exists!")
             return None
@@ -195,7 +201,7 @@ class MicoController:
         service_request.group_name = "arm"
         service_request.ik_link_name = self.EEF_LINK
         service_request.pose_stamped = gripper_pose_stamped
-        service_request.timeout.secs = timeout
+        service_request.timeout.nsecs = timeout * 1e9
         service_request.avoid_collisions = avoid_collisions
 
         seed_robot_state = self.robot.get_current_state()

@@ -34,6 +34,7 @@ def get_args():
     parser.add_argument('--max_check', type=int, default=1)
     parser.add_argument('--back_off', type=float, default=0.05)
     parser.add_argument('--disable_reachability', action='store_true', default=False)
+    parser.add_argument('--use_box', action='store_true', default=False)
     args = parser.parse_args()
 
     if args.realtime:
@@ -157,7 +158,14 @@ if __name__ == "__main__":
                                                   use_seed_trajectory=None,
                                                   use_previous_jv=None,
                                                   use_kf=None,
-                                                  use_gt=None)
+                                                  use_gt=None,
+                                                  grasp_threshold=None,
+                                                  lazy_threshold=None,
+                                                  large_prediction_threshold=None,
+                                                  small_prediction_threshold=None,
+                                                  close_delay=None,
+                                                  distance_travelled_threshold=None,
+                                                  use_box=args.use_box)
 
     for i in range(args.num_trials):
         target_pose, distance = dynamic_grasping_world.reset(mode='static_random')

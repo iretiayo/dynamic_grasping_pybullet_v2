@@ -29,6 +29,7 @@ do
             --pose_freq 5 \
             --record_videos \
             --max_check 3 \
+            --use_box \
             --use_kf; $SHELL'"
     sleep 3
     ((node_id++))

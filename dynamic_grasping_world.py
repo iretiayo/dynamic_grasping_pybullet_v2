@@ -46,7 +46,8 @@ class DynamicGraspingWorld:
                  large_prediction_threshold,
                  small_prediction_threshold,
                  close_delay,
-                 distance_travelled_threshold):
+                 distance_travelled_threshold,
+                 use_box):
         self.target_name = target_name
         self.target_initial_pose = target_initial_pose
         self.robot_initial_pose = robot_initial_pose
@@ -107,6 +108,7 @@ class DynamicGraspingWorld:
         self.large_prediction_threshold = large_prediction_threshold
         self.small_prediction_threshold = small_prediction_threshold
         self.distance_travelled_threshold = distance_travelled_threshold
+        self.use_box = use_box
 
         # self.target_pose_pub = rospy.Publisher('target_pose', PoseStamped, queue_size=1)
         # self.conveyor_pose_pub = rospy.Publisher('conveyor_pose', PoseStamped, queue_size=1)
@@ -287,10 +289,11 @@ class DynamicGraspingWorld:
         done = False
         dynamic_grasp_time = 0
         distance = None
-        initial_motion_plan_attempted = False    # not necessarily succeed
+        initial_motion_plan_success = False    # not necessarily succeed
         while not done:
             done = self.check_done()
             current_target_pose = pu.get_body_pose(self.target)
+
             current_conveyor_pose = pu.get_body_pose(self.conveyor.id)
             duration = self.calculate_prediction_time(distance)
             if self.use_kf:
@@ -311,9 +314,12 @@ class DynamicGraspingWorld:
 
             # update the scene. it will not reach the next line if the scene is not updated
             update_start_time = time.time()
-            self.scene.add_mesh('target', gu.list_2_ps(self.predicted_target_pose), self.target_mesh_file_path)
+            if self.use_box:
+                self.scene.add_box('target', gu.list_2_ps(self.predicted_target_pose), size=self.target_extents)
+            else:
+                self.scene.add_mesh('target', gu.list_2_ps(self.predicted_target_pose), self.target_mesh_file_path)
             self.scene.add_box('conveyor', gu.list_2_ps(self.predicted_conveyor_pose), size=(.1, .1, .02))
-            print('Updating scene takes {} second'.format(time.time() - update_start_time))
+            # print('Updating scene takes {} second'.format(time.time() - update_start_time))
 
             # plan a grasp
             grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched \
@@ -327,18 +333,18 @@ class DynamicGraspingWorld:
 
             # plan a motion
             distance = np.linalg.norm(np.array(self.robot.get_eef_pose()[0]) - np.array(planned_pre_grasp[0]))
-            distance_travelled = np.linalg.norm(np.array(current_target_pose[0]) - np.array(last_motion_plan_attempted_pos)) if initial_motion_plan_attempted else 0
+            distance_travelled = np.linalg.norm(np.array(current_target_pose[0]) - np.array(last_motion_plan_success_pos)) if initial_motion_plan_success else 0
             if self.check_lazy_plan(distance, grasp_switched, distance_travelled):
                 # print("lazy plan")
                 continue
-            last_motion_plan_attempted_pos = current_target_pose[0]
-            initial_motion_plan_attempted = True
             motion_planning_time, plan = self.plan_arm_motion(planned_pre_grasp_jv)
             dynamic_grasp_time += motion_planning_time
             if plan is None:
                 self.step(motion_planning_time, None, None)
                 continue
             self.step(motion_planning_time, plan, None)
+            last_motion_plan_success_pos = current_target_pose[0]
+            initial_motion_plan_success = True
 
             # check can grasp or not
             if self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=self.grasp_threshold):
@@ -404,7 +410,7 @@ class DynamicGraspingWorld:
 
     def plan_grasp(self, target_pose, old_grasp_idx):
         """ Plan a reachable pre_grasp and grasp pose"""
-        start_time = time.time()
+        ik_call_time = 0.01
         num_ik_called = 0
         grasp_idx = None
         planned_pre_grasp = None
@@ -417,17 +423,25 @@ class DynamicGraspingWorld:
         if old_grasp_idx is not None:
             planned_pre_grasp_in_object = pu.split_7d(self.pre_grasps_eef[old_grasp_idx])
             planned_pre_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_pre_grasp_in_object)
-            planned_pre_grasp_jv = self.robot.get_arm_ik(planned_pre_grasp)
+            planned_pre_grasp_jv = self.robot.get_arm_ik(planned_pre_grasp, timeout=0.02, restarts=3)
+            num_ik_called += 1
+            # if planned_pre_grasp_jv is None:
+            #     print('here')
             if planned_pre_grasp_jv is not None:
                 planned_grasp_in_object = pu.split_7d(self.grasps_eef[old_grasp_idx])
                 planned_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_grasp_in_object)
                 planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False,
                                                          arm_joint_values=planned_pre_grasp_jv)
+                num_ik_called += 1
+                # if planned_grasp_jv is None:
+                #     print('here')
                 if planned_grasp_jv is not None:
-                    planning_time = time.time() - start_time
-                    print("Planning a grasp takes {:.6f}".format(planning_time))
+                    planning_time = num_ik_called * ik_call_time
+                    # print("Planning a grasp takes {:.6f}".format(planning_time))
                     return old_grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
 
+        # if an old grasp index is not provided or the old grasp is not reachable any more
+        rank_grasp_time_start = time.time()
         pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
                                          self.pre_grasps_link6_ref]
         if self.disable_reachability:
@@ -439,23 +453,26 @@ class DynamicGraspingWorld:
                                                                self.step_size,
                                                                self.dims)
             grasp_order_idxs = np.argsort(sdf_values)[::-1]
-        for num_ik_called, grasp_idx in enumerate(grasp_order_idxs):
-            if num_ik_called == self.max_check:
+        rank_grasp_time = time.time() - rank_grasp_time_start
+        print('rank grasp takes {}'.format(rank_grasp_time))
+
+        for i, grasp_idx in enumerate(grasp_order_idxs):
+            if i == self.max_check:
                 break
             planned_pre_grasp_in_object = pu.split_7d(self.pre_grasps_eef[grasp_idx])
             planned_pre_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_pre_grasp_in_object)
             planned_pre_grasp_jv = self.robot.get_arm_ik(planned_pre_grasp)
+            num_ik_called += 1
             if planned_pre_grasp_jv is None:
                 continue
             planned_grasp_in_object = pu.split_7d(self.grasps_eef[grasp_idx])
             planned_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_grasp_in_object)
             planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False,
                                                      arm_joint_values=planned_pre_grasp_jv)
+            num_ik_called += 1
             if planned_grasp_jv is None:
                 continue
-            num_ik_called += 1
-            grasp_switched = (
-                    grasp_idx != old_grasp_idx)  # old grasp becoming unavailable does not always mean a grasp switch
+            grasp_switched = (grasp_idx != old_grasp_idx)
             break
 
         # grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
@@ -463,12 +480,14 @@ class DynamicGraspingWorld:
         # gu.visualize_grasps_with_reachability(grasps_eef_in_world, sdf_values)
         # gu.visualize_grasp_with_reachability(planned_grasp, sdf_values[grasp_order_idxs[0]],
         #                                      maximum=max(sdf_values), minimum=min(sdf_values))
-        planning_time = time.time() - start_time
-        print("Planning a grasp takes {:.6f}".format(planning_time))
         if planned_pre_grasp_jv is None:
             print('pre grasp planning fails')
+            grasp_idx = None
         if planned_pre_grasp_jv is not None and planned_grasp_jv is None:
             print('pre grasp planning succeeds but grasp planning fails')
+            grasp_idx = None
+        planning_time = rank_grasp_time + num_ik_called * ik_call_time
+        print("Planning a grasp takes {:.6f}".format(planning_time))
         return grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
 
     def plan_arm_motion(self, grasp_jv):
@@ -495,7 +514,7 @@ class DynamicGraspingWorld:
             arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv)
         planning_time = time.time() - start_time
 
-        print("Planning a motion takes {:.6f}".format(planning_time))
+        # print("Planning a motion takes {:.6f}".format(planning_time))
         return planning_time, arm_discretized_plan
 
     def sample_target_location(self):

@@ -17,8 +17,9 @@ do
     --pose_freq 5 \
     --record_videos \
     --max_check 3 \
+    --use_box \
     --use_kf;
     sleep 5
 done
 
-cp run_dynamic_with_motion.sh $timestr
+cp run_dynamic_with_motion_serial.sh $timestr
