@@ -82,16 +82,16 @@ class DynamicGraspingWorld:
         self.distance_high = 0.4
 
         self.grasp_database_path = grasp_database_path
-        self.grasps_eef = np.load(os.path.join(self.grasp_database_path, self.target_name, 'grasps_eef.npy'))
-        self.grasps_link6_ref = np.load(
-            os.path.join(self.grasp_database_path, self.target_name, 'grasps_link6_ref.npy'))
-        self.grasps_link6_com = np.load(
-            os.path.join(self.grasp_database_path, self.target_name, 'grasps_link6_com.npy'))
-        self.pre_grasps_eef = np.load(
-            os.path.join(self.grasp_database_path, self.target_name, 'pre_grasps_eef_' + str(self.back_off) + '.npy'))
-        self.pre_grasps_link6_ref = np.load(
-            os.path.join(self.grasp_database_path, self.target_name,
-                         'pre_grasps_link6_ref_' + str(self.back_off) + '.npy'))
+        actual_grasps, graspit_grasps = gu.load_grasp_database_new(grasp_database_path, self.target_name)
+        use_actual = False
+        self.graspit_grasps = actual_grasps if use_actual else  graspit_grasps
+
+        self.robot_configs = gu.robot_configs[self.robot_config_name]
+        self.graspit_pregrasps = [pu.merge_pose_2d(gu.back_off_pose_2d(pu.split_7d(g), back_off, self.robot_configs.graspit_approach_dir)) for g in self.graspit_grasps]
+        self.grasps_eef = [pu.merge_pose_2d(gu.change_end_effector_link_pose_2d(pu.split_7d(g), self.robot_configs.GRASPIT_LINK_TO_MOVEIT_LINK)) for g in self.graspit_grasps]
+        self.grasps_link6_ref = [pu.merge_pose_2d(gu.change_end_effector_link_pose_2d(pu.split_7d(g), self.robot_configs.GRASPIT_LINK_TO_PYBULLET_LINK)) for g in self.graspit_grasps]
+        self.pre_grasps_eef = [pu.merge_pose_2d(gu.change_end_effector_link_pose_2d(pu.split_7d(g), self.robot_configs.GRASPIT_LINK_TO_MOVEIT_LINK)) for g in self.graspit_pregrasps]
+        self.pre_grasps_link6_ref = [pu.merge_pose_2d(gu.change_end_effector_link_pose_2d(pu.split_7d(g), self.robot_configs.GRASPIT_LINK_TO_PYBULLET_LINK)) for g in self.graspit_pregrasps]
 
         self.reachability_data_dir = reachability_data_dir
         self.sdf_reachability_space, self.mins, self.step_size, self.dims = gu.get_reachability_space(
@@ -525,12 +525,11 @@ class DynamicGraspingWorld:
         return planning_time, arm_discretized_plan
 
     def sample_target_location(self):
-        x, y = np.random.uniform([-self.distance_high, -self.distance_high], [self.distance_high, self.distance_high])
+        r = np.random.uniform(low=self.distance_low, high=self.distance_high)
+        theta = np.random.uniform(low=-np.pi, high=np.pi)
+        x = r * cos(theta)
+        y = r * sin(theta)
         distance = np.linalg.norm(np.array([x, y]) - np.array(self.robot_initial_pose[0][:2]))
-        while not self.distance_low <= distance <= self.distance_high:
-            x, y = np.random.uniform([-self.distance_high, -self.distance_high],
-                                     [self.distance_high, self.distance_high])
-            distance = np.linalg.norm(np.array([x, y]) - np.array(self.robot_initial_pose[0][:2]))
         z = self.target_initial_pose[0][2]
         angle = np.random.uniform(-pi, pi)
         pos = [x, y, z]

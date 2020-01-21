@@ -32,7 +32,8 @@ mico_configs = {
     'OPEN_POSITION': [0.0, 0.0, 0.0, 0.0],
     'CLOSED_POSITION': [1.1, 0.0, 1.1, 0.0],
 
-    'reachability_data_dir': os.path.join(rospkg.RosPack().get_path('mico_reachability_config'), 'data')
+    'reachability_data_dir': os.path.join(rospkg.RosPack().get_path('mico_reachability_config'), 'data'),
+    'graspit_approach_dir': 'z'
 }
 
 ur5_robotiq_configs = {
@@ -49,7 +50,8 @@ ur5_robotiq_configs = {
     'OPEN_POSITION': [0] * 6,
     'CLOSED_POSITION': 0.72 * np.array([1, 1, -1, 1, 1, -1]),
 
-    'reachability_data_dir': os.path.join(rospkg.RosPack().get_path('ur5_robotiq_reachability_config'), 'data')
+    'reachability_data_dir': os.path.join(rospkg.RosPack().get_path('ur5_robotiq_reachability_config'), 'data'),
+    'graspit_approach_dir': 'x'
 }
 
 robot_configs = {'mico': namedtuple('RobotConfigs', mico_configs.keys())(*mico_configs.values()),
@@ -122,18 +124,20 @@ def get_transform(reference_frame, target_frame):
     return translation_rotation
 
 
-def back_off(grasp_pose, offset=-.05):
-    """ back off alone negative z axis """
-    pre_grasp_pose = tf_conversions.toMsg(
-        tf_conversions.fromMsg(grasp_pose) * tf_conversions.fromTf(((0, 0, offset), (0, 0, 0, 1))))
+def back_off(grasp_pose, offset=-.05, approach_dir='z'):
+    if approach_dir == 'x':
+        pre_grasp_pose = tf_conversions.toMsg(
+            tf_conversions.fromMsg(grasp_pose) * tf_conversions.fromTf(((offset, 0, 0), (0, 0, 0, 1))))
+    if approach_dir == 'z':
+        pre_grasp_pose = tf_conversions.toMsg(
+            tf_conversions.fromMsg(grasp_pose) * tf_conversions.fromTf(((0, 0, offset), (0, 0, 0, 1))))
     return pre_grasp_pose
 
 
-def back_off_pose_2d(grasp_pose_2d, offset=-.05):
+def back_off_pose_2d(grasp_pose_2d, offset=-.05, approach_dir='z'):
     """ back off alone negative z axis """
     grasp_pose = list_2_pose(grasp_pose_2d)
-    pre_grasp_pose = tf_conversions.toMsg(
-        tf_conversions.fromMsg(grasp_pose) * tf_conversions.fromTf(((0, 0, offset), (0, 0, 0, 1))))
+    pre_grasp_pose = back_off(grasp_pose, offset, approach_dir)
     return pose_2_list(pre_grasp_pose)
 
 

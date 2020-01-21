@@ -5,6 +5,7 @@ for object_name in bleach_cleanser mustard_bottle potted_meat_can sugar_box toma
 do
     python run_static_with_motion.py \
     --object_name $object_name \
+    --robot_config_name mico \
     --rendering \
     --num_trials 500 \
     --result_dir $timestr \
