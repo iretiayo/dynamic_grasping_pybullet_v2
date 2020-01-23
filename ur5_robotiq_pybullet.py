@@ -106,6 +106,14 @@ class UR5RobotiqPybulletController(object):
         self.arm_wp_target_index = 0
         self.gripper_wp_target_index = 0
 
+    def update_arm_motion_plan(self, arm_discretized_plan):
+        self.arm_discretized_plan = arm_discretized_plan
+        self.arm_wp_target_index = 1
+
+    def update_gripper_motion_plan(self, gripper_discretized_plan):
+        self.gripper_discretized_plan = gripper_discretized_plan
+        self.gripper_wp_target_index = 1
+
     def set_arm_joints(self, joint_values):
         pu.set_joint_positions(self.id, self.GROUP_INDEX['arm'], joint_values)
         pu.control_joints(self.id, self.GROUP_INDEX['arm'], joint_values)
@@ -134,25 +142,59 @@ class UR5RobotiqPybulletController(object):
     def clear_scene(self):
         self.moveit.clear_scene()
 
-    def get_arm_ik(self, pose_2d, timeout=0.1, avoid_collisions=True, arm_joint_values=None, gripper_joint_values=None):
+    def get_arm_ik(self, pose_2d, timeout=0.1, restarts=1, avoid_collisions=True, arm_joint_values=None,
+                   gripper_joint_values=None):
 
         start_joint_values = self.get_arm_joint_values() if arm_joint_values is None else arm_joint_values
         # gripper_joint_values = self.get_gripper_joint_values() if gripper_joint_values is None else gripper_joint_values
-        gripper_joint_values = [self.get_joint_state(self.JOINT_INDICES_DICT[joint_name]).jointPosition for joint_name
-                                in self.GRIPPER_JOINT_NAMES]
+        if gripper_joint_values is None:
+            gripper_joint_values = [self.get_joint_state(self.JOINT_INDICES_DICT[joint_name]).jointPosition for
+                                    joint_name in self.GRIPPER_JOINT_NAMES]
 
-        return self.moveit.get_arm_ik(pose_2d, timeout, avoid_collisions, start_joint_values, gripper_joint_values)
+        for _ in range(restarts):
+            js = self.moveit.get_arm_ik(pose_2d, timeout, avoid_collisions, start_joint_values, gripper_joint_values)
+            if js is not None:
+                break
+        return js
+        return discretized_plan
 
-    def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None, maximum_planning_time=0.5):
+    def create_seed_trajectory(self, seed_discretized_plan, start_joint_values, goal_joint_values):
+
+        joint_trajectory_seed = JointTrajectory()
+        # joint_trajectory_seed.header.frame_id = ''
+        joint_trajectory_seed.joint_names = self.GROUPS['arm']
+        joint_trajectory_seed.points = []
+        skip = max(1, len(seed_discretized_plan) // 100)
+        waypoints = [start_joint_values] + seed_discretized_plan[::skip].tolist() + [goal_joint_values]
+        for wp in waypoints:
+            point = JointTrajectoryPoint()
+            point.positions = wp
+            joint_trajectory_seed.points.append(point)
+
+        generic_trajectory = GenericTrajectory()
+        generic_trajectory.joint_trajectory.append(joint_trajectory_seed)
+        reference_trajectories = [generic_trajectory]
+
+        return reference_trajectories
+
+    def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None, maximum_planning_time=0.5,
+                              previous_discretized_plan=None, start_joint_velocities=None):
         if start_joint_values is None:
             start_joint_values = self.get_arm_joint_values()
 
         start_joint_values_converted = UR5RobotiqPybulletController.convert_range(start_joint_values)
         goal_joint_values_converted = UR5RobotiqPybulletController.convert_range(goal_joint_values)
+        seed_trajectory = None
+        if previous_discretized_plan is not None and len(previous_discretized_plan) > 2:
+            seed_discretized_plan = previous_discretized_plan  # TODO: is there a need to normalize range of joint values? i.e. undo process_plan
+            seed_trajectory = self.create_seed_trajectory(seed_discretized_plan, start_joint_values_converted,
+                                                          goal_joint_values_converted)
 
         # STOMP does not convert goal joint values
         moveit_plan = self.moveit.plan(start_joint_values_converted, goal_joint_values_converted,
-                                       maximum_planning_time=maximum_planning_time)
+                                       maximum_planning_time=maximum_planning_time,
+                                       start_joint_velocities=start_joint_velocities,
+                                       seed_trajectory=seed_trajectory)
         if isinstance(moveit_plan, tuple):
             # if using the chomp branch
             moveit_plan = moveit_plan[1]
@@ -309,6 +351,21 @@ class UR5RobotiqPybulletController(object):
             if realtime:
                 time.sleep(1. / 240.)
         pu.step(2)
+
+    def step(self):
+        """ step the robot for 1/240 second """
+        # calculate the latest conf and control array
+        if self.arm_discretized_plan is None or self.arm_wp_target_index == len(self.arm_discretized_plan):
+            pass
+        else:
+            self.control_arm_joints(self.arm_discretized_plan[self.arm_wp_target_index])
+            self.arm_wp_target_index += 1
+
+        if self.gripper_discretized_plan is None or self.gripper_wp_target_index == len(self.gripper_discretized_plan):
+            pass
+        else:
+            self.control_gripper_joints(self.gripper_discretized_plan[self.gripper_wp_target_index])
+            self.gripper_wp_target_index += 1
 
     def equal_conf(self, conf1, conf2, tol=0):
         adapted_conf2 = self.adapt_conf(conf2, conf1)

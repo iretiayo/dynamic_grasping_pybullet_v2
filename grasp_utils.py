@@ -48,7 +48,7 @@ ur5_robotiq_configs = {
     'GRIPPER_JOINT_NAMES': ['finger_joint', 'left_inner_knuckle_joint', 'left_inner_finger_joint',
                             'right_outer_knuckle_joint', 'right_inner_knuckle_joint', 'right_inner_finger_joint'],
     'OPEN_POSITION': [0] * 6,
-    'CLOSED_POSITION': 0.72 * np.array([1, 1, -1, 1, 1, -1]),
+    'CLOSED_POSITION': (0.72 * np.array([1, 1, -1, 1, 1, -1])).tolist(),
 
     'reachability_data_dir': os.path.join(rospkg.RosPack().get_path('ur5_robotiq_reachability_config'), 'data'),
     'graspit_approach_dir': 'x'

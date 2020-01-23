@@ -40,7 +40,8 @@ class UR5RobotiqMoveIt(object):
                                                             queue_size=20)
         self.eef_link = self.arm_commander_group.get_end_effector_link()
 
-    def plan(self, start_joint_values, goal_joint_values, maximum_planning_time=0.5):
+    def plan(self, start_joint_values, goal_joint_values, maximum_planning_time=0.5,
+             seed_trajectory=None, start_joint_velocities=None):
         """ No matter what start and goal are, the returned plan start and goal will
             make circular joints within [-pi, pi] """
         # setup moveit_start_state
@@ -52,7 +53,16 @@ class UR5RobotiqMoveIt(object):
         self.arm_commander_group.set_joint_value_target(goal_joint_values)
         self.arm_commander_group.set_planning_time(maximum_planning_time)
         # takes around 0.11 second
-        plan = self.arm_commander_group.plan()
+        if seed_trajectory is not None:
+            plan = self.arm_commander_group.plan(reference_trajectories=seed_trajectory)
+        else:
+            plan = self.arm_commander_group.plan()
+        if isinstance(plan, tuple):
+            # if using the chomp branch
+            plan = plan[1]
+        if start_joint_velocities is not None and len(plan.joint_trajectory.points) > 0:
+            plan.joint_trajectory.points[0].velocities = start_joint_velocities
+            plan = self.arm_commander_group.retime_trajectory(start_robot_state, plan)
         return plan
 
     def plan_ee_pose(self, start_joint_values, goal_ee_pose, maximum_planning_time=0.5, gripper_joint_values=[]):

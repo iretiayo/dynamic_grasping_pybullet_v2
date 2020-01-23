@@ -169,7 +169,7 @@ if __name__ == "__main__":
             args.num_trials = len(baseline_experiment_config_df)
 
     for i in range(args.num_trials):
-        # reset_dict = None
+        reset_dict = None
         # reset_dict = {
         #     'distance': 0.2787919083152529,
         #     'length': 1.0,
