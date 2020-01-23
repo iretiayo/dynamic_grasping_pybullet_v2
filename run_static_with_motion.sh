@@ -6,6 +6,9 @@ do
     python run_static_with_motion.py \
     --object_name $object_name \
     --robot_config_name mico \
+    --back_off 0.05 \
+    --distance_low 0.15 \
+    --distance_high 0.4 \
     --rendering \
     --num_trials 500 \
     --result_dir $timestr \

@@ -3,6 +3,7 @@ import pybullet as p
 
 import rospy
 import rospkg
+import tf_conversions
 import moveit_commander as mc
 from moveit_msgs.srv import GetPositionIK, GetPositionFK
 
@@ -136,7 +137,9 @@ class UR5RobotiqPybulletController(object):
     def get_arm_ik(self, pose_2d, timeout=0.1, avoid_collisions=True, arm_joint_values=None, gripper_joint_values=None):
 
         start_joint_values = self.get_arm_joint_values() if arm_joint_values is None else arm_joint_values
-        gripper_joint_values = self.get_gripper_joint_values() if gripper_joint_values is None else gripper_joint_values
+        # gripper_joint_values = self.get_gripper_joint_values() if gripper_joint_values is None else gripper_joint_values
+        gripper_joint_values = [self.get_joint_state(self.JOINT_INDICES_DICT[joint_name]).jointPosition for joint_name
+                                in self.GRIPPER_JOINT_NAMES]
 
         return self.moveit.get_arm_ik(pose_2d, timeout, avoid_collisions, start_joint_values, gripper_joint_values)
 
@@ -150,6 +153,9 @@ class UR5RobotiqPybulletController(object):
         # STOMP does not convert goal joint values
         moveit_plan = self.moveit.plan(start_joint_values_converted, goal_joint_values_converted,
                                        maximum_planning_time=maximum_planning_time)
+        if isinstance(moveit_plan, tuple):
+            # if using the chomp branch
+            moveit_plan = moveit_plan[1]
         # check if there exists a plan
         if len(moveit_plan.joint_trajectory.points) == 0:
             return None
@@ -172,19 +178,45 @@ class UR5RobotiqPybulletController(object):
         print(self.adapt_conf(goal_joint_values, waypoints[-1]))
         return waypoints
 
-    def plan_straight_line(self, eef_pose):
-        start_joint_values = self.get_arm_joint_values()
-        start_joint_values_converted = self.convert_range(start_joint_values)
+    def plan_straight_line(self, eef_pose, start_joint_values=None, ee_step=0.05,
+                           jump_threshold=3.0, avoid_collisions=True):
+        if start_joint_values is None:
+            start_joint_values = self.get_arm_joint_values()
+        # start_joint_values_converted = self.convert_range(start_joint_values)
+        start_joint_values_converted = start_joint_values
 
         # TODO: avoid_collisions should be allow touch object
-        moveit_plan, fraction = self.moveit.plan_straight_line(start_joint_values_converted, eef_pose,
-                                                               avoid_collisions=False)
+        moveit_plan, fraction = self.moveit.plan_straight_line(start_joint_values_converted, eef_pose, ee_step=ee_step,
+                                                               jump_threshold=jump_threshold,
+                                                               avoid_collisions=avoid_collisions)
 
         # check if there exists a plan
         if len(moveit_plan.joint_trajectory.points) == 0:
             return None, fraction
+
         plan = self.process_plan(moveit_plan, start_joint_values)
         discretized_plan = UR5RobotiqPybulletController.discretize_plan(plan)
+        return discretized_plan, fraction
+
+    def plan_cartesian_control(self, x=0.0, y=0.0, z=0.0, frame="world"):
+        """
+        Only for small motion, do not check friction
+        :param frame: "eef" or "world"
+        """
+        if frame == "eef":
+            pose_2d = self.get_eef_pose()
+            pose_2d_new = tf_conversions.toTf(
+                tf_conversions.fromTf(pose_2d) * tf_conversions.fromTf(((x, y, z), (0, 0, 0, 1))))
+        elif frame == "world":
+            pose_2d_new = self.get_eef_pose()
+            pose_2d_new[0][0] += x
+            pose_2d_new[0][1] += y
+            pose_2d_new[0][2] += z
+        else:
+            raise TypeError("not supported frame: {}".format(frame))
+        discretized_plan, fraction = self.plan_straight_line(tf_conversions.toMsg(tf_conversions.fromTf(pose_2d_new)),
+                                                        ee_step=0.01,
+                                                        avoid_collisions=False)
         return discretized_plan, fraction
 
     @staticmethod
@@ -318,6 +350,9 @@ class UR5RobotiqPybulletController(object):
 
     def get_gripper_joint_values(self):
         return [self.get_joint_state(i).jointPosition for i in self.GROUP_INDEX['gripper']]
+
+    def get_eef_pose(self):
+        return pu.get_link_pose(self.id, self.EEF_LINK_INDEX)
 
     def execute_arm_motion_plan(self, motion_plan):
         try:

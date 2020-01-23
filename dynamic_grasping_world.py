@@ -49,6 +49,8 @@ class DynamicGraspingWorld:
                  small_prediction_threshold,
                  close_delay,
                  distance_travelled_threshold,
+                 distance_low,
+                 distance_high,
                  use_box):
         self.target_name = target_name
         self.robot_config_name = robot_config_name
@@ -78,8 +80,8 @@ class DynamicGraspingWorld:
         self.use_gt = use_gt
         self.motion_predictor_kf = MotionPredictorKF(self.pose_duration)
 
-        self.distance_low = 0.15
-        self.distance_high = 0.4
+        self.distance_low = distance_low  # mico 0.15  ur5_robotiq: 0.3
+        self.distance_high = distance_high  # mico 0.4  ur5_robotiq: 0.7
 
         self.grasp_database_path = grasp_database_path
         actual_grasps, graspit_grasps = gu.load_grasp_database_new(grasp_database_path, self.target_name)
@@ -177,6 +179,7 @@ class DynamicGraspingWorld:
             p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
             self.conveyor.set_pose(conveyor_pose)
             self.robot.reset()
+            self.scene.add_box("floor", gu.list_2_ps(((0, 0, -0.055), (0, 0, 0, 1))), size=(2, 2, 0.1))
             pu.step(2)
             return target_pose, distance
 
@@ -247,6 +250,10 @@ class DynamicGraspingWorld:
             return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no reachable grasp is found"
 
         # planning motion
+        if self.use_box:
+            self.scene.add_box('target', gu.list_2_ps(target_pose), size=self.target_extents)
+        else:
+            self.scene.add_mesh('target', gu.list_2_ps(target_pose), self.target_mesh_file_path)
         motion_planning_time, plan = self.plan_arm_motion(pre_grasp_jv)
         if plan is None:
             return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no motion found to the planned pre grasp jv"
@@ -264,11 +271,11 @@ class DynamicGraspingWorld:
         # print(grasp_jv)
 
         # approach
-        plan = self.robot.plan_arm_joint_values_simple(grasp_jv)
+        # plan = self.robot.plan_arm_joint_values_simple(grasp_jv)
+        # self.robot.execute_arm_plan(plan, self.realtime)
+        # grasp_reachaed = self.robot.equal_conf(self.robot.get_arm_joint_values(), grasp_jv, tol=0.01)
+        plan, fraction = self.robot.plan_straight_line(tfc.toMsg(tfc.fromTf(grasp)), ee_step=0.01, avoid_collisions=True)
         self.robot.execute_arm_plan(plan, self.realtime)
-        grasp_reachaed = self.robot.equal_conf(self.robot.get_arm_joint_values(), grasp_jv, tol=0.01)
-        # plan, fraction = self.robot.plan_cartesian_control(z=0.05, frame='eef')
-        # self.robot.execute_plan(plan, self.realtime)
         # print(fraction)
 
         # close and lift

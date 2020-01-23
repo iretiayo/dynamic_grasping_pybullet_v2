@@ -38,6 +38,8 @@ def get_args():
     parser.add_argument('--result_dir', type=str, required=True)
     parser.add_argument('--max_check', type=int, default=1)
     parser.add_argument('--back_off', type=float, default=0.05)
+    parser.add_argument('--distance_low', type=float, default=0.15)
+    parser.add_argument('--distance_high', type=float, default=0.4)
     parser.add_argument('--disable_reachability', action='store_true', default=False)
     parser.add_argument('--record_videos', action='store_true', default=False)
     parser.add_argument('--baseline_experiment_path', type=str, help='use motion path in this file for the run')
@@ -149,6 +151,8 @@ if __name__ == "__main__":
                                                   small_prediction_threshold=args.small_prediction_threshold,
                                                   close_delay=args.close_delay,
                                                   distance_travelled_threshold=args.distance_travelled_threshold,
+                                                  distance_low=args.distance_low,
+                                                  distance_high=args.distance_high,
                                                   use_box=args.use_box)
 
     # adding option to use previous experiment as config

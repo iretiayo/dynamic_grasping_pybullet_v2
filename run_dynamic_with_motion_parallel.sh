@@ -17,6 +17,7 @@ do
         export ROS_MASTER_URI=http://localhost:$node_id && \
         python run_dynamic_with_motion.py \
             --object_name $object_name \
+            --robot_config_name mico \
             --rendering \
             --num_trials 100 \
             --result_dir $timestr \
@@ -26,6 +27,9 @@ do
             --lazy_threshold  0.3 \
             --conveyor_speed 0.03 \
             --close_delay 0.5 \
+            --back_off 0.5 \
+            --distance_low 0.15 \
+            --distance_high 0.4 \
             --pose_freq 5 \
             --record_videos \
             --max_check 3 \
