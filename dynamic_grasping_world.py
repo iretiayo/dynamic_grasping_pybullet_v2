@@ -413,7 +413,7 @@ class DynamicGraspingWorld:
         """ Plan a reachable pre_grasp and grasp pose"""
         # timing of the best machine
         ik_call_time = 0.01
-        rank_grasp_time = 0.135
+        # rank_grasp_time = 0.135
 
         num_ik_called = 0
         grasp_idx = None
@@ -445,7 +445,7 @@ class DynamicGraspingWorld:
                     return old_grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
 
         # if an old grasp index is not provided or the old grasp is not reachable any more
-        # rank_grasp_time_start = time.time()
+        rank_grasp_time_start = time.time()
         pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
                                          self.pre_grasps_link6_ref]
         if self.disable_reachability:
@@ -457,7 +457,7 @@ class DynamicGraspingWorld:
                                                                self.step_size,
                                                                self.dims)
             grasp_order_idxs = np.argsort(sdf_values)[::-1]
-        # rank_grasp_time = time.time() - rank_grasp_time_start
+        rank_grasp_time = time.time() - rank_grasp_time_start
         # print('rank grasp takes {}'.format(rank_grasp_time))
 
         for i, grasp_idx in enumerate(grasp_order_idxs):
@@ -497,9 +497,9 @@ class DynamicGraspingWorld:
     def plan_arm_motion(self, grasp_jv):
         """ plan a discretized motion for the arm """
         # motion planning time on the best machine
-        planning_time = 0.19
-        predicted_period = 0.19
-        # start_time = time.time()
+        # planning_time = 0.19
+        predicted_period = 0.25
+        start_time = time.time()
 
         if self.robot.arm_discretized_plan is not None:
             future_target_index = min(int(predicted_period * 240 + self.robot.arm_wp_target_index),
@@ -519,7 +519,7 @@ class DynamicGraspingWorld:
         else:
             arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv)
 
-        # planning_time = time.time() - start_time
+        planning_time = time.time() - start_time
         # print("Planning a motion takes {:.6f}".format(planning_time))
         return planning_time, arm_discretized_plan
 
