@@ -94,6 +94,10 @@ def train(model, device, train_loader, optimizer, epoch, writer):
     epoch_loss = 0.0
     num_samples = 0
     correct = 0
+    positives = 0
+    negatives = 0
+    false_positives = 0
+    false_negatives = 0
     for batch_idx, (data, label) in enumerate(train_loader):
         data, label = data.to(device), label.to(device)
         optimizer.zero_grad()
@@ -108,16 +112,26 @@ def train(model, device, train_loader, optimizer, epoch, writer):
         epoch_loss += F.cross_entropy(output, label.squeeze(), reduction='sum').item()
         pred = output.argmax(dim=1, keepdim=True)
         correct += pred.eq(label.view_as(pred)).sum().item()
+        positives += pred[label == 1].shape[0]
+        negatives += pred[label == 0].shape[0]
+        false_positives += pred[label == 1].shape[0] - pred[label == 1].sum().item()
+        false_negatives += pred[label == 0].sum().item()
+
 
         num_samples += len(data)
         pbar.update(len(data))
         pbar.set_description(
-            'Train | Epoch: {} | Loss: {:.6f} | Accuracy: {:.6f}'.format(epoch, epoch_loss / num_samples, correct / num_samples))
+            'Train | Epoch: {} | Loss: {:.6f} | Accuracy: {:.6f} | FPR: {:.6f} | FNR: {:.6}'.
+                format(epoch, epoch_loss / num_samples, correct / num_samples, false_positives / positives, false_negatives / negatives))
 
     epoch_loss /= len(train_loader.dataset)
     epoch_accuracy = correct / len(test_loader.dataset)
+    FPR = false_positives / positives
+    FNR = false_negatives / negatives
     writer.add_scalar('Train/Loss', epoch_loss, epoch)
     writer.add_scalar('Train/Accuracy', epoch_accuracy, epoch)
+    writer.add_scalar('Train/FPR', FPR, epoch)
+    writer.add_scalar('Train/FNR', FNR, epoch)
 
     pbar.close()
     return epoch_loss
@@ -128,6 +142,10 @@ def test(model, device, test_loader, epoch, writer):
     epoch_loss = 0.0
     num_samples = 0
     correct = 0
+    positives = 0
+    negatives = 0
+    false_positives = 0
+    false_negatives = 0
     pbar = tqdm.tqdm(total=len(test_loader.dataset), desc='Test | Epoch: | Loss: | Accuracy')
     with torch.no_grad():
         for batch_idx, (data, label) in enumerate(test_loader):
@@ -136,16 +154,25 @@ def test(model, device, test_loader, epoch, writer):
             epoch_loss += F.cross_entropy(output, label.squeeze(), reduction='sum').item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True)
             correct += pred.eq(label.view_as(pred)).sum().item()
+            positives += pred[label == 1].shape[0]
+            negatives += pred[label == 0].shape[0]
+            false_positives += pred[label == 1].shape[0] - pred[label == 1].sum().item()
+            false_negatives += pred[label == 0].sum().item()
 
             num_samples += len(data)
             pbar.update(len(data))
             pbar.set_description(
-                'Test | Epoch: {} | Loss: {:.6f} | Accuracy: {:.6f}'.format(epoch, epoch_loss / num_samples, correct / num_samples))
+                'Test | Epoch: {} | Loss: {:.6f} | Accuracy: {:.6f} | FPR: {:.6f} | FNR: {:.6}'.
+                    format(epoch, epoch_loss / num_samples, correct / num_samples, false_positives / positives, false_negatives / negatives))
 
         epoch_loss /= len(test_loader.dataset)
         epoch_accuracy = correct / len(test_loader.dataset)
+        FPR = false_positives / positives
+        FNR = false_negatives / negatives
         writer.add_scalar('Test/Loss', epoch_loss, epoch)
         writer.add_scalar('Test/Accuracy', epoch_accuracy, epoch)
+        writer.add_scalar('Test/FPR', FPR, epoch)
+        writer.add_scalar('Test/FNR', FNR, epoch)
         pbar.close()
         return epoch_loss
 
