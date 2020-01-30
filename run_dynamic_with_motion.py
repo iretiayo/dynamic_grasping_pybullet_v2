@@ -56,6 +56,8 @@ def get_args():
     parser.add_argument('--use_kf', action='store_true', default=False)
     parser.add_argument('--use_gt', action='store_true', default=False)
     parser.add_argument('--pose_freq', type=int, default=5)
+    parser.add_argument('--approach_prediction', action='store_true', default=False)
+    parser.add_argument('--approach_prediction_duration', type=float, default=1.0)
     args = parser.parse_args()
 
     if args.realtime:
@@ -147,7 +149,9 @@ if __name__ == "__main__":
                                                   small_prediction_threshold=args.small_prediction_threshold,
                                                   close_delay=args.close_delay,
                                                   distance_travelled_threshold=args.distance_travelled_threshold,
-                                                  use_box=args.use_box)
+                                                  use_box=args.use_box,
+                                                  approach_prediction=args.approach_prediction,
+                                                  approach_prediction_duration=args.approach_prediction_duration)
 
     # adding option to use previous experiment as config
     baseline_experiment_config_df = None

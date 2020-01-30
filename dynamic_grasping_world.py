@@ -47,7 +47,9 @@ class DynamicGraspingWorld:
                  small_prediction_threshold,
                  close_delay,
                  distance_travelled_threshold,
-                 use_box):
+                 use_box,
+                 approach_prediction,
+                 approach_prediction_duration):
         self.target_name = target_name
         self.target_initial_pose = target_initial_pose
         self.robot_initial_pose = robot_initial_pose
@@ -109,35 +111,8 @@ class DynamicGraspingWorld:
         self.small_prediction_threshold = small_prediction_threshold
         self.distance_travelled_threshold = distance_travelled_threshold
         self.use_box = use_box
-
-        # self.target_pose_pub = rospy.Publisher('target_pose', PoseStamped, queue_size=1)
-        # self.conveyor_pose_pub = rospy.Publisher('conveyor_pose', PoseStamped, queue_size=1)
-        # rospy.set_param('target_mesh_file_path', self.target_mesh_file_path)
-        # rospy.set_param('target_extents', self.target_extents)
-        #
-        # self.predicted_target_pose = None
-        # self.predicted_conveyor_pose = None
-        # update_scene_thread = threading.Thread(target=self.update_scene_threading)
-        # update_scene_thread.daemon = True
-        # update_scene_thread.start()
-
-    def update_scene_threading(self):
-        r = rospy.Rate(30)
-        while True:
-            target_pose = pu.get_body_pose(self.target)
-            conveyor_pose = pu.get_body_pose(self.conveyor.id)
-            if (self.use_gt or self.use_kf) and self.predicted_conveyor_pose is not None and \
-                    self.predicted_target_pose is not None:
-                self.target_pose_pub.publish(gu.list_2_ps(self.predicted_target_pose))
-                self.conveyor_pose_pub.publish(gu.list_2_ps(self.predicted_conveyor_pose))
-            else:
-                self.target_pose_pub.publish(gu.list_2_ps(target_pose))
-                self.conveyor_pose_pub.publish(gu.list_2_ps(conveyor_pose))
-            r.sleep()
-            # target_pose = pu.get_body_pose(self.target)
-            # conveyor_pose = pu.get_body_pose(self.conveyor)
-            # self.robot.scene.add_mesh(self.target_name, gu.list_2_ps(target_pose), self.target_mesh_file_path)
-            # self.robot.scene.add_box('conveyor', gu.list_2_ps(conveyor_pose), size=(.1, .1, .02))
+        self.approach_prediction = approach_prediction
+        self.approach_prediction_duration = approach_prediction_duration
 
     def reset(self, mode, reset_dict=None):
         """
@@ -149,8 +124,6 @@ class DynamicGraspingWorld:
             hand_over: TODO
         """
         self.world_steps = 0
-        self.predicted_conveyor_pose = None
-        self.predicted_target_pose = None
         if mode == 'initial':
             pu.remove_all_markers()
             target_pose, distance = self.target_initial_pose, self.initial_distance
@@ -280,6 +253,24 @@ class DynamicGraspingWorld:
         else:
             return False
 
+    def predict(self, duration):
+        if self.use_kf:
+            # TODO verify that when duration is 0
+            predicted_target_pose = self.motion_predictor_kf.predict(duration)
+            predicted_conveyor_position = list(predicted_target_pose[0])
+            predicted_conveyor_position[2] = 0.01
+            predicted_conveyor_pose = [predicted_conveyor_position, [0, 0, 0, 1]]
+        elif self.use_gt:
+            current_target_pose = pu.get_body_pose(self.target)
+            predicted_conveyor_pose = self.conveyor.predict(duration)
+            predicted_target_position = [predicted_conveyor_pose[0][0], predicted_conveyor_pose[0][1], current_target_pose[0][2]]
+            predicted_target_pose = [predicted_target_position, current_target_pose[1]]
+        else:
+            # no prediction
+            predicted_target_pose = pu.get_body_pose(self.target)
+            predicted_conveyor_pose = pu.get_body_pose(self.conveyor.id)
+        return predicted_target_pose, predicted_conveyor_pose
+
     def dynamic_grasp(self):
         """
 
@@ -293,37 +284,21 @@ class DynamicGraspingWorld:
         while not done:
             done = self.check_done()
             current_target_pose = pu.get_body_pose(self.target)
-
-            current_conveyor_pose = pu.get_body_pose(self.conveyor.id)
             duration = self.calculate_prediction_time(distance)
-            if self.use_kf:
-                # TODO verify that when duration is 0
-                self.predicted_target_pose = self.motion_predictor_kf.predict(duration)
-                predicted_conveyor_position = list(self.predicted_target_pose[0])
-                predicted_conveyor_position[2] = 0.01
-                self.predicted_conveyor_pose = [predicted_conveyor_position, [0, 0, 0, 1]]
-            elif self.use_gt:
-                self.predicted_conveyor_pose = self.conveyor.predict(duration)
-                predicted_target_position = [self.predicted_conveyor_pose[0][0], self.predicted_conveyor_pose[0][1],
-                                             current_target_pose[0][2]]
-                self.predicted_target_pose = [predicted_target_position, current_target_pose[1]]
-            else:
-                # no prediction
-                self.predicted_target_pose = current_target_pose
-                self.predicted_conveyor_pose = current_conveyor_pose
+            predicted_target_pose, predicted_conveyor_pose = self.predict(duration)
 
             # update the scene. it will not reach the next line if the scene is not updated
             update_start_time = time.time()
             if self.use_box:
-                self.scene.add_box('target', gu.list_2_ps(self.predicted_target_pose), size=self.target_extents)
+                self.scene.add_box('target', gu.list_2_ps(predicted_target_pose), size=self.target_extents)
             else:
-                self.scene.add_mesh('target', gu.list_2_ps(self.predicted_target_pose), self.target_mesh_file_path)
-            self.scene.add_box('conveyor', gu.list_2_ps(self.predicted_conveyor_pose), size=(.1, .1, .02))
+                self.scene.add_mesh('target', gu.list_2_ps(predicted_target_pose), self.target_mesh_file_path)
+            self.scene.add_box('conveyor', gu.list_2_ps(predicted_conveyor_pose), size=(.1, .1, .02))
             # print('Updating scene takes {} second'.format(time.time() - update_start_time))
 
             # plan a grasp
             grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched \
-                = self.plan_grasp(self.predicted_target_pose, grasp_idx)
+                = self.plan_grasp(predicted_target_pose, grasp_idx)
             dynamic_grasp_time += grasp_planning_time
             if planned_grasp_jv is None or planned_pre_grasp_jv is None:
                 self.step(grasp_planning_time, None, None)
@@ -348,14 +323,24 @@ class DynamicGraspingWorld:
 
             # check can grasp or not
             if self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=self.grasp_threshold):
-                motion_planning_time, arm_motion_plan, gripper_motion_plan = self.plan_approach_motion(planned_grasp_jv)
+                if self.approach_prediction:
+                    # one extra IK call, right now ignore the time because it is very small
+                    predicted_target_pose, predicted_conveyor_pose = self.predict(self.approach_prediction_duration)
+                    planned_grasp_in_object = pu.split_7d(self.grasps_eef[grasp_idx])
+                    planned_grasp = gu.convert_grasp_in_object_to_world(predicted_target_pose, planned_grasp_in_object)
+                    planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False, arm_joint_values=self.robot.get_arm_joint_values())
+                    if planned_grasp_jv is None:
+                        print("the predicted approach motion is not reachable")
+                        continue
+
+                motion_planning_time, arm_motion_plan, gripper_motion_plan = self.plan_approach_motion(planned_grasp_jv, self.approach_prediction_duration)
                 dynamic_grasp_time += motion_planning_time
                 self.execute_appraoch_and_grasp(arm_motion_plan, gripper_motion_plan)
                 self.execute_lift()
                 return self.check_success(), grasp_idx, dynamic_grasp_time
         return False, None, dynamic_grasp_time
 
-    def plan_approach_motion(self, grasp_jv):
+    def plan_approach_motion(self, grasp_jv, prediction_duration):
         """ Plan the discretized approach motion for both arm and gripper """
         # no need to prediction in the old trajectory because plan simple takes about 0.001
         predicted_period = 0
@@ -371,18 +356,19 @@ class DynamicGraspingWorld:
                 ipdb.set_trace()
             start_joint_values = self.robot.arm_discretized_plan[future_target_index]
             arm_discretized_plan = self.robot.plan_arm_joint_values_simple(grasp_jv,
-                                                                           start_joint_values=start_joint_values)
+                                                                           start_joint_values=start_joint_values, duration=prediction_duration)
         else:
-            arm_discretized_plan = self.robot.plan_arm_joint_values_simple(grasp_jv)
+            arm_discretized_plan = self.robot.plan_arm_joint_values_simple(grasp_jv, duration=prediction_duration)
 
         # there is no gripper discretized plan
-        gripper_discretized_plan = self.robot.plan_gripper_joint_values(self.robot.CLOSED_POSITION)
+        gripper_discretized_plan = self.robot.plan_gripper_joint_values(self.robot.CLOSED_POSITION, duration=prediction_duration)
 
         planning_time = time.time() - start_time
         # print("Planning a motion takes {:.6f}".format(planning_time))
         return planning_time, arm_discretized_plan, gripper_discretized_plan
 
     def execute_appraoch_and_grasp(self, arm_plan, gripper_plan):
+        """ modify the arm and gripper plans according to close delay and execute it """
         arm_len = len(arm_plan)
         num_delay_steps = int(arm_len * self.close_delay)
         gripper_len = len(gripper_plan)

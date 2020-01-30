@@ -315,10 +315,10 @@ class MicoController:
         waypoints = self.plan_gripper_joint_values(self.OPEN_POSITION)
         self.execute_gripper_plan(waypoints, realtime)
 
-    def plan_gripper_joint_values(self, goal_joint_values, start_joint_values=None):
+    def plan_gripper_joint_values(self, goal_joint_values, start_joint_values=None, duration=None):
         if start_joint_values is None:
             start_joint_values = self.get_gripper_joint_values()
-        num_steps = 240
+        num_steps = 240 if duration is None else int(duration*240)
         discretized_plan = np.linspace(start_joint_values, goal_joint_values, num_steps)
         return discretized_plan
 
@@ -524,23 +524,24 @@ class MicoController:
         discretized_plan = MicoController.discretize_plan(motion_plan)
         return discretized_plan, fraction
 
-    def plan_arm_joint_values_simple(self, goal_joint_values, start_joint_values=None):
+    def plan_arm_joint_values_simple(self, goal_joint_values, start_joint_values=None, duration=None):
         """ Linear interpolation between joint_values """
         start_joint_values = self.get_arm_joint_values() if start_joint_values is None else start_joint_values
 
         diffs = self.arm_difference_fn(goal_joint_values, start_joint_values)
-        steps = np.abs(np.divide(diffs, self.MOVEIT_ARM_MAX_VELOCITY)) * 240
-        num_steps = int(max(steps))
+        if duration is None:
+            steps = np.abs(np.divide(diffs, self.MOVEIT_ARM_MAX_VELOCITY)) * 240
+            num_steps = int(max(steps))
+        else:
+            num_steps = int(duration * 240)
         waypoints = MicoController.refine_path(start_joint_values, diffs, num_steps)
         # print(self.adapt_conf(goal_joint_values, waypoints[-1]))
         return waypoints
 
     @staticmethod
     def refine_path(start_joint_values, diffs, num_steps):
-        waypoints = [start_joint_values]
-        num_steps = num_steps
-        for i in range(num_steps):
-            waypoints.append(list(((float(i) + 1.0) / float(num_steps)) * np.array(diffs) + start_joint_values))
+        goal_joint_values = np.array(start_joint_values) + np.array(diffs)
+        waypoints = np.linspace(start_joint_values, goal_joint_values, num_steps)
         return waypoints
 
     def adapt_conf(self, conf2, conf1):
