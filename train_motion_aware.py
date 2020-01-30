@@ -134,7 +134,7 @@ def train(model, device, train_loader, optimizer, epoch, writer):
     writer.add_scalar('Train/FNR', FNR, epoch)
 
     pbar.close()
-    return epoch_loss
+    return epoch_loss, epoch_accuracy, FPR, FNR
 
 
 def test(model, device, test_loader, epoch, writer):
@@ -174,7 +174,7 @@ def test(model, device, test_loader, epoch, writer):
         writer.add_scalar('Test/FPR', FPR, epoch)
         writer.add_scalar('Test/FNR', FNR, epoch)
         pbar.close()
-        return epoch_loss
+        return epoch_loss, epoch_accuracy, FPR, FNR
 
 
 if __name__ == "__main__":
@@ -199,5 +199,22 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     for epoch in range(1, args.epochs + 1):
-        train_epoch_loss = train(model, device, train_loader, optimizer, epoch, writer)
-        test_epoch_loss = test(model, device, test_loader, epoch, writer)
+        train_loss, train_accuracy, train_FPR, train_FNR = train(model, device, train_loader, optimizer, epoch, writer)
+        test_loss, test_accuracy, test_FPR, test_FNR = test(model, device, test_loader, epoch, writer)
+
+        # save checkpoint
+        epoch_dir_name = "epoch_{:04}_acc_{:.4f}_fpr_{:.4f}_fnr_{:.4f}".format(epoch, test_accuracy, test_FPR, test_FNR)
+        epoch_dir = os.path.join(args.save_dir, epoch_dir_name)
+        os.makedirs(epoch_dir)
+        checkpoint_metadata = {
+            'train_loss': train_loss,
+            'train_accuracy': train_accuracy,
+            'train_FPR': train_FPR,
+            'train_FNR': train_FNR,
+            'test_loss': test_loss,
+            'test_accuracy': test_accuracy,
+            'test_FPR': test_FPR,
+            'test_FNR': test_FNR
+        }
+        json.dump(model_metadata, open(os.path.join(epoch_dir, 'checkpoint_metadata.yaml'), 'w'), indent=4)
+        torch.save(model.state_dict(), os.path.join(epoch_dir, "motion_ware_net.pt"))
