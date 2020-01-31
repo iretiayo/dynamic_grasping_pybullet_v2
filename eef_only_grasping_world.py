@@ -75,8 +75,7 @@ class EEFController:
         num_steps = 240
         current_pose = self.get_pose()
         positions = np.linspace(current_pose[0], pose[0], num_steps)
-        angles = np.linspace(p.getEulerFromQuaternion(current_pose[1]), p.getEulerFromQuaternion(pose[1]), num_steps)
-        quaternions = np.array([p.getQuaternionFromEuler(angle) for angle in angles])
+        quaternions = np.linspace(current_pose[1], pose[1], num_steps)
         for pos, ori in zip(positions, quaternions):
             self.control_pose([pos, ori])
             p.stepSimulation()
@@ -189,6 +188,11 @@ class EEFOnlyStaticWorld:
         self.plane = p.loadURDF("plane.urdf")
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
         self.controller = EEFController(self.robot_config_name, self.gripper_initial_pose)
+        p.changeDynamics(self.target, -1, mass=1)
+        hand_id = self.controller.id
+        for joint in range(p.getNumJoints(hand_id)):
+            p.changeDynamics(hand_id, joint, mass=1)
+        p.changeDynamics(hand_id, -1, mass=50)
 
     def reset(self):
         p.resetBasePositionAndOrientation(self.target, self.target_initial_pose[0], self.target_initial_pose[1])

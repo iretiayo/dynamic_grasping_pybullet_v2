@@ -152,7 +152,7 @@ class UR5RobotiqMoveIt(object):
         service_request.group_name = self.ARM
         service_request.ik_link_name = self.TIP_LINK
         service_request.pose_stamped = gripper_pose_stamped
-        service_request.timeout.secs = timeout
+        service_request.timeout.nsecs = timeout * 1e9
         service_request.avoid_collisions = avoid_collisions
 
         seed_robot_state = self.robot.get_current_state()
