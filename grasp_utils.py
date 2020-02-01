@@ -505,6 +505,14 @@ def load_grasp_database(grasp_database_path, object_name, back_off):
 
 
 def load_grasp_database_new(grasp_database_path, object_name):
-    actual_grasps = np.load(os.path.join(grasp_database_path, object_name, 'actual_grasps.npy'))
-    graspit_grasps = np.load(os.path.join(grasp_database_path, object_name, 'graspit_grasps.npy'))
+    if os.path.exists(os.path.join(grasp_database_path, object_name, 'actual_grasps.npy')):
+        actual_grasps = np.load(os.path.join(grasp_database_path, object_name, 'actual_grasps.npy'))
+        graspit_grasps = np.load(os.path.join(grasp_database_path, object_name, 'graspit_grasps.npy'))
+    else:
+        # This is for the mico grasps that were generated and saved the old way
+        actual_grasps = np.load(os.path.join(grasp_database_path, object_name, 'grasps_eef.npy'))
+        actual_grasps = [pu.merge_pose_2d(tf_conversions.toTf(
+            tf_conversions.fromTf(pu.split_7d(g)) * tf_conversions.fromTf(
+                mico_configs['GRASPIT_LINK_TO_MOVEIT_LINK']).Inverse())) for g in actual_grasps]
+        graspit_grasps = actual_grasps
     return actual_grasps, graspit_grasps

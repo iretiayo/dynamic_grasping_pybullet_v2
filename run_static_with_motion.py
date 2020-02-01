@@ -38,6 +38,8 @@ def get_args():
     parser.add_argument('--distance_high', type=float, default=0.4)
     parser.add_argument('--disable_reachability', action='store_true', default=False)
     parser.add_argument('--use_box', action='store_true', default=False)
+    parser.add_argument('--approach_prediction', action='store_true', default=False)
+    parser.add_argument('--approach_prediction_duration', type=float, default=1.0)
     args = parser.parse_args()
 
     if args.realtime:
@@ -172,7 +174,9 @@ if __name__ == "__main__":
                                                   distance_travelled_threshold=None,
                                                   distance_low=args.distance_low,
                                                   distance_high=args.distance_high,
-                                                  use_box=args.use_box)
+                                                  use_box=args.use_box,
+                                                  approach_prediction=args.approach_prediction,
+                                                  approach_prediction_duration=args.approach_prediction_duration)
 
     for i in range(args.num_trials):
         target_pose, distance = dynamic_grasping_world.reset(mode='static_random')

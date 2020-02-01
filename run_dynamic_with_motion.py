@@ -43,6 +43,7 @@ def get_args():
     parser.add_argument('--disable_reachability', action='store_true', default=False)
     parser.add_argument('--record_videos', action='store_true', default=False)
     parser.add_argument('--baseline_experiment_path', type=str, help='use motion path in this file for the run')
+    parser.add_argument('--failure_only', action='store_true', default=False)
 
     # dynamic hyper parameter
     parser.add_argument('--conveyor_speed', type=float, default=0.01)
@@ -58,6 +59,8 @@ def get_args():
     parser.add_argument('--use_kf', action='store_true', default=False)
     parser.add_argument('--use_gt', action='store_true', default=False)
     parser.add_argument('--pose_freq', type=int, default=5)
+    parser.add_argument('--approach_prediction', action='store_true', default=False)
+    parser.add_argument('--approach_prediction_duration', type=float, default=1.0)
     args = parser.parse_args()
 
     if args.realtime:
@@ -153,7 +156,9 @@ if __name__ == "__main__":
                                                   distance_travelled_threshold=args.distance_travelled_threshold,
                                                   distance_low=args.distance_low,
                                                   distance_high=args.distance_high,
-                                                  use_box=args.use_box)
+                                                  use_box=args.use_box,
+                                                  approach_prediction=args.approach_prediction,
+                                                  approach_prediction_duration=args.approach_prediction_duration)
 
     # adding option to use previous experiment as config
     baseline_experiment_config_df = None
@@ -179,6 +184,9 @@ if __name__ == "__main__":
         # }
         if baseline_experiment_config_df is not None:
             reset_dict = baseline_experiment_config_df.loc[i].to_dict()
+            if args.failure_only and reset_dict['success']:
+                print('skipping trial {}'.format(i))
+                continue
 
         distance, theta, length, direction, target_quaternion = dynamic_grasping_world.reset(mode='dynamic_linear', reset_dict=reset_dict)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power

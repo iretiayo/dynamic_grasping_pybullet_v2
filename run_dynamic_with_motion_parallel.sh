@@ -27,7 +27,7 @@ do
             --lazy_threshold  0.3 \
             --conveyor_speed 0.03 \
             --close_delay 0.5 \
-            --back_off 0.5 \
+            --back_off 0.05 \
             --distance_low 0.15 \
             --distance_high 0.4 \
             --pose_freq 5 \
