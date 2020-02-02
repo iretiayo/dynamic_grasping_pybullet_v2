@@ -167,7 +167,21 @@ class MicoController:
                                                     # maxNumIterations=100,
                                                     # residualThreshold=.01
                                                     )
-        return joint_values
+        ik_result = list(joint_values[:6])
+        # handle joint limit violations. TODO: confirm that this logic makes sense
+        for i in range(len(self.GROUP_INDEX['arm'])):
+            if pu.violates_limit(self.id, self.GROUP_INDEX['arm'][i], ik_result[i]):
+                lower, upper = pu.get_joint_limits(self.id, self.GROUP_INDEX['arm'][i])
+                if ik_result[i] < lower and ik_result[i] + 2*np.pi > upper:
+                    ik_result[i] = lower
+                if ik_result[i] > upper and ik_result[i] - 2*np.pi < lower:
+                    ik_result[i] = upper
+                if ik_result[i] < lower:
+                    ik_result[i] += 2 * np.pi
+                if ik_result[i] > upper:
+                    ik_result[i] -= 2 * np.pi
+
+        return ik_result
 
     def get_arm_ik(self, pose_2d, timeout=0.1, restarts=1, avoid_collisions=True, arm_joint_values=None,
                    gripper_joint_values=None):
@@ -482,7 +496,7 @@ class MicoController:
         return plan, fraction
 
     def violate_limits(self, joint_values):
-        return pu.violates_limits(self.id, self.GROUPS['arm'], joint_values)
+        return pu.violates_limits(self.id, self.GROUP_INDEX['arm'], joint_values)
 
     @staticmethod
     def discretize_plan(motion_plan):
