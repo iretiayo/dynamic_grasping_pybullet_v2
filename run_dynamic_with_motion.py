@@ -56,6 +56,7 @@ def get_args():
     parser.add_argument('--use_seed_trajectory', action='store_true', default=False)
     parser.add_argument('--use_previous_jv', action='store_true', default=False)
     parser.add_argument('--use_box', action='store_true', default=False)
+    parser.add_argument('--use_baseline_method', action='store_true', default=False)
     parser.add_argument('--use_kf', action='store_true', default=False)
     parser.add_argument('--use_gt', action='store_true', default=False)
     parser.add_argument('--pose_freq', type=int, default=5)
@@ -157,6 +158,7 @@ if __name__ == "__main__":
                                                   distance_low=args.distance_low,
                                                   distance_high=args.distance_high,
                                                   use_box=args.use_box,
+                                                  use_baseline_method=args.use_baseline_method,
                                                   approach_prediction=args.approach_prediction,
                                                   approach_prediction_duration=args.approach_prediction_duration)
 

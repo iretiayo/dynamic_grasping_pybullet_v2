@@ -52,6 +52,7 @@ class DynamicGraspingWorld:
                  distance_low,
                  distance_high,
                  use_box,
+                 use_baseline_method,
                  approach_prediction,
                  approach_prediction_duration):
         self.target_name = target_name
@@ -120,6 +121,7 @@ class DynamicGraspingWorld:
         self.small_prediction_threshold = small_prediction_threshold
         self.distance_travelled_threshold = distance_travelled_threshold
         self.use_box = use_box
+        self.use_baseline_method = use_baseline_method
         self.approach_prediction = approach_prediction
         self.approach_prediction_duration = approach_prediction_duration
 
@@ -311,8 +313,12 @@ class DynamicGraspingWorld:
             # print('Updating scene takes {} second'.format(time.time() - update_start_time))
 
             # plan a grasp
-            grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched \
-                = self.plan_grasp(predicted_target_pose, grasp_idx)
+            if self.use_baseline_method:
+                grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched \
+                    = self.plan_grasp_baseline(predicted_target_pose, grasp_idx)
+            else:
+                grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched \
+                    = self.plan_grasp(predicted_target_pose, grasp_idx)
             dynamic_grasp_time += grasp_planning_time
             if planned_grasp_jv is None or planned_pre_grasp_jv is None:
                 self.step(grasp_planning_time, None, None)
@@ -408,6 +414,63 @@ class DynamicGraspingWorld:
         if fraction != 1.0:
             print('fraction {} not 1'.format(fraction))
         self.robot.execute_arm_plan(plan, self.realtime)
+
+    def get_ik_error(self, eef_pose, ik_result, coeff=0.4):
+
+        # fk_result = self.robot.get_arm_fk(ik_result)
+        fk_result = self.robot.get_arm_fk_pybullet(ik_result)
+
+        trans_dist = np.linalg.norm(np.array(eef_pose[0])-np.array(fk_result[0]))
+        ang_dist = np.abs(np.dot(np.array(eef_pose[1]), np.array(fk_result[1])))
+
+        return (1 - coeff) * trans_dist + coeff * ang_dist
+
+    def get_iks_pregrasp_and_grasp_approximate(self, query_grasp_idx, target_pose):
+        planned_pre_grasp_in_object = pu.split_7d(self.pre_grasps_eef[query_grasp_idx])
+        planned_pre_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_pre_grasp_in_object)
+        planned_pre_grasp_jv = self.robot.get_arm_ik_pybullet(planned_pre_grasp)
+
+        planned_grasp_in_object = pu.split_7d(self.grasps_eef[query_grasp_idx])
+        planned_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_grasp_in_object)
+        planned_grasp_jv = self.robot.get_arm_ik_pybullet(planned_grasp, arm_joint_values=planned_pre_grasp_jv)
+
+        return planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
+
+    def plan_grasp_baseline(self, target_pose, old_grasp_idx):
+        """ Plan a reachable pre_grasp and grasp pose"""
+        # timing of the best machine
+        ik_call_time = 0.01
+        # rank_grasp_time = 0.135
+
+        # optionally rank grasp based on reachability
+        rank_grasp_time_start = time.time()
+        grasp_order_idxs = self.rank_grasps(target_pose)
+        rank_grasp_time = time.time() - rank_grasp_time_start
+        print('rank grasp takes {}'.format(rank_grasp_time))
+
+        planned_pre_grasps, planned_pre_grasp_jvs, planned_grasps, planned_grasp_jvs = [], [], [], []
+        for i, grasp_idx in enumerate(grasp_order_idxs):
+            if i == self.max_check:
+                break
+            planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp_approximate(grasp_idx, target_pose)
+            map(lambda x, y: x.append(y), [planned_pre_grasps, planned_pre_grasp_jvs, planned_grasps, planned_grasp_jvs], [planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv])
+
+        pregrasp_ik_error = [self.get_ik_error(ee_pose, ik) for ee_pose, ik  in zip(planned_pre_grasps, planned_pre_grasp_jvs)]
+        grasp_ik_error = [self.get_ik_error(ee_pose, ik) for ee_pose, ik  in zip(planned_grasps, planned_grasp_jvs)]
+        ik_error_sum = np.array(pregrasp_ik_error)+np.array(grasp_ik_error)
+        min_error_idx = np.argmin(ik_error_sum)
+        margin = 0.02  # TODO: check if this margin makes sense
+        if old_grasp_idx and ik_error_sum[old_grasp_idx] < ik_error_sum[min_error_idx] + margin:
+            grasp_idx = old_grasp_idx
+        else:
+            grasp_idx = min_error_idx
+        grasp_switched = (grasp_idx != old_grasp_idx)
+
+        num_ik_called = 2*len(planned_pre_grasps)
+        planning_time = rank_grasp_time + num_ik_called * ik_call_time
+        # print("Planning a grasp takes {:.6f}".format(planning_time))
+
+        return grasp_idx, planning_time, num_ik_called, planned_pre_grasps[grasp_idx], planned_pre_grasp_jvs[grasp_idx], planned_grasps[grasp_idx], planned_grasp_jvs[grasp_idx], grasp_switched
 
     def get_iks_pregrasp_and_grasp(self, query_grasp_idx, target_pose):
         planned_pre_grasp_in_object = pu.split_7d(self.pre_grasps_eef[query_grasp_idx])
