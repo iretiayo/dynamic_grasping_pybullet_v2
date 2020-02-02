@@ -422,6 +422,26 @@ class DynamicGraspingWorld:
                                                      arm_joint_values=planned_pre_grasp_jv)
         return planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
 
+    def rank_grasps(self, target_pose):
+        pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+                                         self.pre_grasps_link6_ref]
+        if self.disable_reachability:
+            grasp_order_idxs = np.random.permutation(np.arange(len(pre_grasps_link6_ref_in_world)))
+        else:
+            sdf_values = gu.get_reachability_of_grasps_pose_2d(pre_grasps_link6_ref_in_world,
+                                                               self.sdf_reachability_space,
+                                                               self.mins,
+                                                               self.step_size,
+                                                               self.dims)
+            grasp_order_idxs = np.argsort(sdf_values)[::-1]
+
+        # grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+        #                        self.grasps_eef]
+        # gu.visualize_grasps_with_reachability(grasps_eef_in_world, sdf_values)
+        # gu.visualize_grasp_with_reachability(planned_grasp, sdf_values[grasp_order_idxs[0]],
+        #                                      maximum=max(sdf_values), minimum=min(sdf_values))
+        return grasp_order_idxs
+
     def plan_grasp(self, target_pose, old_grasp_idx):
         """ Plan a reachable pre_grasp and grasp pose"""
         # timing of the best machine
@@ -441,17 +461,7 @@ class DynamicGraspingWorld:
 
         # if an old grasp index is not provided or the old grasp is not reachable any more
         rank_grasp_time_start = time.time()
-        pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
-                                         self.pre_grasps_link6_ref]
-        if self.disable_reachability:
-            grasp_order_idxs = np.random.permutation(np.arange(len(pre_grasps_link6_ref_in_world)))
-        else:
-            sdf_values = gu.get_reachability_of_grasps_pose_2d(pre_grasps_link6_ref_in_world,
-                                                               self.sdf_reachability_space,
-                                                               self.mins,
-                                                               self.step_size,
-                                                               self.dims)
-            grasp_order_idxs = np.argsort(sdf_values)[::-1]
+        grasp_order_idxs = self.rank_grasps(target_pose)
         rank_grasp_time = time.time() - rank_grasp_time_start
         print('rank grasp takes {}'.format(rank_grasp_time))
 
@@ -464,11 +474,6 @@ class DynamicGraspingWorld:
                 grasp_switched = (grasp_idx != old_grasp_idx)
                 break
 
-        # grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
-        #                        self.grasps_eef]
-        # gu.visualize_grasps_with_reachability(grasps_eef_in_world, sdf_values)
-        # gu.visualize_grasp_with_reachability(planned_grasp, sdf_values[grasp_order_idxs[0]],
-        #                                      maximum=max(sdf_values), minimum=min(sdf_values))
         if planned_pre_grasp_jv is None:
             print('pre grasp planning fails')
             grasp_idx = None
