@@ -155,6 +155,20 @@ class MicoController:
     def get_eef_pose(self):
         return pu.get_link_pose(self.id, self.EEF_LINK_INDEX)
 
+    def get_arm_ik_pybullet(self, pose_2d, arm_joint_values=None, gripper_joint_values=None):
+        gripper_joint_values = self.get_gripper_joint_values() if gripper_joint_values is None else gripper_joint_values
+        arm_joint_values = self.get_arm_joint_values() if arm_joint_values is None else arm_joint_values
+
+        joint_values = p.calculateInverseKinematics(self.id,
+                                                    self.EEF_LINK_INDEX,  # self.JOINT_INDICES_DICT[self.EEF_LINK],
+                                                    pose_2d[0],
+                                                    pose_2d[1],
+                                                    currentPositions=arm_joint_values + gripper_joint_values,
+                                                    # maxNumIterations=100,
+                                                    # residualThreshold=.01
+                                                    )
+        return joint_values
+
     def get_arm_ik(self, pose_2d, timeout=0.1, restarts=1, avoid_collisions=True, arm_joint_values=None,
                    gripper_joint_values=None):
         gripper_joint_values = self.get_gripper_joint_values() if gripper_joint_values is None else gripper_joint_values

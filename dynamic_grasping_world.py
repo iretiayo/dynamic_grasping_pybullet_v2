@@ -409,6 +409,19 @@ class DynamicGraspingWorld:
             print('fraction {} not 1'.format(fraction))
         self.robot.execute_arm_plan(plan, self.realtime)
 
+    def get_iks_pregrasp_and_grasp(self, query_grasp_idx, target_pose):
+        planned_pre_grasp_in_object = pu.split_7d(self.pre_grasps_eef[query_grasp_idx])
+        planned_pre_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_pre_grasp_in_object)
+        planned_pre_grasp_jv = self.robot.get_arm_ik(planned_pre_grasp)
+
+        planned_grasp, planned_grasp_jv = None, None
+        if planned_pre_grasp_jv is not None:
+            planned_grasp_in_object = pu.split_7d(self.grasps_eef[query_grasp_idx])
+            planned_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_grasp_in_object)
+            planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False,
+                                                     arm_joint_values=planned_pre_grasp_jv)
+        return planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
+
     def plan_grasp(self, target_pose, old_grasp_idx):
         """ Plan a reachable pre_grasp and grasp pose"""
         # timing of the best machine
@@ -417,32 +430,14 @@ class DynamicGraspingWorld:
 
         num_ik_called = 0
         grasp_idx = None
-        planned_pre_grasp = None
-        planned_pre_grasp_jv = None
-        planned_grasp = None
-        planned_grasp_jv = None
         grasp_switched = False
 
         # if an old grasp index is provided
         if old_grasp_idx is not None:
-            planned_pre_grasp_in_object = pu.split_7d(self.pre_grasps_eef[old_grasp_idx])
-            planned_pre_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_pre_grasp_in_object)
-            planned_pre_grasp_jv = self.robot.get_arm_ik(planned_pre_grasp, timeout=0.02, restarts=3)
-            num_ik_called += 1
-            # if planned_pre_grasp_jv is None:
-            #     print('here')
-            if planned_pre_grasp_jv is not None:
-                planned_grasp_in_object = pu.split_7d(self.grasps_eef[old_grasp_idx])
-                planned_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_grasp_in_object)
-                planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False,
-                                                         arm_joint_values=planned_pre_grasp_jv)
-                num_ik_called += 1
-                # if planned_grasp_jv is None:
-                #     print('here')
-                if planned_grasp_jv is not None:
-                    planning_time = num_ik_called * ik_call_time
-                    # print("Planning a grasp takes {:.6f}".format(planning_time))
-                    return old_grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
+            planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(old_grasp_idx, target_pose)
+            num_ik_called += 1 if planned_pre_grasp_jv is None else 2
+            planning_time = num_ik_called * ik_call_time
+            return old_grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
 
         # if an old grasp index is not provided or the old grasp is not reachable any more
         rank_grasp_time_start = time.time()
@@ -463,21 +458,11 @@ class DynamicGraspingWorld:
         for i, grasp_idx in enumerate(grasp_order_idxs):
             if i == self.max_check:
                 break
-            planned_pre_grasp_in_object = pu.split_7d(self.pre_grasps_eef[grasp_idx])
-            planned_pre_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_pre_grasp_in_object)
-            planned_pre_grasp_jv = self.robot.get_arm_ik(planned_pre_grasp)
-            num_ik_called += 1
-            if planned_pre_grasp_jv is None:
-                continue
-            planned_grasp_in_object = pu.split_7d(self.grasps_eef[grasp_idx])
-            planned_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_grasp_in_object)
-            planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False,
-                                                     arm_joint_values=planned_pre_grasp_jv)
-            num_ik_called += 1
-            if planned_grasp_jv is None:
-                continue
-            grasp_switched = (grasp_idx != old_grasp_idx)
-            break
+            planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(grasp_idx, target_pose)
+            num_ik_called += 1 if planned_pre_grasp_jv is None else 2
+            if planned_grasp_jv is not None:
+                grasp_switched = (grasp_idx != old_grasp_idx)
+                break
 
         # grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
         #                        self.grasps_eef]
