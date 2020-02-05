@@ -22,7 +22,8 @@ do
     --record_videos \
     --max_check 3 \
     --use_box \
-    --use_kf;
+    --use_kf \
+    --approach_prediction;
     sleep 5
 done
 
