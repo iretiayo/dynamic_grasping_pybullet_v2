@@ -132,15 +132,42 @@ class UR5RobotiqPybulletController(object):
         waypoints = self.plan_gripper_joint_values(self.CLOSED_POSITION)
         self.execute_gripper_plan(waypoints, realtime)
 
-    def plan_gripper_joint_values(self, goal_joint_values, start_joint_values=None):
+    def plan_gripper_joint_values(self, goal_joint_values, start_joint_values=None, duration=None):
         if start_joint_values is None:
             start_joint_values = self.get_gripper_joint_values()
-        num_steps = 240
+        num_steps = 240 if duration is None else int(duration*240)
         discretized_plan = np.linspace(start_joint_values, goal_joint_values, num_steps)
         return discretized_plan
 
     def clear_scene(self):
         self.moveit.clear_scene()
+
+    def get_arm_fk(self, arm_joint_values):
+        pose = self.get_arm_fk_ros(arm_joint_values)
+        return gu.pose_2_list(pose) if pose is not None else None
+
+    def get_arm_fk_pybullet(self, joint_values):
+        return pu.forward_kinematics(self.id, self.GROUP_INDEX['arm'], joint_values, self.EEF_LINK_INDEX)
+
+    def get_arm_fk_ros(self, arm_joint_values):
+        """ return a ros pose """
+        rospy.wait_for_service('compute_fk')
+
+        header = Header(frame_id="world")
+        fk_link_names = [self.EEF_LINK]
+        robot_state = RobotState()
+        robot_state.joint_state.name = self.GROUPS['arm']
+        robot_state.joint_state.position = arm_joint_values
+
+        try:
+            resp = self.arm_fk_svr(header=header, fk_link_names=fk_link_names, robot_state=robot_state)
+            if resp.error_code.val != 1:
+                print("error ({}) happens when computing fk".format(resp.error_code.val))
+                return None
+            else:
+                return resp.pose_stamped[0].pose
+        except rospy.ServiceException, e:
+            print("Service call failed: %s" % e)
 
     def get_arm_ik(self, pose_2d, timeout=0.1, restarts=1, avoid_collisions=True, arm_joint_values=None,
                    gripper_joint_values=None):
@@ -156,7 +183,34 @@ class UR5RobotiqPybulletController(object):
             if js is not None:
                 break
         return js
-        return discretized_plan
+
+    def get_arm_ik_pybullet(self, pose_2d, arm_joint_values=None, gripper_joint_values=None):
+        gripper_joint_values = self.get_gripper_joint_values() if gripper_joint_values is None else gripper_joint_values
+        arm_joint_values = self.get_arm_joint_values() if arm_joint_values is None else arm_joint_values
+
+        joint_values = p.calculateInverseKinematics(self.id,
+                                                    self.EEF_LINK_INDEX,  # self.JOINT_INDICES_DICT[self.EEF_LINK],
+                                                    pose_2d[0],
+                                                    pose_2d[1],
+                                                    currentPositions=arm_joint_values + gripper_joint_values,
+                                                    # maxNumIterations=100,
+                                                    # residualThreshold=.01
+                                                    )
+        ik_result = list(joint_values[:6])
+        # handle joint limit violations. TODO: confirm that this logic makes sense
+        for i in range(len(self.GROUP_INDEX['arm'])):
+            if pu.violates_limit(self.id, self.GROUP_INDEX['arm'][i], ik_result[i]):
+                lower, upper = pu.get_joint_limits(self.id, self.GROUP_INDEX['arm'][i])
+                if ik_result[i] < lower and ik_result[i] + 2*np.pi > upper:
+                    ik_result[i] = lower
+                if ik_result[i] > upper and ik_result[i] - 2*np.pi < lower:
+                    ik_result[i] = upper
+                if ik_result[i] < lower:
+                    ik_result[i] += 2 * np.pi
+                if ik_result[i] > upper:
+                    ik_result[i] -= 2 * np.pi
+
+        return ik_result
 
     def create_seed_trajectory(self, seed_discretized_plan, start_joint_values, goal_joint_values):
 
@@ -206,18 +260,19 @@ class UR5RobotiqPybulletController(object):
         discretized_plan = UR5RobotiqPybulletController.discretize_plan(motion_plan)
         return discretized_plan
 
-    def plan_arm_joint_values_simple(self, goal_joint_values, start_joint_values=None):
+    def plan_arm_joint_values_simple(self, goal_joint_values, start_joint_values=None, duration=None):
         """ Linear interpolation between joint_values """
         start_joint_values = self.get_arm_joint_values() if start_joint_values is None else start_joint_values
 
         diffs = self.arm_difference_fn(goal_joint_values, start_joint_values)
         steps = np.abs(np.divide(diffs, self.MOVEIT_ARM_MAX_VELOCITY)) * 240
         num_steps = int(max(steps))
+        if duration is not None:
+            num_steps = int(duration * 240)
+            # num_steps = max(int(duration * 240), steps)     # this should ensure that it satisfies the max velocity of the end-effector
 
-        waypoints = [start_joint_values]
-        for i in range(num_steps):
-            waypoints.append(list(((float(i) + 1.0) / float(num_steps)) * np.array(diffs) + start_joint_values))
-        print(self.adapt_conf(goal_joint_values, waypoints[-1]))
+        goal_joint_values = np.array(start_joint_values) + np.array(diffs)
+        waypoints = np.linspace(start_joint_values, goal_joint_values, num_steps)
         return waypoints
 
     def plan_straight_line(self, eef_pose, start_joint_values=None, ee_step=0.05,
