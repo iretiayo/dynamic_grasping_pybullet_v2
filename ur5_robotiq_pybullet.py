@@ -30,6 +30,9 @@ def load_ur_robotiq_robot(robot_initial_pose):
         ur5_description_dir = rospkg.RosPack().get_path('ur_description')
         sed_cmd = "sed -i 's|{}|{}|g' {}".format('package://ur_description', ur5_description_dir, urdf_filepath)
         os.system(sed_cmd)
+        # adjust the gripper effort for stable grasping in pybullet
+        sed_cmd = "sed -i 's|{}|{}|g' {}".format('limit effort="1000"', 'limit effort="200"', urdf_filepath)
+        os.system(sed_cmd)
 
     robot_id = p.loadURDF(urdf_filepath, basePosition=robot_initial_pose[0], baseOrientation=robot_initial_pose[1],
                           flags=p.URDF_USE_SELF_COLLISION)

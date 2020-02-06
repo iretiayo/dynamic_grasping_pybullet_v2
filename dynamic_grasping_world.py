@@ -229,13 +229,13 @@ class DynamicGraspingWorld:
             self.scene.add_box('target', gu.list_2_ps(target_pose), size=self.target_extents)
         else:
             self.scene.add_mesh('target', gu.list_2_ps(target_pose), self.target_mesh_file_path)
+        rospy.sleep(2)
         motion_planning_time, plan = self.plan_arm_motion(pre_grasp_jv)
         if plan is None:
             return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no motion found to the planned pre grasp jv"
 
         # move
         self.robot.execute_arm_plan(plan, self.realtime)
-        grasp_attempted = True
         pre_grasp_reached = self.robot.equal_conf(self.robot.get_arm_joint_values(), pre_grasp_jv, tol=0.01)
 
         # print('self')
@@ -250,8 +250,11 @@ class DynamicGraspingWorld:
         # self.robot.execute_arm_plan(plan, self.realtime)
         # grasp_reachaed = self.robot.equal_conf(self.robot.get_arm_joint_values(), grasp_jv, tol=0.01)
         plan, fraction = self.robot.plan_straight_line(tfc.toMsg(tfc.fromTf(grasp)), ee_step=0.01, avoid_collisions=True)
+        if plan is None:
+            return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no motion found to the planned grasp jv"
         self.robot.execute_arm_plan(plan, self.realtime)
         # print(fraction)
+        grasp_attempted = True
 
         # close and lift
         self.robot.close_gripper(self.realtime)
