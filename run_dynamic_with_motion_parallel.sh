@@ -34,7 +34,8 @@ do
             --record_videos \
             --max_check 3 \
             --use_box \
-            --use_kf; $SHELL'"
+            --use_kf \
+            --approach_prediction; $SHELL'"
     sleep 3
     ((node_id++))
 done
