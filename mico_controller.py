@@ -114,6 +114,8 @@ class MicoController:
         self.reset()
         self.robot_state_template = self.robot.get_current_state()
 
+        self.arm_max_joint_velocities = [pu.get_max_velocity(self.id, j_id) for j_id in self.GROUP_INDEX['arm']]
+
     def set_arm_joints(self, joint_values):
         pu.set_joint_positions(self.id, self.GROUP_INDEX['arm'], joint_values)
         pu.control_joints(self.id, self.GROUP_INDEX['arm'], joint_values)
@@ -164,6 +166,12 @@ class MicoController:
 
     def get_eef_pose(self):
         return pu.get_link_pose(self.id, self.EEF_LINK_INDEX)
+
+    def get_current_max_eef_velocity(self, arm_joint_values):
+        arm_joint_values = self.get_arm_joint_values() if arm_joint_values is None else arm_joint_values
+        jacobian = self.arm_commander_group.get_jacobian_matrix(arm_joint_values)
+        max_eef_velocity = np.dot(jacobian, self.arm_max_joint_velocities)
+        return np.squeeze(np.array(max_eef_velocity))
 
     def get_manipulability(self, list_of_joint_values):
         assert self.use_manipulability, 'self.use_manipulability flag is set to false, check constructor and start manipulability ros service'
@@ -381,12 +389,22 @@ class MicoController:
         joint_trajectory_seed.joint_names = self.GROUPS['arm']
         joint_trajectory_seed.points = []
         skip = max(1, len(seed_discretized_plan) // 100)
+        seed_discretized_plan_trimmed = seed_discretized_plan[::skip]
 
-        # waypoints = [start_joint_values] + seed_discretized_plan[::skip].tolist() + [goal_joint_values]
-        goal_joint_values_adapted = self.adapt_conf(goal_joint_values, seed_discretized_plan[-1])
-        diffs = self.arm_difference_fn(goal_joint_values_adapted, seed_discretized_plan[-1])
-        final_waypoints = seed_discretized_plan[-1] + np.linspace(0, 1, 50)[:, None] * diffs
-        waypoints = [start_joint_values] + seed_discretized_plan[::skip].tolist() + final_waypoints.tolist()
+        # waypoints = [start_joint_values] + seed_discretized_plan_trimmed[::skip].tolist() + [goal_joint_values]
+        seed_start_adapted = self.adapt_conf(seed_discretized_plan_trimmed[0], start_joint_values)
+        seed_discretized_plan_trimmed = seed_discretized_plan_trimmed + (seed_start_adapted - seed_discretized_plan_trimmed[0])
+
+        diff_first_3_joints = np.abs(self.arm_difference_fn(goal_joint_values, seed_discretized_plan_trimmed[-1]))[:3]
+        if any(diff_first_3_joints[:2] > 1):
+            print('Discarding seed trajectory, end of seed trajectory is too far from new goal joint values')
+            return None
+
+        end_idx = max(int(len(seed_discretized_plan_trimmed) * 0.75), 2)
+        seed_discretized_plan_trimmed = seed_discretized_plan_trimmed[:end_idx]   # remove last portion of trajectory
+        diffs = self.arm_difference_fn(goal_joint_values, seed_discretized_plan_trimmed[-1])
+        final_waypoints = seed_discretized_plan_trimmed[-1] + np.linspace(0, 1, 30)[:, None] * diffs
+        waypoints = [start_joint_values] + seed_discretized_plan_trimmed.tolist() + final_waypoints.tolist()
 
         for wp in waypoints:
             point = JointTrajectoryPoint()
@@ -429,6 +447,9 @@ class MicoController:
         if previous_discretized_plan is not None and len(previous_discretized_plan) > 2:
             seed_discretized_plan = previous_discretized_plan  # TODO: is there a need to normalize range of joint values? i.e. undo process_plan
             seed_trajectory = self.create_seed_trajectory(seed_discretized_plan, start_joint_values_converted, goal_joint_values_converted)
+            # if seed_trajectory is not None:
+            #     self.display_trajectory(seed_trajectory)
+            #     import ipdb; ipdb.set_trace()
 
         moveit_plan = self.plan_arm_joint_values_ros(start_joint_values_converted, goal_joint_values_converted,
                                                      maximum_planning_time=maximum_planning_time,
