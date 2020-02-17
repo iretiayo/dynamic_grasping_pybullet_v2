@@ -818,6 +818,22 @@ def draw_line(start_pos, end_pos, rgb_color=(1, 0, 0), width=3, lifetime=0):
     return lid
 
 
+def draw_circle_around_z_axis(centre, radius, rgb_color=(1, 0, 0), width=3, lifetime=0, num_divs=100):
+    points = np.array(centre) + radius * np.array(
+        [(np.cos(ang), np.sin(ang), 0) for ang in np.linspace(0, 2 * np.pi, num_divs)])
+    lids = []
+    for i in range(len(points) - 1):
+        start_pos = points[i]
+        end_pos = points[i + 1]
+        lid = p.addUserDebugLine(lineFromXYZ=start_pos,
+                                 lineToXYZ=end_pos,
+                                 lineColorRGB=rgb_color,
+                                 lineWidth=width,
+                                 lifeTime=lifetime)
+        lids.append(lid)
+    return lids
+
+
 def draw_sphere_body(position, radius, rgba_color):
     vs_id = p.createVisualShape(p.GEOM_SPHERE, radius=radius, rgbaColor=rgba_color)
     body_id = p.createMultiBody(basePosition=position, baseCollisionShapeIndex=-1, baseVisualShapeIndex=vs_id)

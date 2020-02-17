@@ -15,7 +15,7 @@ import moveit_commander as mc
 from moveit_msgs.srv import GetPositionIK, GetPositionFK
 
 import rospy
-from moveit_msgs.msg import DisplayTrajectory, PositionIKRequest, RobotState, GenericTrajectory
+from moveit_msgs.msg import DisplayTrajectory, PositionIKRequest, RobotState, GenericTrajectory, RobotTrajectory
 from sensor_msgs.msg import JointState
 from moveit_msgs.srv import GetPositionIK, GetPositionFK
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -72,6 +72,7 @@ class MicoController:
     HOME = [4.80469, 2.92482, 1.002, 4.20319, 1.4458, 1.3233]
     EEF_LINK = "m1n6s200_end_effector"
     BASE_LINK = "root"
+    ARM = 'arm'
 
     # this is read from moveit_configs joint_limits.yaml
     MOVEIT_ARM_MAX_VELOCITY = [0.35, 0.35, 0.35, 0.35, 0.35, 0.35]
@@ -79,10 +80,12 @@ class MicoController:
     def __init__(self,
                  initial_pose,
                  initial_joint_values,
-                 urdf_path):
+                 urdf_path,
+                 use_manipulability=False):
         self.initial_pose = initial_pose
         self.initial_joint_values = initial_joint_values
         self.urdf_path = urdf_path
+        self.use_manipulability = use_manipulability
 
         self.id = p.loadURDF(self.urdf_path,
                              basePosition=self.initial_pose[0],
@@ -100,9 +103,18 @@ class MicoController:
         # the service names have to be this
         self.arm_ik_svr = rospy.ServiceProxy('compute_ik', GetPositionIK)
         self.arm_fk_svr = rospy.ServiceProxy('compute_fk', GetPositionFK)
+        if use_manipulability:
+            from manipulability_computation.srv import GetManipulabilityIndex
+            self.compute_manipulability_svr = rospy.ServiceProxy('compute_manipulability_index', GetManipulabilityIndex)
+            self.compute_manipulability_svr.wait_for_service()
+
+        self.display_trajectory_publisher = rospy.Publisher('/move_group/display_planned_path', DisplayTrajectory, queue_size=1)
 
         self.arm_difference_fn = pu.get_difference_fn(self.id, self.GROUP_INDEX['arm'])
         self.reset()
+        self.robot_state_template = self.robot.get_current_state()
+
+        self.arm_max_joint_velocities = [pu.get_max_velocity(self.id, j_id) for j_id in self.GROUP_INDEX['arm']]
 
     def set_arm_joints(self, joint_values):
         pu.set_joint_positions(self.id, self.GROUP_INDEX['arm'], joint_values)
@@ -154,6 +166,26 @@ class MicoController:
 
     def get_eef_pose(self):
         return pu.get_link_pose(self.id, self.EEF_LINK_INDEX)
+
+    def get_current_max_eef_velocity(self, arm_joint_values):
+        arm_joint_values = self.get_arm_joint_values() if arm_joint_values is None else arm_joint_values
+        jacobian = self.arm_commander_group.get_jacobian_matrix(arm_joint_values)
+        max_eef_velocity = np.dot(jacobian, self.arm_max_joint_velocities)
+        return np.squeeze(np.array(max_eef_velocity))
+
+    def get_manipulability(self, list_of_joint_values):
+        assert self.use_manipulability, 'self.use_manipulability flag is set to false, check constructor and start manipulability ros service'
+        manipulability_indexes = []
+        for jvs in list_of_joint_values:
+            if jvs is None:
+                manipulability_indexes.append(None)
+            else:
+                self.robot_state_template.joint_state.name = self.robot_state_template.joint_state.name[:len(jvs)]
+                self.robot_state_template.joint_state.position = jvs
+                result = self.compute_manipulability_svr(self.robot_state_template, self.ARM)
+
+                manipulability_indexes.append(result.manipulability_index)
+        return manipulability_indexes
 
     def get_arm_ik_pybullet(self, pose_2d, arm_joint_values=None, gripper_joint_values=None):
         gripper_joint_values = self.get_gripper_joint_values() if gripper_joint_values is None else gripper_joint_values
@@ -357,7 +389,23 @@ class MicoController:
         joint_trajectory_seed.joint_names = self.GROUPS['arm']
         joint_trajectory_seed.points = []
         skip = max(1, len(seed_discretized_plan) // 100)
-        waypoints = [start_joint_values] + seed_discretized_plan[::skip].tolist() + [goal_joint_values]
+        seed_discretized_plan_trimmed = seed_discretized_plan[::skip]
+
+        # waypoints = [start_joint_values] + seed_discretized_plan_trimmed[::skip].tolist() + [goal_joint_values]
+        seed_start_adapted = self.adapt_conf(seed_discretized_plan_trimmed[0], start_joint_values)
+        seed_discretized_plan_trimmed = seed_discretized_plan_trimmed + (seed_start_adapted - seed_discretized_plan_trimmed[0])
+
+        diff_first_3_joints = np.abs(self.arm_difference_fn(goal_joint_values, seed_discretized_plan_trimmed[-1]))[:3]
+        if any(diff_first_3_joints[:2] > 1):
+            print('Discarding seed trajectory, end of seed trajectory is too far from new goal joint values')
+            return None
+
+        end_idx = max(int(len(seed_discretized_plan_trimmed) * 0.75), 2)
+        seed_discretized_plan_trimmed = seed_discretized_plan_trimmed[:end_idx]   # remove last portion of trajectory
+        diffs = self.arm_difference_fn(goal_joint_values, seed_discretized_plan_trimmed[-1])
+        final_waypoints = seed_discretized_plan_trimmed[-1] + np.linspace(0, 1, 30)[:, None] * diffs
+        waypoints = [start_joint_values] + seed_discretized_plan_trimmed.tolist() + final_waypoints.tolist()
+
         for wp in waypoints:
             point = JointTrajectoryPoint()
             point.positions = wp
@@ -368,6 +416,20 @@ class MicoController:
         reference_trajectories = [generic_trajectory]
 
         return reference_trajectories
+
+    def display_trajectory(self, plan):
+        # can display plan directly or seed trajectory created with GenericTrajectory
+        if isinstance(plan, list):
+            if isinstance(plan[0], GenericTrajectory):
+                moveit_plan = RobotTrajectory()
+                moveit_plan.joint_trajectory = plan[0].joint_trajectory[0]
+                plan = moveit_plan
+
+        display_trajectory = DisplayTrajectory()
+        display_trajectory.trajectory_start = self.robot.get_current_state()
+        display_trajectory.trajectory.append(plan)
+
+        self.display_trajectory_publisher.publish(display_trajectory)
 
     def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None, maximum_planning_time=0.5, previous_discretized_plan=None, start_joint_velocities=None):
         """
@@ -385,6 +447,9 @@ class MicoController:
         if previous_discretized_plan is not None and len(previous_discretized_plan) > 2:
             seed_discretized_plan = previous_discretized_plan  # TODO: is there a need to normalize range of joint values? i.e. undo process_plan
             seed_trajectory = self.create_seed_trajectory(seed_discretized_plan, start_joint_values_converted, goal_joint_values_converted)
+            # if seed_trajectory is not None:
+            #     self.display_trajectory(seed_trajectory)
+            #     import ipdb; ipdb.set_trace()
 
         moveit_plan = self.plan_arm_joint_values_ros(start_joint_values_converted, goal_joint_values_converted,
                                                      maximum_planning_time=maximum_planning_time,

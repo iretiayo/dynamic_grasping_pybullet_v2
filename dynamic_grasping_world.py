@@ -110,6 +110,9 @@ class DynamicGraspingWorld:
         if 'robotiq' in self.robot_config_name:
             self.robot_id = load_ur_robotiq_robot(self.robot_initial_pose)
             self.robot = UR5RobotiqPybulletController(self.robot_id)
+            p.changeDynamics(self.target, -1, mass=1)
+            for joint in range(p.getNumJoints(self.robot.id)):
+                p.changeDynamics(self.robot.id, joint, mass=1)
         self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf)
         self.reset('initial')  # the reset is needed to simulate the initial config
 
@@ -177,6 +180,7 @@ class DynamicGraspingWorld:
             p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
             self.conveyor.set_pose(conveyor_pose)
             self.robot.reset()
+            # self.scene.add_box("floor", gu.list_2_ps(((0, 0, -0.055), (0, 0, 0, 1))), size=(2, 2, 0.1))
             pu.step(2)
 
             self.motion_predictor_kf.initialize_predictor(target_pose)
@@ -229,13 +233,13 @@ class DynamicGraspingWorld:
             self.scene.add_box('target', gu.list_2_ps(target_pose), size=self.target_extents)
         else:
             self.scene.add_mesh('target', gu.list_2_ps(target_pose), self.target_mesh_file_path)
+        rospy.sleep(2)
         motion_planning_time, plan = self.plan_arm_motion(pre_grasp_jv)
         if plan is None:
             return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no motion found to the planned pre grasp jv"
 
         # move
         self.robot.execute_arm_plan(plan, self.realtime)
-        grasp_attempted = True
         pre_grasp_reached = self.robot.equal_conf(self.robot.get_arm_joint_values(), pre_grasp_jv, tol=0.01)
 
         # print('self')
@@ -250,8 +254,11 @@ class DynamicGraspingWorld:
         # self.robot.execute_arm_plan(plan, self.realtime)
         # grasp_reachaed = self.robot.equal_conf(self.robot.get_arm_joint_values(), grasp_jv, tol=0.01)
         plan, fraction = self.robot.plan_straight_line(tfc.toMsg(tfc.fromTf(grasp)), ee_step=0.01, avoid_collisions=True)
+        if plan is None:
+            return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no motion found to the planned grasp jv"
         self.robot.execute_arm_plan(plan, self.realtime)
         # print(fraction)
+        grasp_attempted = True
 
         # close and lift
         self.robot.close_gripper(self.realtime)
