@@ -110,6 +110,9 @@ class DynamicGraspingWorld:
         if 'robotiq' in self.robot_config_name:
             self.robot_id = load_ur_robotiq_robot(self.robot_initial_pose)
             self.robot = UR5RobotiqPybulletController(self.robot_id)
+            p.changeDynamics(self.target, -1, mass=1)
+            for joint in range(p.getNumJoints(self.robot.id)):
+                p.changeDynamics(self.robot.id, joint, mass=1)
         self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf)
         self.reset('initial')  # the reset is needed to simulate the initial config
 
@@ -177,6 +180,7 @@ class DynamicGraspingWorld:
             p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
             self.conveyor.set_pose(conveyor_pose)
             self.robot.reset()
+            # self.scene.add_box("floor", gu.list_2_ps(((0, 0, -0.055), (0, 0, 0, 1))), size=(2, 2, 0.1))
             pu.step(2)
 
             self.motion_predictor_kf.initialize_predictor(target_pose)
