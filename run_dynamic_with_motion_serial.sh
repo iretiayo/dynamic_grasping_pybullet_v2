@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 
 timestr=$(date '+%Y-%m-%d_%H-%M-%S')
+
+mkdir $timestr
+cp run_dynamic_with_motion_serial.sh $timestr
+
 for object_name in bleach_cleanser mustard_bottle potted_meat_can sugar_box tomato_soup_can cube power_drill
 do
     python run_dynamic_with_motion.py \
@@ -28,5 +32,3 @@ do
     --fix_grasp_ranking_time 0.135;
     sleep 5
 done
-
-cp run_dynamic_with_motion_serial.sh $timestr
