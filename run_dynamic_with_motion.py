@@ -44,6 +44,7 @@ def get_args():
     parser.add_argument('--record_videos', action='store_true', default=False)
     parser.add_argument('--baseline_experiment_path', type=str, help='use motion path in this file for the run')
     parser.add_argument('--failure_only', action='store_true', default=False)
+    parser.add_argument('--exp_id', type=int)
 
     # dynamic hyper parameter
     parser.add_argument('--conveyor_speed', type=float, default=0.01)
@@ -62,6 +63,8 @@ def get_args():
     parser.add_argument('--pose_freq', type=int, default=5)
     parser.add_argument('--approach_prediction', action='store_true', default=False)
     parser.add_argument('--approach_prediction_duration', type=float, default=1.0)
+    parser.add_argument('--fix_motion_planning_time', type=float)
+    parser.add_argument('--fix_grasp_ranking_time', type=float)
     args = parser.parse_args()
 
     if args.realtime:
@@ -160,7 +163,9 @@ if __name__ == "__main__":
                                                   use_box=args.use_box,
                                                   use_baseline_method=args.use_baseline_method,
                                                   approach_prediction=args.approach_prediction,
-                                                  approach_prediction_duration=args.approach_prediction_duration)
+                                                  approach_prediction_duration=args.approach_prediction_duration,
+                                                  fix_motion_planning_time=args.fix_motion_planning_time,
+                                                  fix_grasp_ranking_time=args.fix_grasp_ranking_time)
 
     # adding option to use previous experiment as config
     baseline_experiment_config_df = None
@@ -176,6 +181,8 @@ if __name__ == "__main__":
             args.num_trials = len(baseline_experiment_config_df)
 
     for i in range(args.num_trials):
+        if args.exp_id is not None and i != args.exp_id:
+            continue
         reset_dict = None
         # reset_dict = {
         #     'distance': 0.2787919083152529,

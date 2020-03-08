@@ -54,7 +54,9 @@ class DynamicGraspingWorld:
                  use_box,
                  use_baseline_method,
                  approach_prediction,
-                 approach_prediction_duration):
+                 approach_prediction_duration,
+                 fix_motion_planning_time,
+                 fix_grasp_ranking_time):
         self.target_name = target_name
         self.robot_config_name = robot_config_name
         self.target_initial_pose = target_initial_pose
@@ -127,6 +129,8 @@ class DynamicGraspingWorld:
         self.use_baseline_method = use_baseline_method
         self.approach_prediction = approach_prediction
         self.approach_prediction_duration = approach_prediction_duration
+        self.fix_motion_planning_time = fix_motion_planning_time
+        self.fix_grasp_ranking_time = fix_grasp_ranking_time
 
     def reset(self, mode, reset_dict=None):
         """
@@ -480,17 +484,23 @@ class DynamicGraspingWorld:
         return grasp_idx, planning_time, num_ik_called, planned_pre_grasps[grasp_idx], planned_pre_grasp_jvs[grasp_idx], planned_grasps[grasp_idx], planned_grasp_jvs[grasp_idx], grasp_switched
 
     def get_iks_pregrasp_and_grasp(self, query_grasp_idx, target_pose):
+        """ return 1 or 2 ik called; if successful, then planned_grasp_jv is not None """
+        # the actual IK call maximum possible time is 0.1s
+        num_ik_called = 0
         planned_pre_grasp_in_object = pu.split_7d(self.pre_grasps_eef[query_grasp_idx])
         planned_pre_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_pre_grasp_in_object)
-        planned_pre_grasp_jv = self.robot.get_arm_ik(planned_pre_grasp)
+        planned_pre_grasp_jv = self.robot.get_arm_ik(planned_pre_grasp, timeout=0.02, restarts=5)
+        num_ik_called += 1
 
         planned_grasp, planned_grasp_jv = None, None
         if planned_pre_grasp_jv is not None:
             planned_grasp_in_object = pu.split_7d(self.grasps_eef[query_grasp_idx])
             planned_grasp = gu.convert_grasp_in_object_to_world(target_pose, planned_grasp_in_object)
             planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False,
-                                                     arm_joint_values=planned_pre_grasp_jv)
-        return planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
+                                                     arm_joint_values=planned_pre_grasp_jv,
+                                                     timeout=0.02, restarts=5)
+            num_ik_called += 1
+        return num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
 
     def rank_grasps(self, target_pose):
         pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
@@ -516,7 +526,6 @@ class DynamicGraspingWorld:
         """ Plan a reachable pre_grasp and grasp pose"""
         # timing of the best machine
         ik_call_time = 0.01
-        # rank_grasp_time = 0.135
 
         num_ik_called = 0
         grasp_idx = None
@@ -524,8 +533,8 @@ class DynamicGraspingWorld:
 
         # if an old grasp index is provided
         if old_grasp_idx is not None:
-            planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(old_grasp_idx, target_pose)
-            num_ik_called += 1 if planned_pre_grasp_jv is None else 2
+            _num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(old_grasp_idx, target_pose)
+            num_ik_called += _num_ik_called
             if planned_grasp_jv is not None:
                 planning_time = num_ik_called * ik_call_time
                 return old_grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
@@ -533,14 +542,15 @@ class DynamicGraspingWorld:
         # if an old grasp index is not provided or the old grasp is not reachable any more
         rank_grasp_time_start = time.time()
         grasp_order_idxs = self.rank_grasps(target_pose)
-        rank_grasp_time = time.time() - rank_grasp_time_start
-        print('rank grasp takes {}'.format(rank_grasp_time))
+        actual_rank_grasp_time = time.time() - rank_grasp_time_start
+        rank_grasp_time = actual_rank_grasp_time if self.fix_grasp_ranking_time is None else self.fix_grasp_ranking_time
+        print('Rank grasp actually takes {:.6f}, fixed grasp ranking time {:.6}'.format(actual_rank_grasp_time, self.fix_grasp_ranking_time))
 
         for i, grasp_idx in enumerate(grasp_order_idxs):
             if i == self.max_check:
                 break
-            planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(grasp_idx, target_pose)
-            num_ik_called += 1 if planned_pre_grasp_jv is None else 2
+            _num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(grasp_idx, target_pose)
+            num_ik_called += _num_ik_called
             if planned_grasp_jv is not None:
                 grasp_switched = (grasp_idx != old_grasp_idx)
                 break
@@ -557,9 +567,8 @@ class DynamicGraspingWorld:
 
     def plan_arm_motion(self, grasp_jv):
         """ plan a discretized motion for the arm """
-        # motion planning time on the best machine
-        # planning_time = 0.19
-        predicted_period = 0.25
+        # whether we should have a fixed planning time
+        predicted_period = 0.25 if self.fix_motion_planning_time is None else self.fix_motion_planning_time
         start_time = time.time()
 
         if self.robot.arm_discretized_plan is not None:
@@ -580,8 +589,9 @@ class DynamicGraspingWorld:
         else:
             arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv)
 
-        planning_time = time.time() - start_time
-        # print("Planning a motion takes {:.6f}".format(planning_time))
+        actual_planning_time = time.time() - start_time
+        planning_time = actual_planning_time if self.fix_motion_planning_time is None else self.fix_motion_planning_time
+        print("Planning a motion actually takes {:.6f}, fixed motion planning time {:.6}".format(actual_planning_time, self.fix_motion_planning_time))
         return planning_time, arm_discretized_plan
 
     def sample_target_location(self):
