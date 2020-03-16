@@ -32,6 +32,7 @@ def configure_pybullet(rendering=False, debug=False, yaw=50.0, pitch=-35.0, dist
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     if not debug:
         p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+        p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0)
     pu.reset_camera(yaw=yaw, pitch=pitch, dist=dist, target=target)
     p.setPhysicsEngineParameter(enableFileCaching=0)
     p.resetSimulation()
