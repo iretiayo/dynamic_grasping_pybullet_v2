@@ -195,6 +195,9 @@ class DynamicGraspingWorld:
 
         elif mode == 'dynamic_linear':
             pu.remove_all_markers()
+            if len(self.obstacles) != 0:
+                for i in self.obstacles:
+                    p.removeBody(i)
             self.motion_predictor_kf.reset_predictor()
             self.conveyor.clear_motion()
 
