@@ -45,6 +45,7 @@ def get_args():
     parser.add_argument('--baseline_experiment_path', type=str, help='use motion path in this file for the run')
     parser.add_argument('--failure_only', action='store_true', default=False)
     parser.add_argument('--exp_id', type=int)
+    parser.add_argument('--load_obstacles', action='store_true', default=False)
 
     # dynamic hyper parameter
     parser.add_argument('--conveyor_speed', type=float, default=0.01)
@@ -108,7 +109,7 @@ def create_object_urdf(object_mesh_filepath, object_name,
 if __name__ == "__main__":
     args = get_args()
     json.dump(vars(args), open(os.path.join(args.result_dir, args.object_name + '.json'), 'w'), indent=4)
-    mu.configure_pybullet(args.rendering)
+    mu.configure_pybullet(args.rendering, debug=False)
     rospy.init_node('dynamic_grasping')
 
     print()
@@ -121,7 +122,6 @@ if __name__ == "__main__":
     object_mesh_filepath_ply = object_mesh_filepath.replace('.obj', '.ply')
     target_urdf = create_object_urdf(object_mesh_filepath, args.object_name)
     target_mesh = trimesh.load_mesh(object_mesh_filepath)
-    target_mesh_bounds = target_mesh.bounds
     target_extents = target_mesh.bounding_box.extents.tolist()
     floor_offset = target_mesh.bounds.min(0)[2]
     target_z = -target_mesh.bounds.min(0)[2] + 0.02
@@ -129,7 +129,22 @@ if __name__ == "__main__":
     robot_initial_pose = [[0, 0, 0], [0, 0, 0, 1]]
     conveyor_initial_pose = [[0.3, 0.3, 0.01], [0, 0, 0, 1]]
 
+    obstacle_urdfs = []
+    obstacle_zs = []
+    obstacle_extentss = []
+    if args.load_obstacles:
+        obstacle_names = ['tomato_soup_can', 'power_drill', 'bleach_cleanser']
+        for obstacle_name in obstacle_names:
+            mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(obstacle_name), '{}.obj'.format(obstacle_name))
+            obstacle_urdfs.append(create_object_urdf(mesh_filepath, obstacle_name,
+                                                     urdf_target_object_filepath='assets/{}_obstacle.urdf'.format(
+                                                         obstacle_name)))
+            obstacle_mesh = trimesh.load_mesh(mesh_filepath)
+            obstacle_extentss.append(obstacle_mesh.bounding_box.extents.tolist())
+            obstacle_zs.append(-obstacle_mesh.bounds.min(0)[2])
+
     dynamic_grasping_world = DynamicGraspingWorld(target_name=args.object_name,
+                                                  obstacle_names=obstacle_names,
                                                   robot_config_name=args.robot_config_name,
                                                   target_initial_pose=target_initial_pose,
                                                   robot_initial_pose=robot_initial_pose,
@@ -165,7 +180,13 @@ if __name__ == "__main__":
                                                   approach_prediction=args.approach_prediction,
                                                   approach_prediction_duration=args.approach_prediction_duration,
                                                   fix_motion_planning_time=args.fix_motion_planning_time,
-                                                  fix_grasp_ranking_time=args.fix_grasp_ranking_time)
+                                                  fix_grasp_ranking_time=args.fix_grasp_ranking_time,
+                                                  load_obstacles=args.load_obstacles,
+                                                  obstacle_urdfs=obstacle_urdfs,
+                                                  obstacle_zs=obstacle_zs,
+                                                  obstacle_extentss=obstacle_extentss,
+                                                  obstacle_distance_low=0.15,
+                                                  obstacle_distance_high=0.35)
 
     # adding option to use previous experiment as config
     baseline_experiment_config_df = None
@@ -197,7 +218,8 @@ if __name__ == "__main__":
                 print('skipping trial {}'.format(i))
                 continue
 
-        distance, theta, length, direction, target_quaternion = dynamic_grasping_world.reset(mode='dynamic_linear', reset_dict=reset_dict)
+        distance, theta, length, direction, target_quaternion = dynamic_grasping_world.reset(mode='dynamic_linear',
+                                                                                             reset_dict=reset_dict)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         if args.record_videos:
             logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, '{}.mp4'.format(i)))
@@ -214,5 +236,3 @@ if __name__ == "__main__":
                   ('direction', direction),
                   ('target_quaternion', target_quaternion)]
         mu.write_csv_line(result_file_path=args.result_file_path, result=result)
-
-

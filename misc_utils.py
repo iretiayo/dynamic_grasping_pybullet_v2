@@ -9,6 +9,8 @@ import pandas as pd
 from math import radians, cos, sin
 import tf_conversions as tfc
 import numpy as np
+import random
+from shapely.geometry import Polygon, Point
 
 
 def write_csv_line(result_file_path, result):
@@ -83,5 +85,17 @@ def calculate_transform(frame1, frame2):
 def pose_2_matrix(p):
     return tfc.toMatrix(tfc.fromTf(p))
 
+
+def random_point_in_polygon(polygon):
+    min_x, min_y, max_x, max_y = polygon.bounds
+
+    x = random.uniform(min_x, max_x)
+    y = random.uniform(min_y, max_y)
+
+    while not Point([x, y]).within(polygon):
+        x = random.uniform(min_x, max_x)
+        y = random.uniform(min_y, max_y)
+
+    return (x, y)
 
 

@@ -17,11 +17,14 @@ import random
 import tf_conversions as tfc
 import moveit_commander as mc
 from ur5_robotiq_pybullet import load_ur_robotiq_robot, UR5RobotiqPybulletController
+from shapely.geometry import Polygon, Point
+import misc_utils as mu
 
 
 class DynamicGraspingWorld:
     def __init__(self,
                  target_name,
+                 obstacle_names,
                  robot_config_name,
                  target_initial_pose,
                  robot_initial_pose,
@@ -57,8 +60,15 @@ class DynamicGraspingWorld:
                  approach_prediction,
                  approach_prediction_duration,
                  fix_motion_planning_time,
-                 fix_grasp_ranking_time):
+                 fix_grasp_ranking_time,
+                 load_obstacles,
+                 obstacle_urdfs,
+                 obstacle_zs,
+                 obstacle_extentss,
+                 obstacle_distance_low,
+                 obstacle_distance_high):
         self.target_name = target_name
+        self.obstacle_names = obstacle_names
         self.robot_config_name = robot_config_name
         self.target_initial_pose = target_initial_pose
         self.robot_initial_pose = robot_initial_pose
@@ -92,14 +102,24 @@ class DynamicGraspingWorld:
         self.grasp_database_path = grasp_database_path
         actual_grasps, graspit_grasps = gu.load_grasp_database_new(grasp_database_path, self.target_name)
         use_actual = False
-        self.graspit_grasps = actual_grasps if use_actual else  graspit_grasps
+        self.graspit_grasps = actual_grasps if use_actual else graspit_grasps
 
         self.robot_configs = gu.robot_configs[self.robot_config_name]
-        self.graspit_pregrasps = [pu.merge_pose_2d(gu.back_off_pose_2d(pu.split_7d(g), back_off, self.robot_configs.graspit_approach_dir)) for g in self.graspit_grasps]
-        self.grasps_eef = [pu.merge_pose_2d(gu.change_end_effector_link_pose_2d(pu.split_7d(g), self.robot_configs.GRASPIT_LINK_TO_MOVEIT_LINK)) for g in self.graspit_grasps]
-        self.grasps_link6_ref = [pu.merge_pose_2d(gu.change_end_effector_link_pose_2d(pu.split_7d(g), self.robot_configs.GRASPIT_LINK_TO_PYBULLET_LINK)) for g in self.graspit_grasps]
-        self.pre_grasps_eef = [pu.merge_pose_2d(gu.change_end_effector_link_pose_2d(pu.split_7d(g), self.robot_configs.GRASPIT_LINK_TO_MOVEIT_LINK)) for g in self.graspit_pregrasps]
-        self.pre_grasps_link6_ref = [pu.merge_pose_2d(gu.change_end_effector_link_pose_2d(pu.split_7d(g), self.robot_configs.GRASPIT_LINK_TO_PYBULLET_LINK)) for g in self.graspit_pregrasps]
+        self.graspit_pregrasps = [
+            pu.merge_pose_2d(gu.back_off_pose_2d(pu.split_7d(g), back_off, self.robot_configs.graspit_approach_dir)) for
+            g in self.graspit_grasps]
+        self.grasps_eef = [pu.merge_pose_2d(
+            gu.change_end_effector_link_pose_2d(pu.split_7d(g), self.robot_configs.GRASPIT_LINK_TO_MOVEIT_LINK)) for g
+            in self.graspit_grasps]
+        self.grasps_link6_ref = [pu.merge_pose_2d(
+            gu.change_end_effector_link_pose_2d(pu.split_7d(g), self.robot_configs.GRASPIT_LINK_TO_PYBULLET_LINK)) for g
+            in self.graspit_grasps]
+        self.pre_grasps_eef = [pu.merge_pose_2d(
+            gu.change_end_effector_link_pose_2d(pu.split_7d(g), self.robot_configs.GRASPIT_LINK_TO_MOVEIT_LINK)) for g
+            in self.graspit_pregrasps]
+        self.pre_grasps_link6_ref = [pu.merge_pose_2d(
+            gu.change_end_effector_link_pose_2d(pu.split_7d(g), self.robot_configs.GRASPIT_LINK_TO_PYBULLET_LINK)) for g
+            in self.graspit_pregrasps]
 
         self.reachability_data_dir = reachability_data_dir
         self.sdf_reachability_space, self.mins, self.step_size, self.dims = gu.get_reachability_space(
@@ -132,6 +152,13 @@ class DynamicGraspingWorld:
         self.approach_prediction_duration = approach_prediction_duration
         self.fix_motion_planning_time = fix_motion_planning_time
         self.fix_grasp_ranking_time = fix_grasp_ranking_time
+        self.load_obstacles = load_obstacles
+        self.obstacle_distance_low = obstacle_distance_low
+        self.obstacle_distance_high = obstacle_distance_high
+        self.obstacles_urdfs = obstacle_urdfs
+        self.obstacles_zs = obstacle_zs
+        self.obstacles_extentss = obstacle_extentss
+        self.obstacles = []
 
     def reset(self, mode, reset_dict=None):
         """
@@ -184,9 +211,15 @@ class DynamicGraspingWorld:
                            target_quaternion]
             p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
             self.conveyor.set_pose(conveyor_pose)
+            if self.load_obstacles:
+                self.obstacles = self.load_obstacles_collision_free(distance, theta, length)
             self.robot.reset()
             # self.scene.add_box("floor", gu.list_2_ps(((0, 0, -0.055), (0, 0, 0, 1))), size=(2, 2, 0.1))
             pu.step(2)
+
+            if self.load_obstacles:
+                for i, n, e in zip(self.obstacles, self.obstacle_names, self.obstacles_extentss):
+                    self.scene.add_box(n, gu.list_2_ps(pu.get_body_pose(i)), size=e)
 
             self.motion_predictor_kf.initialize_predictor(target_pose)
             pu.draw_line(self.conveyor.start_pose[0], self.conveyor.target_pose[0])
@@ -258,7 +291,8 @@ class DynamicGraspingWorld:
         # plan = self.robot.plan_arm_joint_values_simple(grasp_jv)
         # self.robot.execute_arm_plan(plan, self.realtime)
         # grasp_reachaed = self.robot.equal_conf(self.robot.get_arm_joint_values(), grasp_jv, tol=0.01)
-        plan, fraction = self.robot.plan_straight_line(tfc.toMsg(tfc.fromTf(grasp)), ee_step=0.01, avoid_collisions=True)
+        plan, fraction = self.robot.plan_straight_line(tfc.toMsg(tfc.fromTf(grasp)), ee_step=0.01,
+                                                       avoid_collisions=True)
         if plan is None:
             return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, "no motion found to the planned grasp jv"
         self.robot.execute_arm_plan(plan, self.realtime)
@@ -291,7 +325,8 @@ class DynamicGraspingWorld:
         elif self.use_gt:
             current_target_pose = pu.get_body_pose(self.target)
             predicted_conveyor_pose = self.conveyor.predict(duration)
-            predicted_target_position = [predicted_conveyor_pose[0][0], predicted_conveyor_pose[0][1], current_target_pose[0][2]]
+            predicted_target_position = [predicted_conveyor_pose[0][0], predicted_conveyor_pose[0][1],
+                                         current_target_pose[0][2]]
             predicted_target_pose = [predicted_target_position, current_target_pose[1]]
         else:
             # no prediction
@@ -319,7 +354,7 @@ class DynamicGraspingWorld:
         done = False
         dynamic_grasp_time = 0
         distance = None
-        initial_motion_plan_success = False    # not necessarily succeed
+        initial_motion_plan_success = False  # not necessarily succeed
         while not done:
             done = self.check_done()
             current_target_pose = pu.get_body_pose(self.target)
@@ -351,7 +386,8 @@ class DynamicGraspingWorld:
 
             # plan a motion
             distance = np.linalg.norm(np.array(self.robot.get_eef_pose()[0]) - np.array(planned_pre_grasp[0]))
-            distance_travelled = np.linalg.norm(np.array(current_target_pose[0]) - np.array(last_motion_plan_success_pos)) if initial_motion_plan_success else 0
+            distance_travelled = np.linalg.norm(np.array(current_target_pose[0]) - np.array(
+                last_motion_plan_success_pos)) if initial_motion_plan_success else 0
             if self.check_lazy_plan(distance, grasp_switched, distance_travelled):
                 # print("lazy plan")
                 continue
@@ -373,12 +409,14 @@ class DynamicGraspingWorld:
                     predicted_target_pose, predicted_conveyor_pose = self.predict(self.approach_prediction_duration)
                     planned_grasp_in_object = pu.split_7d(self.grasps_eef[grasp_idx])
                     planned_grasp = gu.convert_grasp_in_object_to_world(predicted_target_pose, planned_grasp_in_object)
-                    planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False, arm_joint_values=self.robot.get_arm_joint_values())
+                    planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False,
+                                                             arm_joint_values=self.robot.get_arm_joint_values())
                     if planned_grasp_jv is None:
                         print("the predicted approach motion is not reachable")
                         continue
 
-                motion_planning_time, arm_motion_plan, gripper_motion_plan = self.plan_approach_motion(planned_grasp_jv, self.approach_prediction_duration)
+                motion_planning_time, arm_motion_plan, gripper_motion_plan = self.plan_approach_motion(planned_grasp_jv,
+                                                                                                       self.approach_prediction_duration)
                 dynamic_grasp_time += motion_planning_time
                 self.execute_appraoch_and_grasp(arm_motion_plan, gripper_motion_plan)
                 self.execute_lift()
@@ -401,12 +439,14 @@ class DynamicGraspingWorld:
                 ipdb.set_trace()
             start_joint_values = self.robot.arm_discretized_plan[future_target_index]
             arm_discretized_plan = self.robot.plan_arm_joint_values_simple(grasp_jv,
-                                                                           start_joint_values=start_joint_values, duration=prediction_duration)
+                                                                           start_joint_values=start_joint_values,
+                                                                           duration=prediction_duration)
         else:
             arm_discretized_plan = self.robot.plan_arm_joint_values_simple(grasp_jv, duration=prediction_duration)
 
         # there is no gripper discretized plan
-        gripper_discretized_plan = self.robot.plan_gripper_joint_values(self.robot.CLOSED_POSITION, duration=prediction_duration)
+        gripper_discretized_plan = self.robot.plan_gripper_joint_values(self.robot.CLOSED_POSITION,
+                                                                        duration=prediction_duration)
 
         planning_time = time.time() - start_time
         print("Planning a motion takes {:.6f}".format(planning_time))
@@ -445,7 +485,7 @@ class DynamicGraspingWorld:
         # fk_result = self.robot.get_arm_fk(ik_result)
         fk_result = self.robot.get_arm_fk_pybullet(ik_result)
 
-        trans_dist = np.linalg.norm(np.array(eef_pose[0])-np.array(fk_result[0]))
+        trans_dist = np.linalg.norm(np.array(eef_pose[0]) - np.array(fk_result[0]))
         ang_dist = np.abs(np.dot(np.array(eef_pose[1]), np.array(fk_result[1])))
 
         return (1 - coeff) * trans_dist + coeff * ang_dist
@@ -477,12 +517,16 @@ class DynamicGraspingWorld:
         for i, grasp_idx in enumerate(grasp_order_idxs):
             if i == self.max_check:
                 break
-            planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp_approximate(grasp_idx, target_pose)
-            map(lambda x, y: x.append(y), [planned_pre_grasps, planned_pre_grasp_jvs, planned_grasps, planned_grasp_jvs], [planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv])
+            planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp_approximate(
+                grasp_idx, target_pose)
+            map(lambda x, y: x.append(y),
+                [planned_pre_grasps, planned_pre_grasp_jvs, planned_grasps, planned_grasp_jvs],
+                [planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv])
 
-        pregrasp_ik_error = [self.get_ik_error(ee_pose, ik) for ee_pose, ik  in zip(planned_pre_grasps, planned_pre_grasp_jvs)]
-        grasp_ik_error = [self.get_ik_error(ee_pose, ik) for ee_pose, ik  in zip(planned_grasps, planned_grasp_jvs)]
-        ik_error_sum = np.array(pregrasp_ik_error)+np.array(grasp_ik_error)
+        pregrasp_ik_error = [self.get_ik_error(ee_pose, ik) for ee_pose, ik in
+                             zip(planned_pre_grasps, planned_pre_grasp_jvs)]
+        grasp_ik_error = [self.get_ik_error(ee_pose, ik) for ee_pose, ik in zip(planned_grasps, planned_grasp_jvs)]
+        ik_error_sum = np.array(pregrasp_ik_error) + np.array(grasp_ik_error)
         min_error_idx = np.argmin(ik_error_sum)
         margin = 0.02  # TODO: check if this margin makes sense
         if old_grasp_idx and ik_error_sum[old_grasp_idx] < ik_error_sum[min_error_idx] + margin:
@@ -491,11 +535,12 @@ class DynamicGraspingWorld:
             grasp_idx = min_error_idx
         grasp_switched = (grasp_idx != old_grasp_idx)
 
-        num_ik_called = 2*len(planned_pre_grasps)
+        num_ik_called = 2 * len(planned_pre_grasps)
         planning_time = rank_grasp_time + num_ik_called * ik_call_time
         # print("Planning a grasp takes {:.6f}".format(planning_time))
 
-        return grasp_idx, planning_time, num_ik_called, planned_pre_grasps[grasp_idx], planned_pre_grasp_jvs[grasp_idx], planned_grasps[grasp_idx], planned_grasp_jvs[grasp_idx], grasp_switched
+        return grasp_idx, planning_time, num_ik_called, planned_pre_grasps[grasp_idx], planned_pre_grasp_jvs[grasp_idx], \
+               planned_grasps[grasp_idx], planned_grasp_jvs[grasp_idx], grasp_switched
 
     def get_iks_pregrasp_and_grasp(self, query_grasp_idx, target_pose):
         """ return 1 or 2 ik called; if successful, then planned_grasp_jv is not None """
@@ -547,7 +592,8 @@ class DynamicGraspingWorld:
 
         # if an old grasp index is provided
         if old_grasp_idx is not None:
-            _num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(old_grasp_idx, target_pose)
+            _num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(
+                old_grasp_idx, target_pose)
             num_ik_called += _num_ik_called
             if planned_grasp_jv is not None:
                 planning_time = num_ik_called * ik_call_time
@@ -558,12 +604,14 @@ class DynamicGraspingWorld:
         grasp_order_idxs = self.rank_grasps(target_pose)
         actual_rank_grasp_time = time.time() - rank_grasp_time_start
         rank_grasp_time = actual_rank_grasp_time if self.fix_grasp_ranking_time is None else self.fix_grasp_ranking_time
-        print('Rank grasp actually takes {:.6f}, fixed grasp ranking time {:.6}'.format(actual_rank_grasp_time, self.fix_grasp_ranking_time))
+        print('Rank grasp actually takes {:.6f}, fixed grasp ranking time {:.6}'.format(actual_rank_grasp_time,
+                                                                                        self.fix_grasp_ranking_time))
 
         for i, grasp_idx in enumerate(grasp_order_idxs):
             if i == self.max_check:
                 break
-            _num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(grasp_idx, target_pose)
+            _num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(
+                grasp_idx, target_pose)
             num_ik_called += _num_ik_called
             if planned_grasp_jv is not None:
                 grasp_switched = (grasp_idx != old_grasp_idx)
@@ -605,7 +653,8 @@ class DynamicGraspingWorld:
 
         actual_planning_time = time.time() - start_time
         planning_time = actual_planning_time if self.fix_motion_planning_time is None else self.fix_motion_planning_time
-        print("Planning a motion actually takes {:.6f}, fixed motion planning time {:.6}".format(actual_planning_time, self.fix_motion_planning_time))
+        print("Planning a motion actually takes {:.6f}, fixed motion planning time {:.6}".format(actual_planning_time,
+                                                                                                 self.fix_motion_planning_time))
         return planning_time, arm_discretized_plan
 
     def sample_target_location(self):
@@ -628,6 +677,7 @@ class DynamicGraspingWorld:
         return list(orientation)
 
     def sample_convey_linear_motion(self, dist=None, theta=None, length=None, direction=None):
+        """ theta is in degrees """
         if dist is None:
             dist = np.random.uniform(low=self.distance_low, high=self.distance_high)
         if theta is None:
@@ -637,6 +687,67 @@ class DynamicGraspingWorld:
         if direction is None:
             direction = random.sample([-1, 1], 1)[0]
         return dist, theta, length, direction
+
+    def load_obstacles_collision_free(self, distance, theta, length):
+        theta = theta - 90
+        translation = np.array([[1, 0, 0],
+                                [0, 1, distance],
+                                [0, 0, 1]])
+        rotation = np.array([[cos(radians(theta)), -sin(radians(theta)), 0],
+                             [sin(radians(theta)), cos(radians(theta)), 0],
+                             [0, 0, 1]])
+        transform_matrix = rotation.dot(translation)
+
+        # group 1
+        points_counter_clock_initial_1 = [(-length / 2.0, self.obstacle_distance_low),
+                                          (-length / 2.0, self.obstacle_distance_high),
+                                          (length / 2.0, self.obstacle_distance_high),
+                                          (length / 2.0, self.obstacle_distance_low)]
+        points_counter_clock_transformed_1 = []
+        for point in points_counter_clock_initial_1:
+            points_counter_clock_transformed_1.append(tuple(transform_matrix.dot(np.array(point + (1,)))[:2]))
+        # visualize
+        lines = zip(points_counter_clock_transformed_1,
+                    points_counter_clock_transformed_1[1:] + [points_counter_clock_transformed_1[0]])
+        for (p1, p2) in lines:
+            pu.draw_line(p1 + (0.01,), p2 + (0.01,), rgb_color=(0, 1, 0))
+
+        # group 2
+        points_counter_clock_initial_2 = [(-length / 2.0, -self.obstacle_distance_low),
+                                          (-length / 2.0, -self.obstacle_distance_high),
+                                          (length / 2.0, -self.obstacle_distance_high),
+                                          (length / 2.0, -self.obstacle_distance_low)]
+        points_counter_clock_transformed_2 = []
+        for point in points_counter_clock_initial_2:
+            points_counter_clock_transformed_2.append(tuple(transform_matrix.dot(np.array(point + (1,)))[:2]))
+        # visualize
+        lines = zip(points_counter_clock_transformed_2,
+                    points_counter_clock_transformed_2[1:] + [points_counter_clock_transformed_2[0]])
+        for (p1, p2) in lines:
+            pu.draw_line(p1 + (0.01,), p2 + (0.01,), rgb_color=(0, 1, 0))
+
+        polygon_initial_1 = Polygon(points_counter_clock_initial_1)
+        polygon_transformed_1 = Polygon(points_counter_clock_transformed_1)
+        polygon_initial_2 = Polygon(points_counter_clock_initial_2)
+        polygon_transformed_2 = Polygon(points_counter_clock_transformed_2)
+
+        poses = []
+        obstacles = []
+        for urdf, extents, z in zip(self.obstacles_urdfs, self.obstacles_extentss, self.obstacles_zs):
+            choice = random.choice([1, 2])
+            if choice == 1:
+                position_xy = mu.random_point_in_polygon(polygon_initial_1)
+                position_xy = tuple(transform_matrix.dot(np.array(position_xy + (1,)))[:2])
+                pose = [list(position_xy)+[z], self.sample_target_angle()]
+                poses.append(pose)
+                obstacles.append(p.loadURDF(urdf, pose[0], pose[1]))
+            else:
+                position_xy = mu.random_point_in_polygon(polygon_initial_2)
+                position_xy = tuple(transform_matrix.dot(np.array(position_xy + (1,)))[:2])
+                pose = [list(position_xy)+[z], self.sample_target_angle()]
+                poses.append(pose)
+                obstacles.append(p.loadURDF(urdf, pose[0], pose[1]))
+        return obstacles
 
     def check_done(self):
         done = False
