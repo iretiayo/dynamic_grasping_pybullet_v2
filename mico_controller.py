@@ -13,6 +13,8 @@ import tqdm
 import tf_conversions
 import moveit_commander as mc
 from moveit_msgs.srv import GetPositionIK, GetPositionFK
+from trac_ik_python.trac_ik_wrap import TRAC_IK
+import ray
 
 import rospy
 from moveit_msgs.msg import DisplayTrajectory, PositionIKRequest, RobotState, GenericTrajectory, RobotTrajectory
@@ -27,6 +29,34 @@ from collections import namedtuple
 np.set_printoptions(suppress=True)
 
 Motion = namedtuple('Motion', ['position_trajectory', 'time_trajectory', 'velocity_trajectory'])
+
+
+@ray.remote
+class IKSolver(object):
+    def __init__(self):
+        urdf = rospy.get_param('/robot_description')
+        self.trac_ik_solver = TRAC_IK("m1n6s200_link_base",
+                                      "m1n6s200_end_effector",
+                                      urdf,
+                                      0.005,  # default seconds
+                                      1e-5,  # default epsilon
+                                      "Speed")
+
+    def get_ik(self, pose_2d, arm_joint_values, xyz_tol=0.001, rpy_tol=0.1):
+        qinit = arm_joint_values
+        x, y, z = pose_2d[0]
+        rx, ry, rz, rw = pose_2d[1]
+        bx = by = bz = xyz_tol
+        brx = bry = brz = rpy_tol
+        sol = self.trac_ik_solver.CartToJnt(qinit,
+                                            x, y, z,
+                                            rx, ry, rz, rw,
+                                            bx, by, bz,
+                                            brx, bry, brz)
+        return sol
+
+    def read(self):
+        return self.n
 
 
 class MicoController:
