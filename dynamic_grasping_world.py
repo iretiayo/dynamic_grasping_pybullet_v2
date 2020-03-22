@@ -604,11 +604,18 @@ class DynamicGraspingWorld:
 
         # if an old grasp index is provided
         if old_grasp_idx is not None:
-            _num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(old_grasp_idx, target_pose)
-            num_ik_called += _num_ik_called
-            if planned_grasp_jv is not None:
-                planning_time = num_ik_called * ik_call_time
+            planned_pre_grasps = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(self.pre_grasps_eef[old_grasp_idx]))]*self.max_check
+            planned_grasps = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(self.grasps_eef[old_grasp_idx]))]*self.max_check
+            grasp_idx_in_list, planned_pre_grasp_jv, planned_pre_grasp, planned_grasp_jv, planned_grasp = self.get_ik_parrallel(planned_pre_grasps, planned_grasps)
+            if planned_pre_grasp is not None:
+                planning_time = 2 * ik_call_time
                 return old_grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
+
+            # _num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(old_grasp_idx, target_pose)
+            # num_ik_called += _num_ik_called
+            # if planned_grasp_jv is not None:
+            #     planning_time = num_ik_called * ik_call_time
+            #     return old_grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
 
         # if an old grasp index is not provided or the old grasp is not reachable any more
         rank_grasp_time_start = time.time()
