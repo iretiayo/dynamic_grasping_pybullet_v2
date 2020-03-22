@@ -94,18 +94,6 @@ def get_args():
     return args
 
 
-def create_object_urdf(object_mesh_filepath, object_name,
-                       urdf_template_filepath='assets/object_template.urdf',
-                       urdf_target_object_filepath='assets/target_object.urdf'):
-    # set_up urdf
-    os.system('cp {} {}'.format(urdf_template_filepath, urdf_target_object_filepath))
-    sed_cmd = "sed -i 's|{}|{}|g' {}".format('object_name.obj', object_mesh_filepath, urdf_target_object_filepath)
-    os.system(sed_cmd)
-    sed_cmd = "sed -i 's|{}|{}|g' {}".format('object_name', object_name, urdf_target_object_filepath)
-    os.system(sed_cmd)
-    return urdf_target_object_filepath
-
-
 if __name__ == "__main__":
     args = get_args()
     json.dump(vars(args), open(os.path.join(args.result_dir, args.object_name + '.json'), 'w'), indent=4)
@@ -120,7 +108,7 @@ if __name__ == "__main__":
 
     object_mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(args.object_name), '{}.obj'.format(args.object_name))
     object_mesh_filepath_ply = object_mesh_filepath.replace('.obj', '.ply')
-    target_urdf = create_object_urdf(object_mesh_filepath, args.object_name)
+    target_urdf = mu.create_object_urdf(object_mesh_filepath, args.object_name)
     target_mesh = trimesh.load_mesh(object_mesh_filepath)
     target_extents = target_mesh.bounding_box.extents.tolist()
     floor_offset = target_mesh.bounds.min(0)[2]
@@ -128,23 +116,11 @@ if __name__ == "__main__":
     target_initial_pose = [[0.3, 0.3, target_z], [0, 0, 0, 1]]
     robot_initial_pose = [[0, 0, 0], [0, 0, 0, 1]]
     conveyor_initial_pose = [[0.3, 0.3, 0.01], [0, 0, 0, 1]]
-
-    obstacle_urdfs = []
-    obstacle_zs = []
-    obstacle_extentss = []
-    if args.load_obstacles:
-        obstacle_names = ['tomato_soup_can', 'power_drill', 'bleach_cleanser']
-        for obstacle_name in obstacle_names:
-            mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(obstacle_name), '{}.obj'.format(obstacle_name))
-            obstacle_urdfs.append(create_object_urdf(mesh_filepath, obstacle_name,
-                                                     urdf_target_object_filepath='assets/{}_obstacle.urdf'.format(
-                                                         obstacle_name)))
-            obstacle_mesh = trimesh.load_mesh(mesh_filepath)
-            obstacle_extentss.append(obstacle_mesh.bounding_box.extents.tolist())
-            obstacle_zs.append(-obstacle_mesh.bounds.min(0)[2])
+    obstacle_names = ['tomato_soup_can', 'power_drill', 'bleach_cleanser']
 
     dynamic_grasping_world = DynamicGraspingWorld(target_name=args.object_name,
                                                   obstacle_names=obstacle_names,
+                                                  mesh_dir=args.mesh_dir,
                                                   robot_config_name=args.robot_config_name,
                                                   target_initial_pose=target_initial_pose,
                                                   robot_initial_pose=robot_initial_pose,
@@ -182,9 +158,6 @@ if __name__ == "__main__":
                                                   fix_motion_planning_time=args.fix_motion_planning_time,
                                                   fix_grasp_ranking_time=args.fix_grasp_ranking_time,
                                                   load_obstacles=args.load_obstacles,
-                                                  obstacle_urdfs=obstacle_urdfs,
-                                                  obstacle_zs=obstacle_zs,
-                                                  obstacle_extentss=obstacle_extentss,
                                                   obstacle_distance_low=0.15,
                                                   obstacle_distance_high=0.35)
 

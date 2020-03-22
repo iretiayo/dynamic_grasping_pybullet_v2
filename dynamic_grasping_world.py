@@ -19,12 +19,14 @@ import moveit_commander as mc
 from ur5_robotiq_pybullet import load_ur_robotiq_robot, UR5RobotiqPybulletController
 from shapely.geometry import Polygon, Point
 import misc_utils as mu
+import trimesh
 
 
 class DynamicGraspingWorld:
     def __init__(self,
                  target_name,
                  obstacle_names,
+                 mesh_dir,
                  robot_config_name,
                  target_initial_pose,
                  robot_initial_pose,
@@ -62,13 +64,11 @@ class DynamicGraspingWorld:
                  fix_motion_planning_time,
                  fix_grasp_ranking_time,
                  load_obstacles,
-                 obstacle_urdfs,
-                 obstacle_zs,
-                 obstacle_extentss,
                  obstacle_distance_low,
                  obstacle_distance_high):
         self.target_name = target_name
         self.obstacle_names = obstacle_names
+        self.mesh_dir = mesh_dir
         self.robot_config_name = robot_config_name
         self.target_initial_pose = target_initial_pose
         self.robot_initial_pose = robot_initial_pose
@@ -152,13 +152,25 @@ class DynamicGraspingWorld:
         self.approach_prediction_duration = approach_prediction_duration
         self.fix_motion_planning_time = fix_motion_planning_time
         self.fix_grasp_ranking_time = fix_grasp_ranking_time
+
+        # obstacles
         self.load_obstacles = load_obstacles
         self.obstacle_distance_low = obstacle_distance_low
         self.obstacle_distance_high = obstacle_distance_high
-        self.obstacles_urdfs = obstacle_urdfs
-        self.obstacles_zs = obstacle_zs
-        self.obstacles_extentss = obstacle_extentss
-        self.obstacles = []
+
+        if self.load_obstacles:
+            self.obstacles = []
+            self.obstacle_urdfs = []
+            self.obstacle_zs = []
+            self.obstacle_extentss = []
+            for obstacle_name in self.obstacle_names:
+                mesh_filepath = os.path.join(self.mesh_dir, '{}'.format(obstacle_name), '{}.obj'.format(obstacle_name))
+                self.obstacle_urdfs.append(mu.create_object_urdf(mesh_filepath, obstacle_name,
+                                                                 urdf_target_object_filepath='assets/{}_obstacle.urdf'.format(
+                                                                     obstacle_name)))
+                obstacle_mesh = trimesh.load_mesh(mesh_filepath)
+                self.obstacle_extentss.append(obstacle_mesh.bounding_box.extents.tolist())
+                self.obstacle_zs.append(-obstacle_mesh.bounds.min(0)[2])
 
     def reset(self, mode, reset_dict=None):
         """
@@ -221,7 +233,7 @@ class DynamicGraspingWorld:
             pu.step(2)
 
             if self.load_obstacles:
-                for i, n, e in zip(self.obstacles, self.obstacle_names, self.obstacles_extentss):
+                for i, n, e in zip(self.obstacles, self.obstacle_names, self.obstacle_extentss):
                     self.scene.add_box(n, gu.list_2_ps(pu.get_body_pose(i)), size=e)
 
             self.motion_predictor_kf.initialize_predictor(target_pose)
@@ -736,18 +748,18 @@ class DynamicGraspingWorld:
 
         poses = []
         obstacles = []
-        for urdf, extents, z in zip(self.obstacles_urdfs, self.obstacles_extentss, self.obstacles_zs):
+        for urdf, extents, z in zip(self.obstacle_urdfs, self.obstacle_extentss, self.obstacle_zs):
             choice = random.choice([1, 2])
             if choice == 1:
                 position_xy = mu.random_point_in_polygon(polygon_initial_1)
                 position_xy = tuple(transform_matrix.dot(np.array(position_xy + (1,)))[:2])
-                pose = [list(position_xy)+[z], self.sample_target_angle()]
+                pose = [list(position_xy) + [z], self.sample_target_angle()]
                 poses.append(pose)
                 obstacles.append(p.loadURDF(urdf, pose[0], pose[1]))
             else:
                 position_xy = mu.random_point_in_polygon(polygon_initial_2)
                 position_xy = tuple(transform_matrix.dot(np.array(position_xy + (1,)))[:2])
-                pose = [list(position_xy)+[z], self.sample_target_angle()]
+                pose = [list(position_xy) + [z], self.sample_target_angle()]
                 poses.append(pose)
                 obstacles.append(p.loadURDF(urdf, pose[0], pose[1]))
         return obstacles
