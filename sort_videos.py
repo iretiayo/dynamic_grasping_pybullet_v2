@@ -26,13 +26,17 @@ if __name__ == '__main__':
         video_path = os.path.join(os.path.dirname(result_file_path), 'videos')
 
         success_video_path = os.path.join(video_path, 'success')
-        os.makedirs(success_video_path)
+        if not os.path.exists(success_video_path):
+            os.makedirs(success_video_path)
         for idx in df.index[df['success']]:
             v_fname = '{}.mp4'.format(idx)
-            shutil.move(os.path.join(video_path, v_fname), os.path.join(success_video_path, v_fname))
+            if os.path.exists(os.path.join(video_path, v_fname)):
+                shutil.move(os.path.join(video_path, v_fname), os.path.join(success_video_path, v_fname))
 
         failure_video_path = os.path.join(video_path, 'failure')
-        os.makedirs(failure_video_path)
+        if not os.path.exists(failure_video_path):
+            os.makedirs(failure_video_path)
         for idx in df.index[~df['success']]:
             v_fname = '{}.mp4'.format(idx)
-            shutil.move(os.path.join(video_path, v_fname), os.path.join(failure_video_path, v_fname))
+            if os.path.exists(os.path.join(video_path, v_fname)):
+                shutil.move(os.path.join(video_path, v_fname), os.path.join(failure_video_path, v_fname))
