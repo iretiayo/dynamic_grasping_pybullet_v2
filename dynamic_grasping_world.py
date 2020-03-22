@@ -334,9 +334,11 @@ class DynamicGraspingWorld:
             # update the scene. it will not reach the next line if the scene is not updated
             update_start_time = time.time()
             if self.use_box:
-                self.scene.add_box('target', gu.list_2_ps(predicted_target_pose), size=self.target_extents)
+                # self.scene.add_box('target', gu.list_2_ps(predicted_target_pose), size=self.target_extents)
+                self.scene.attach_box(link=self.robot.BASE_LINK, name='target', pose=gu.list_2_ps(predicted_target_pose), size=self.target_extents, touch_links=[])
             else:
-                self.scene.add_mesh('target', gu.list_2_ps(predicted_target_pose), self.target_mesh_file_path)
+                # self.scene.add_mesh('target', gu.list_2_ps(predicted_target_pose), self.target_mesh_file_path)
+                self.scene.attach_mesh(link=self.robot.BASE_LINK, name='target', pose=gu.list_2_ps(predicted_target_pose), filename=self.target_mesh_file_path, size=(1, 1, 1), touch_links=[])
             self.scene.add_box('conveyor', gu.list_2_ps(predicted_conveyor_pose), size=(.1, .1, .02))
             # print('Updating scene takes {} second'.format(time.time() - update_start_time))
 

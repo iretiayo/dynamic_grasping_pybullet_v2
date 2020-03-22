@@ -613,7 +613,10 @@ class MicoController:
 
     def clear_scene(self):
         for obj_name in self.get_attached_object_names():
-            self.scene.remove_attached_object(self.EEF_LINK_INDEX, obj_name)
+            try:
+                self.scene.remove_attached_object(self.EEF_LINK_INDEX, obj_name)
+            except:
+                self.scene.remove_attached_object(self.BASE_LINK, obj_name)
         for obj_name in self.get_known_object_names():
             self.scene.remove_world_object(obj_name)
 
