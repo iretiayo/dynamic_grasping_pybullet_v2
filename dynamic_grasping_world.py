@@ -313,6 +313,14 @@ class DynamicGraspingWorld:
         dist_q = pyqt.Quaternion.absolute_distance(pyqt.Quaternion(grasp_pose_tf[1]),
                                                    pyqt.Quaternion(current_eef_pose_tf[1]))
         can_grasp = np.linalg.norm(dist_pos) < np.abs(self.back_off * 1.2) and abs(dist_q) < np.pi / 180 * 20.
+        # print('can_grasp: {} \t dist: {}, {} \t dist_q:{}, {}'.format(can_grasp,
+        #         np.linalg.norm(dist_pos),
+        #         np.linalg.norm(dist_pos) < np.abs(self.back_off * 1.2),
+        #         abs(dist_q),
+        #         abs(dist_q) < np.pi / 180 * 20. ))
+        if dist_q > 4000: # sometimes a strange large number is returned from pyqt
+            print('dist_q ({}) is unusually large'.format(dist_q))
+            # import ipdb; ipdb.set_trace()
         return can_grasp
 
     def dynamic_grasp(self):
@@ -372,8 +380,8 @@ class DynamicGraspingWorld:
             initial_motion_plan_success = True
 
             # check can grasp or not
-            # can_grasp = self.can_grasp(grasp_idx)
-            can_grasp = self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=self.grasp_threshold)
+            can_grasp = self.can_grasp(grasp_idx)
+            # can_grasp = self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=self.grasp_threshold)
             if can_grasp:
                 if self.approach_prediction:
                     # one extra IK call, right now ignore the time because it is very small
@@ -554,6 +562,8 @@ class DynamicGraspingWorld:
         pregrasp_rolled_iks_ray = [self.ik_solvers[i].get_ik.remote(planned_pre_grasps_rolled[i], arm_joint_values) for i in range(len(planned_pre_grasps_rolled))]
         pregrasp_rolled_iks_ray = ray.get(pregrasp_rolled_iks_ray)
         pregrasp_iks_exists = [len(jv) > 0 for jv in pregrasp_iks_ray+pregrasp_rolled_iks_ray]
+
+        roll_flipped = False
         if np.any(pregrasp_iks_exists):
             diffs = np.array(
                 [np.linalg.norm(self.robot.arm_difference_fn(ik, arm_joint_values)) if ik else np.inf for ik in
@@ -580,6 +590,7 @@ class DynamicGraspingWorld:
                 planned_pre_grasp = planned_pre_grasps_rolled[idx]
                 planned_grasp_jv = grasp_rolled_iks_ray[idx] if len(grasp_rolled_iks_ray[idx]) > 0 else None
                 planned_grasp = None if planned_grasp_jv is None else planned_grasps_rolled[idx]
+                roll_flipped = True
         else:
             # import ipdb; ipdb.set_trace()
             iks_near = [self.ik_solvers[i].get_ik.remote(planned_pre_grasps[i], arm_joint_values, xyz_tol=0.1, rpy_tol=0.5) for i in range(len(planned_pre_grasps))]
@@ -591,7 +602,14 @@ class DynamicGraspingWorld:
             grasp_idx_in_list = idx  # grasp_order_idxs[idx]
             planned_pre_grasp_jv = pregrasp_iks_ray[idx]
             planned_pre_grasp = planned_grasp_jv = planned_grasp = None
-        return grasp_idx_in_list, planned_pre_grasp_jv, planned_pre_grasp, planned_grasp_jv, planned_grasp
+        return grasp_idx_in_list, planned_pre_grasp_jv, planned_pre_grasp, planned_grasp_jv, planned_grasp, roll_flipped
+
+    def flip_grasp_roll_in_list(self, grasp_idx):
+            self.pre_grasps_eef[grasp_idx] = pu.merge_pose_2d(tfc.toTf(
+                        tfc.fromTf(pu.split_7d(self.pre_grasps_eef[grasp_idx])) * tfc.fromTf(((0, 0, 0), tfc.Rotation.RPY(0, 0, np.pi).GetQuaternion()))))
+            self.grasps_eef[grasp_idx] = pu.merge_pose_2d(tfc.toTf(
+                        tfc.fromTf(pu.split_7d(self.grasps_eef[grasp_idx])) * tfc.fromTf(((0, 0, 0), tfc.Rotation.RPY(0, 0, np.pi).GetQuaternion()))))
+
 
     def plan_grasp(self, target_pose, old_grasp_idx):
         """ Plan a reachable pre_grasp and grasp pose"""
@@ -606,9 +624,11 @@ class DynamicGraspingWorld:
         if old_grasp_idx is not None:
             planned_pre_grasps = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(self.pre_grasps_eef[old_grasp_idx]))]*self.max_check
             planned_grasps = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(self.grasps_eef[old_grasp_idx]))]*self.max_check
-            grasp_idx_in_list, planned_pre_grasp_jv, planned_pre_grasp, planned_grasp_jv, planned_grasp = self.get_ik_parrallel(planned_pre_grasps, planned_grasps)
+            grasp_idx_in_list, planned_pre_grasp_jv, planned_pre_grasp, planned_grasp_jv, planned_grasp, roll_flipped = self.get_ik_parrallel(planned_pre_grasps, planned_grasps)
             if planned_pre_grasp is not None:
                 planning_time = 2 * ik_call_time
+                if roll_flipped:
+                    self.flip_grasp_roll_in_list(old_grasp_idx)
                 return old_grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
 
             # _num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(old_grasp_idx, target_pose)
@@ -626,8 +646,10 @@ class DynamicGraspingWorld:
 
         planned_pre_grasps = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(self.pre_grasps_eef[i])) for i in grasp_order_idxs[:self.max_check]]
         planned_grasps = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(self.grasps_eef[i])) for i in grasp_order_idxs[:self.max_check]]
-        grasp_idx_in_list, planned_pre_grasp_jv, planned_pre_grasp, planned_grasp_jv, planned_grasp = self.get_ik_parrallel(planned_pre_grasps, planned_grasps)
+        grasp_idx_in_list, planned_pre_grasp_jv, planned_pre_grasp, planned_grasp_jv, planned_grasp, roll_flipped = self.get_ik_parrallel(planned_pre_grasps, planned_grasps)
         grasp_idx = grasp_order_idxs[grasp_idx_in_list] if grasp_idx_in_list is not None else None
+        if roll_flipped:
+            self.flip_grasp_roll_in_list(grasp_idx)
 
         # for i, grasp_idx in enumerate(grasp_order_idxs):
         #     if i == self.max_check:
