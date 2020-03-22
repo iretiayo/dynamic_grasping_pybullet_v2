@@ -312,7 +312,7 @@ class DynamicGraspingWorld:
         dist_pos = np.abs(np.array(grasp_pose_tf[0]) - np.array(current_eef_pose_tf[0]))
         dist_q = pyqt.Quaternion.absolute_distance(pyqt.Quaternion(grasp_pose_tf[1]),
                                                    pyqt.Quaternion(current_eef_pose_tf[1]))
-        can_grasp = np.linalg.norm(dist_pos) < np.abs(self.back_off * 1.1) and dist_q < np.pi / 180 * 20.
+        can_grasp = np.linalg.norm(dist_pos) < np.abs(self.back_off * 1.2) and abs(dist_q) < np.pi / 180 * 20.
         return can_grasp
 
     def dynamic_grasp(self):
@@ -372,8 +372,8 @@ class DynamicGraspingWorld:
             initial_motion_plan_success = True
 
             # check can grasp or not
-            can_grasp = self.can_grasp(grasp_idx)
-            # can_grasp = self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=self.grasp_threshold)
+            # can_grasp = self.can_grasp(grasp_idx)
+            can_grasp = self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=self.grasp_threshold)
             if can_grasp:
                 if self.approach_prediction:
                     # one extra IK call, right now ignore the time because it is very small
