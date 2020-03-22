@@ -543,6 +543,56 @@ class DynamicGraspingWorld:
         #                                      maximum=max(sdf_values), minimum=min(sdf_values))
         return grasp_order_idxs
 
+    def get_ik_parrallel(self, planned_pre_grasps, planned_grasps):
+        # self.ik_solvers
+        arm_joint_values = self.robot.get_arm_joint_values()
+        pregrasp_iks_ray = [self.ik_solvers[i].get_ik.remote(planned_pre_grasps[i], arm_joint_values) for i in range(len(planned_pre_grasps))]
+        pregrasp_iks_ray = ray.get(pregrasp_iks_ray)
+        planned_pre_grasps_rolled = [tfc.toTf(tfc.fromTf(g) * tfc.fromTf(((0, 0, 0), tfc.Rotation.RPY(0, 0, np.pi).GetQuaternion()))) for g in planned_pre_grasps]
+        planned_grasps_rolled = [tfc.toTf(tfc.fromTf(g) * tfc.fromTf(((0, 0, 0), tfc.Rotation.RPY(0, 0, np.pi).GetQuaternion()))) for g in planned_grasps]
+        # rolled and original should be combined into a single list
+        pregrasp_rolled_iks_ray = [self.ik_solvers[i].get_ik.remote(planned_pre_grasps_rolled[i], arm_joint_values) for i in range(len(planned_pre_grasps_rolled))]
+        pregrasp_rolled_iks_ray = ray.get(pregrasp_rolled_iks_ray)
+        pregrasp_iks_exists = [len(jv) > 0 for jv in pregrasp_iks_ray+pregrasp_rolled_iks_ray]
+        if np.any(pregrasp_iks_exists):
+            diffs = np.array(
+                [np.linalg.norm(self.robot.arm_difference_fn(ik, arm_joint_values)) if ik else np.inf for ik in
+                 pregrasp_iks_ray+pregrasp_rolled_iks_ray])
+            grasp_iks_ray = [self.ik_solvers[i].get_ik.remote(planned_grasps[i], arm_joint_values) for i in range(len(planned_pre_grasps))]
+            grasp_iks_ray = ray.get(grasp_iks_ray)
+            grasp_rolled_iks_ray = [self.ik_solvers[i].get_ik.remote(planned_grasps_rolled[i], arm_joint_values) for i in range(len(planned_pre_grasps))]
+            grasp_rolled_iks_ray = ray.get(grasp_rolled_iks_ray)
+            grasp_iks_exists = [len(jv) > 0 for jv in grasp_iks_ray+grasp_rolled_iks_ray]
+            both_iks_exists = np.logical_and(pregrasp_iks_exists, grasp_iks_exists)
+            if np.any(both_iks_exists):
+                diffs[~both_iks_exists] = np.inf    # penalize any pregrasp without grasp ik
+            idx = np.argmin(diffs)
+            if idx < len(planned_pre_grasps):
+                grasp_idx_in_list = idx  # grasp_order_idxs[idx]
+                planned_pre_grasp_jv = pregrasp_iks_ray[idx]
+                planned_pre_grasp = planned_pre_grasps[idx]
+                planned_grasp_jv = grasp_iks_ray[idx] if len(grasp_iks_ray[idx]) > 0 else None
+                planned_grasp = None if planned_grasp_jv is None else planned_grasps[idx]
+            else:
+                idx -= len(planned_pre_grasps)
+                grasp_idx_in_list = idx  # grasp_order_idxs[idx]
+                planned_pre_grasp_jv = pregrasp_rolled_iks_ray[idx]
+                planned_pre_grasp = planned_pre_grasps_rolled[idx]
+                planned_grasp_jv = grasp_rolled_iks_ray[idx] if len(grasp_rolled_iks_ray[idx]) > 0 else None
+                planned_grasp = None if planned_grasp_jv is None else planned_grasps_rolled[idx]
+        else:
+            # import ipdb; ipdb.set_trace()
+            iks_near = [self.ik_solvers[i].get_ik.remote(planned_pre_grasps[i], arm_joint_values, xyz_tol=0.1, rpy_tol=0.5) for i in range(len(planned_pre_grasps))]
+            iks_near = ray.get(iks_near)
+            diffs = np.array(
+                [np.linalg.norm(self.robot.arm_difference_fn(ik, arm_joint_values)) if ik else np.inf for ik in
+                 iks_near])
+            idx = np.argmin(diffs)
+            grasp_idx_in_list = idx  # grasp_order_idxs[idx]
+            planned_pre_grasp_jv = pregrasp_iks_ray[idx]
+            planned_pre_grasp = planned_grasp_jv = planned_grasp = None
+        return grasp_idx_in_list, planned_pre_grasp_jv, planned_pre_grasp, planned_grasp_jv, planned_grasp
+
     def plan_grasp(self, target_pose, old_grasp_idx):
         """ Plan a reachable pre_grasp and grasp pose"""
         # timing of the best machine
@@ -567,56 +617,10 @@ class DynamicGraspingWorld:
         rank_grasp_time = actual_rank_grasp_time if self.fix_grasp_ranking_time is None else self.fix_grasp_ranking_time
         print('Rank grasp actually takes {:.6f}, fixed grasp ranking time {:.6}'.format(actual_rank_grasp_time, self.fix_grasp_ranking_time))
 
-        # self.ik_solvers
-
         planned_pre_grasps = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(self.pre_grasps_eef[i])) for i in grasp_order_idxs[:self.max_check]]
         planned_grasps = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(self.grasps_eef[i])) for i in grasp_order_idxs[:self.max_check]]
-        arm_joint_values = self.robot.get_arm_joint_values()
-        pregrasp_iks_ray = [self.ik_solvers[i].get_ik.remote(planned_pre_grasps[i], arm_joint_values) for i in range(len(planned_pre_grasps))]
-        pregrasp_iks_ray = ray.get(pregrasp_iks_ray)
-        planned_pre_grasps_rolled = [tfc.toTf(tfc.fromTf(g) * tfc.fromTf(((0, 0, 0), tfc.Rotation.RPY(0, 0, np.pi).GetQuaternion()))) for g in planned_pre_grasps]
-        planned_grasps_rolled = [tfc.toTf(tfc.fromTf(g) * tfc.fromTf(((0, 0, 0), tfc.Rotation.RPY(0, 0, np.pi).GetQuaternion()))) for g in planned_grasps]
-        # rolled and original should be combined into a single list
-        pregrasp_rolled_iks_ray = [self.ik_solvers[i].get_ik.remote(planned_pre_grasps_rolled[i], arm_joint_values) for i in range(len(planned_pre_grasps_rolled))]
-        pregrasp_rolled_iks_ray = ray.get(pregrasp_rolled_iks_ray)
-        pregrasp_iks_exists = [len(jv) > 0 for jv in pregrasp_iks_ray+pregrasp_rolled_iks_ray]
-        if np.any(pregrasp_iks_exists):
-            diffs = np.array(
-                [np.linalg.norm(self.robot.arm_difference_fn(ik, arm_joint_values)) if ik else np.inf for ik in
-                 pregrasp_iks_ray+pregrasp_rolled_iks_ray])
-            grasp_iks_ray = [self.ik_solvers[i].get_ik.remote(planned_grasps[i], arm_joint_values) for i in range(len(planned_pre_grasps))]
-            grasp_iks_ray = ray.get(grasp_iks_ray)
-            grasp_rolled_iks_ray = [self.ik_solvers[i].get_ik.remote(planned_grasps_rolled[i], arm_joint_values) for i in range(len(planned_pre_grasps))]
-            grasp_rolled_iks_ray = ray.get(grasp_rolled_iks_ray)
-            grasp_iks_exists = [len(jv) > 0 for jv in grasp_iks_ray+grasp_rolled_iks_ray]
-            both_iks_exists = np.logical_and(pregrasp_iks_exists, grasp_iks_exists)
-            if np.any(both_iks_exists):
-                diffs[~both_iks_exists] = np.inf    # penalize any pregrasp without grasp ik
-            idx = np.argmin(diffs)
-            if idx < len(planned_pre_grasps):
-                grasp_idx = grasp_order_idxs[idx]
-                planned_pre_grasp_jv = pregrasp_iks_ray[idx]
-                planned_pre_grasp = planned_pre_grasps[idx]
-                planned_grasp_jv = grasp_iks_ray[idx] if len(grasp_iks_ray[idx]) > 0 else None
-                planned_grasp = None if planned_grasp_jv is None else planned_grasps[idx]
-            else:
-                idx -= len(planned_pre_grasps)
-                grasp_idx = grasp_order_idxs[idx]
-                planned_pre_grasp_jv = pregrasp_rolled_iks_ray[idx]
-                planned_pre_grasp = planned_pre_grasps_rolled[idx]
-                planned_grasp_jv = grasp_rolled_iks_ray[idx] if len(grasp_rolled_iks_ray[idx]) > 0 else None
-                planned_grasp = None if planned_grasp_jv is None else planned_grasps_rolled[idx]
-        else:
-            # import ipdb; ipdb.set_trace()
-            iks_near = [self.ik_solvers[i].get_ik.remote(planned_pre_grasps[i], arm_joint_values, xyz_tol=0.1, rpy_tol=0.5) for i in range(len(planned_pre_grasps))]
-            iks_near = ray.get(iks_near)
-            diffs = np.array(
-                [np.linalg.norm(self.robot.arm_difference_fn(ik, arm_joint_values)) if ik else np.inf for ik in
-                 iks_near])
-            idx = np.argmin(diffs)
-            grasp_idx = grasp_order_idxs[idx]
-            planned_pre_grasp_jv = pregrasp_iks_ray[idx]
-            planned_pre_grasp = planned_grasp_jv = planned_grasp = None
+        grasp_idx_in_list, planned_pre_grasp_jv, planned_pre_grasp, planned_grasp_jv, planned_grasp = self.get_ik_parrallel(planned_pre_grasps, planned_grasps)
+        grasp_idx = grasp_order_idxs[grasp_idx_in_list] if grasp_idx_in_list is not None else None
 
         # for i, grasp_idx in enumerate(grasp_order_idxs):
         #     if i == self.max_check:
