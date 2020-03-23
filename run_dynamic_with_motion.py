@@ -159,7 +159,8 @@ if __name__ == "__main__":
                                                   fix_grasp_ranking_time=args.fix_grasp_ranking_time,
                                                   load_obstacles=args.load_obstacles,
                                                   obstacle_distance_low=0.15,
-                                                  obstacle_distance_high=0.35)
+                                                  obstacle_distance_high=0.25,
+                                                  distance_between_region=0.05)
 
     # adding option to use previous experiment as config
     baseline_experiment_config_df = None

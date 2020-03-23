@@ -20,6 +20,9 @@ from ur5_robotiq_pybullet import load_ur_robotiq_robot, UR5RobotiqPybulletContro
 from shapely.geometry import Polygon, Point
 import misc_utils as mu
 import trimesh
+from itertools import combinations
+
+
 
 
 class DynamicGraspingWorld:
@@ -65,7 +68,8 @@ class DynamicGraspingWorld:
                  fix_grasp_ranking_time,
                  load_obstacles,
                  obstacle_distance_low,
-                 obstacle_distance_high):
+                 obstacle_distance_high,
+                 distance_between_region):
         self.target_name = target_name
         self.obstacle_names = obstacle_names
         self.mesh_dir = mesh_dir
@@ -95,6 +99,7 @@ class DynamicGraspingWorld:
         self.use_kf = use_kf
         self.use_gt = use_gt
         self.motion_predictor_kf = MotionPredictorKF(self.pose_duration)
+        self.distance_between_region = distance_between_region
 
         self.distance_low = distance_low  # mico 0.15  ur5_robotiq: 0.3
         self.distance_high = distance_high  # mico 0.4  ur5_robotiq: 0.7
@@ -704,6 +709,7 @@ class DynamicGraspingWorld:
         return dist, theta, length, direction
 
     def load_obstacles_collision_free(self, distance, theta, length):
+        region_length = (length - 2 * self.distance_between_region) / 3
         theta = theta - 90
         translation = np.array([[1, 0, 0],
                                 [0, 1, distance],
@@ -713,55 +719,63 @@ class DynamicGraspingWorld:
                              [0, 0, 1]])
         transform_matrix = rotation.dot(translation)
 
-        # group 1
-        points_counter_clock_initial_1 = [(-length / 2.0, self.obstacle_distance_low),
-                                          (-length / 2.0, self.obstacle_distance_high),
-                                          (length / 2.0, self.obstacle_distance_high),
-                                          (length / 2.0, self.obstacle_distance_low)]
-        points_counter_clock_transformed_1 = []
-        for point in points_counter_clock_initial_1:
-            points_counter_clock_transformed_1.append(tuple(transform_matrix.dot(np.array(point + (1,)))[:2]))
-        # visualize
-        lines = zip(points_counter_clock_transformed_1,
-                    points_counter_clock_transformed_1[1:] + [points_counter_clock_transformed_1[0]])
-        for (p1, p2) in lines:
-            pu.draw_line(p1 + (0.01,), p2 + (0.01,), rgb_color=(0, 1, 0))
+        # there are 6 regions
+        regions = [[(-length / 2.0, self.obstacle_distance_low),
+                    (-length / 2.0, self.obstacle_distance_high),
+                    (-length / 2.0 + region_length, self.obstacle_distance_high),
+                    (-length / 2.0 + region_length, self.obstacle_distance_low)],
 
-        # group 2
-        points_counter_clock_initial_2 = [(-length / 2.0, -self.obstacle_distance_low),
-                                          (-length / 2.0, -self.obstacle_distance_high),
-                                          (length / 2.0, -self.obstacle_distance_high),
-                                          (length / 2.0, -self.obstacle_distance_low)]
-        points_counter_clock_transformed_2 = []
-        for point in points_counter_clock_initial_2:
-            points_counter_clock_transformed_2.append(tuple(transform_matrix.dot(np.array(point + (1,)))[:2]))
-        # visualize
-        lines = zip(points_counter_clock_transformed_2,
-                    points_counter_clock_transformed_2[1:] + [points_counter_clock_transformed_2[0]])
-        for (p1, p2) in lines:
-            pu.draw_line(p1 + (0.01,), p2 + (0.01,), rgb_color=(0, 1, 0))
+                   [(-length / 2.0 + region_length + self.distance_between_region, self.obstacle_distance_low),
+                    (-length / 2.0 + region_length + self.distance_between_region, self.obstacle_distance_high),
+                    (-length / 2.0 + 2 * region_length + self.distance_between_region, self.obstacle_distance_high),
+                    (-length / 2.0 + 2 * region_length + self.distance_between_region, self.obstacle_distance_low)],
 
-        polygon_initial_1 = Polygon(points_counter_clock_initial_1)
-        polygon_transformed_1 = Polygon(points_counter_clock_transformed_1)
-        polygon_initial_2 = Polygon(points_counter_clock_initial_2)
-        polygon_transformed_2 = Polygon(points_counter_clock_transformed_2)
+                   [(-length / 2.0 + 2 * region_length + 2 * self.distance_between_region, self.obstacle_distance_low),
+                    (-length / 2.0 + 2 * region_length + 2 * self.distance_between_region, self.obstacle_distance_high),
+                    (-length / 2.0 + 3 * region_length + 2 * self.distance_between_region, self.obstacle_distance_high),
+                    (-length / 2.0 + 3 * region_length + 2 * self.distance_between_region, self.obstacle_distance_low)],
+
+                   [(-length / 2.0 + 2 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_low),
+                    (-length / 2.0 + 2 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_high),
+                    (-length / 2.0 + 3 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_high),
+                    (-length / 2.0 + 3 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_low)],
+
+                   [(-length / 2.0 + region_length + self.distance_between_region, -self.obstacle_distance_low),
+                    (-length / 2.0 + region_length + self.distance_between_region, -self.obstacle_distance_high),
+                    (-length / 2.0 + 2 * region_length + self.distance_between_region, -self.obstacle_distance_high),
+                    (-length / 2.0 + 2 * region_length + self.distance_between_region, -self.obstacle_distance_low)],
+
+                   [(-length / 2.0, -self.obstacle_distance_low),
+                    (-length / 2.0, -self.obstacle_distance_high),
+                    (-length / 2.0 + region_length, -self.obstacle_distance_high),
+                    (-length / 2.0 + region_length, -self.obstacle_distance_low)]]
+
+        regions_transformed = []
+        for r in regions:
+            r_transformed = []
+            for point in r:
+                r_transformed.append(tuple(transform_matrix.dot(np.array(point + (1,)))[:2]))
+            regions_transformed.append(r_transformed)
+
+        # visualize
+        v_height = 0.01
+        for r in regions_transformed:
+            lines = zip(r, r[1:] + [r[0]])
+            for (p1, p2) in lines:
+                pu.draw_line(p1 + (v_height,), p2 + (v_height,), rgb_color=(0, 1, 0))
+
+        # create original polygons
+        polygons = [Polygon(r) for r in regions]
 
         poses = []
         obstacles = []
-        for urdf, extents, z in zip(self.obstacle_urdfs, self.obstacle_extentss, self.obstacle_zs):
-            choice = random.choice([1, 2])
-            if choice == 1:
-                position_xy = mu.random_point_in_polygon(polygon_initial_1)
-                position_xy = tuple(transform_matrix.dot(np.array(position_xy + (1,)))[:2])
-                pose = [list(position_xy) + [z], self.sample_target_angle()]
-                poses.append(pose)
-                obstacles.append(p.loadURDF(urdf, pose[0], pose[1]))
-            else:
-                position_xy = mu.random_point_in_polygon(polygon_initial_2)
-                position_xy = tuple(transform_matrix.dot(np.array(position_xy + (1,)))[:2])
-                pose = [list(position_xy) + [z], self.sample_target_angle()]
-                poses.append(pose)
-                obstacles.append(p.loadURDF(urdf, pose[0], pose[1]))
+        choices = random.choice(list(combinations(range(6), len(self.obstacle_names))))
+        for choice, urdf, extents, z in zip(choices, self.obstacle_urdfs, self.obstacle_extentss, self.obstacle_zs):
+            position_xy = mu.random_point_in_polygon(polygons[choice])
+            position_xy = tuple(transform_matrix.dot(np.array(position_xy + (1,)))[:2])
+            pose = [list(position_xy) + [z], self.sample_target_angle()]
+            poses.append(pose)
+            obstacles.append(p.loadURDF(urdf, pose[0], pose[1]))
         return obstacles
 
     def check_done(self):
