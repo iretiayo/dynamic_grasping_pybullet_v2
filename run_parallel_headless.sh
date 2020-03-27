@@ -5,19 +5,18 @@ timestr=final_$(date '+%Y-%m-%d_%H-%M-%S')
 mkdir $timestr
 cp run_dynamic_with_motion_parallel.sh $timestr
 
-node_id=1000
+node_id=10000
 
-for object_name in bleach_cleanser #mustard_bottle potted_meat_can sugar_box tomato_soup_can cube power_drill
+for object_name in bleach_cleanser mustard_bottle potted_meat_can sugar_box tomato_soup_can cube power_drill
 do
 
-    gnome-terminal -e "bash -ci '\
-        source ../../devel/setup.bash && \
-        export ROS_MASTER_URI=http://localhost:$node_id && \
-        roslaunch launch/mico_moveit_ros.launch planner:=chomp; $SHELL'"
+    screen -d -m -S ${object_name}_moveit bash -c "source ../../devel/setup.bash && \
+        export ROS_MASTER_URI=http://localhost:${node_id} && \
+        roslaunch launch/mico_moveit_ros.launch planner:=chomp;"
+
     sleep 3
 
-    gnome-terminal -e "bash -ci '\
-        source ../../devel/setup.bash && \
+    screen -d -m -S ${object_name}_pybullet bash -c "source ../../devel/setup.bash && \
         export ROS_MASTER_URI=http://localhost:$node_id && \
         python run_dynamic_with_motion.py \
             --object_name $object_name \
@@ -37,7 +36,7 @@ do
             --max_check 3 \
             --use_box \
             --use_kf \
-            --approach_prediction; $SHELL'"
+            --approach_prediction"
     sleep 3
     ((node_id++))
 done
