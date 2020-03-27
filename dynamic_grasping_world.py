@@ -324,7 +324,8 @@ class DynamicGraspingWorld:
         plan, fraction = self.robot.plan_cartesian_control(z=0.07)
         if fraction != 1.0:
             comment = "lift fration {} is not 1.0".format(fraction)
-        self.robot.execute_arm_plan(plan, self.realtime)
+        if plan is not None:
+            self.robot.execute_arm_plan(plan, self.realtime)
         success = self.check_success()
         pu.remove_all_markers()
         return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, comment
@@ -498,7 +499,8 @@ class DynamicGraspingWorld:
         plan, fraction = self.robot.plan_cartesian_control(z=0.07)
         if fraction != 1.0:
             print('fraction {} not 1'.format(fraction))
-        self.robot.execute_arm_plan(plan, self.realtime)
+        if plan is not None:
+            self.robot.execute_arm_plan(plan, self.realtime)
 
     def get_ik_error(self, eef_pose, ik_result, coeff=0.4):
 
