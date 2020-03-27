@@ -3,7 +3,7 @@
 timestr=final_$(date '+%Y-%m-%d_%H-%M-%S')
 
 mkdir $timestr
-cp run_dynamic_with_motion_parallel.sh $timestr
+cp run_headless_parallel.sh $timestr
 
 node_id=10000
 
