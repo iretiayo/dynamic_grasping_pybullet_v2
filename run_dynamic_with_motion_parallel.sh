@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-
-timestr=$(date '+%Y-%m-%d_%H-%M-%S')
+timestr=exp_name_$(date '+%Y-%m-%d_%H-%M-%S')
 node_id=10000
+
+mkdir $timestr
+cp run_dynamic_with_motion_parallel.sh $timestr
 
 for object_name in bleach_cleanser mustard_bottle potted_meat_can sugar_box tomato_soup_can cube power_drill
 do
@@ -39,5 +41,3 @@ do
     sleep 3
     ((node_id++))
 done
-
-cp run_dynamic_with_motion_parallel.sh $timestr
