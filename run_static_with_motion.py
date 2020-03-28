@@ -145,6 +145,8 @@ if __name__ == "__main__":
     conveyor_initial_pose = [[0.3, 0.3, 0.01], [0, 0, 0, 1]]
 
     dynamic_grasping_world = DynamicGraspingWorld(target_name=args.object_name,
+                                                  obstacle_names=[],
+                                                  mesh_dir=args.mesh_dir,
                                                   robot_config_name=args.robot_config_name,
                                                   target_initial_pose=target_initial_pose,
                                                   robot_initial_pose=robot_initial_pose,
@@ -178,7 +180,13 @@ if __name__ == "__main__":
                                                   use_box=args.use_box,
                                                   use_baseline_method=args.use_baseline_method,
                                                   approach_prediction=args.approach_prediction,
-                                                  approach_prediction_duration=args.approach_prediction_duration)
+                                                  approach_prediction_duration=args.approach_prediction_duration,
+                                                  fix_motion_planning_time=None,
+                                                  fix_grasp_ranking_time=None,
+                                                  load_obstacles=False,
+                                                  obstacle_distance_low=0.15,
+                                                  obstacle_distance_high=0.25,
+                                                  distance_between_region=0.05)
 
     for i in range(args.num_trials):
         target_pose, distance = dynamic_grasping_world.reset(mode='static_random')
