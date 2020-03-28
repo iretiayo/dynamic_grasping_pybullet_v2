@@ -542,9 +542,10 @@ class DynamicGraspingWorld:
         print('rank grasp takes {}'.format(rank_grasp_time))
 
         planned_pre_grasps, planned_pre_grasp_jvs, planned_grasps, planned_grasp_jvs = [], [], [], []
+        grasp_order_idxs = grasp_order_idxs[:self.max_check]
+        if old_grasp_idx is not None:
+            np.append(grasp_order_idxs, old_grasp_idx)  # always add old grasp index
         for i, grasp_idx in enumerate(grasp_order_idxs):
-            if i == self.max_check:
-                break
             planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp_approximate(
                 grasp_idx, target_pose)
             map(lambda x, y: x.append(y),
@@ -557,8 +558,8 @@ class DynamicGraspingWorld:
         ik_error_sum = np.array(pregrasp_ik_error) + np.array(grasp_ik_error)
         min_error_idx = np.argmin(ik_error_sum)
         margin = 0.02  # TODO: check if this margin makes sense
-        if old_grasp_idx and ik_error_sum[old_grasp_idx] < ik_error_sum[min_error_idx] + margin:
-            grasp_idx = old_grasp_idx
+        if old_grasp_idx and ik_error_sum[-1] < ik_error_sum[min_error_idx] + margin:   # -1: old grasp index is last in list, keep old grasp if error is not far from min
+            grasp_idx = -1
         else:
             grasp_idx = min_error_idx
         grasp_switched = (grasp_idx != old_grasp_idx)
@@ -567,8 +568,8 @@ class DynamicGraspingWorld:
         planning_time = rank_grasp_time + num_ik_called * ik_call_time
         # print("Planning a grasp takes {:.6f}".format(planning_time))
 
-        return grasp_idx, planning_time, num_ik_called, planned_pre_grasps[grasp_idx], planned_pre_grasp_jvs[grasp_idx], \
-               planned_grasps[grasp_idx], planned_grasp_jvs[grasp_idx], grasp_switched
+        return grasp_order_idxs[min_error_idx], planning_time, num_ik_called, planned_pre_grasps[grasp_idx], \
+               planned_pre_grasp_jvs[grasp_idx], planned_grasps[grasp_idx], planned_grasp_jvs[grasp_idx], grasp_switched
 
     def get_iks_pregrasp_and_grasp(self, query_grasp_idx, target_pose):
         """ return 1 or 2 ik called; if successful, then planned_grasp_jv is not None """
