@@ -232,18 +232,24 @@ class DynamicGraspingWorld:
             p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
             self.conveyor.set_pose(conveyor_pose)
             if self.load_obstacles:
-                self.obstacles = self.load_obstacles_collision_free(distance, theta, length)
+                if reset_dict['obstacle_poses'] is None:
+                    self.obstacles = self.load_obstacles_collision_free(distance, theta, length)
+                else:
+                    # self.get_obstacles_regions(distance, theta, length, visualize_region=True)
+                    self.obstacles = self.load_obstacles_at_poses(reset_dict['obstacle_poses'])
             self.robot.reset()
             # self.scene.add_box("floor", gu.list_2_ps(((0, 0, -0.055), (0, 0, 0, 1))), size=(2, 2, 0.1))
             pu.step(2)
 
+            obstacle_poses = []
             if self.load_obstacles:
                 for i, n, e in zip(self.obstacles, self.obstacle_names, self.obstacle_extentss):
                     self.scene.add_box(n, gu.list_2_ps(pu.get_body_pose(i)), size=e)
+                    obstacle_poses.append(pu.merge_pose_2d(pu.get_body_pose(i)))
 
             self.motion_predictor_kf.initialize_predictor(target_pose)
             pu.draw_line(self.conveyor.start_pose[0], self.conveyor.target_pose[0])
-            return distance, theta, length, direction, target_quaternion
+            return distance, theta, length, direction, target_quaternion, obstacle_poses
 
         elif mode == 'dynamic_circular':
             raise NotImplementedError
@@ -710,7 +716,7 @@ class DynamicGraspingWorld:
             direction = random.sample([-1, 1], 1)[0]
         return dist, theta, length, direction
 
-    def load_obstacles_collision_free(self, distance, theta, length):
+    def get_obstacles_regions(self, distance, theta, length, visualize_region=True):
         region_length = (length - 2 * self.distance_between_region) / 3
         theta = theta - 90
         translation = np.array([[1, 0, 0],
@@ -760,14 +766,19 @@ class DynamicGraspingWorld:
             regions_transformed.append(r_transformed)
 
         # visualize
-        v_height = 0.01
-        for r in regions_transformed:
-            lines = zip(r, r[1:] + [r[0]])
-            for (p1, p2) in lines:
-                pu.draw_line(p1 + (v_height,), p2 + (v_height,), rgb_color=(0, 1, 0))
+        if visualize_region:
+            v_height = 0.01
+            for r in regions_transformed:
+                lines = zip(r, r[1:] + [r[0]])
+                for (p1, p2) in lines:
+                    pu.draw_line(p1 + (v_height,), p2 + (v_height,), rgb_color=(0, 1, 0))
 
         # create original polygons
         polygons = [Polygon(r) for r in regions]
+        return polygons
+
+    def load_obstacles_collision_free(self, distance, theta, length):
+        polygons = self.get_obstacles_regions(distance, theta, length)
 
         poses = []
         obstacles = []
@@ -777,6 +788,13 @@ class DynamicGraspingWorld:
             position_xy = tuple(transform_matrix.dot(np.array(position_xy + (1,)))[:2])
             pose = [list(position_xy) + [z], self.sample_target_angle()]
             poses.append(pose)
+            obstacles.append(p.loadURDF(urdf, pose[0], pose[1]))
+        return obstacles
+
+    def load_obstacles_at_poses(self, poses):
+        obstacles = []
+        for pose_flattened, urdf in zip(poses, self.obstacle_urdfs):
+            pose = pu.split_7d(pose_flattened)
             obstacles.append(p.loadURDF(urdf, pose[0], pose[1]))
         return obstacles
 
