@@ -776,10 +776,10 @@ class DynamicGraspingWorld:
 
         # create original polygons
         polygons = [Polygon(r) for r in regions]
-        return polygons
+        return polygons, transform_matrix
 
     def load_obstacles_collision_free(self, distance, theta, length):
-        polygons = self.get_obstacles_regions(distance, theta, length)
+        polygons, transform_matrix = self.get_obstacles_regions(distance, theta, length)
 
         poses = []
         obstacles = []
