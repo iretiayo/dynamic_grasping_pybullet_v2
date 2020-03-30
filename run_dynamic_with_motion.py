@@ -46,6 +46,8 @@ def get_args():
     parser.add_argument('--failure_only', action='store_true', default=False)
     parser.add_argument('--exp_id', type=int)
     parser.add_argument('--load_obstacles', action='store_true', default=False)
+    parser.add_argument('--use_motion_aware', action='store_true', default=False)
+    parser.add_argument('--motion_aware_model_path', type=str)
 
     # dynamic hyper parameter
     parser.add_argument('--conveyor_speed', type=float, default=0.01)
@@ -160,7 +162,9 @@ if __name__ == "__main__":
                                                   load_obstacles=args.load_obstacles,
                                                   obstacle_distance_low=0.15,
                                                   obstacle_distance_high=0.25,
-                                                  distance_between_region=0.05)
+                                                  distance_between_region=0.05,
+                                                  use_motion_aware=args.use_motion_aware,
+                                                  motion_aware_model_path=args.motion_aware_model_path)
 
     # adding option to use previous experiment as config
     baseline_experiment_config_df = None

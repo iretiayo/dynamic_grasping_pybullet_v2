@@ -21,8 +21,9 @@ from shapely.geometry import Polygon, Point
 import misc_utils as mu
 import trimesh
 from itertools import combinations
-
-
+from train_motion_aware import MotionQualityEvaluationNet
+import torch
+from torch.nn.functional import softmax
 
 
 class DynamicGraspingWorld:
@@ -69,7 +70,9 @@ class DynamicGraspingWorld:
                  load_obstacles,
                  obstacle_distance_low,
                  obstacle_distance_high,
-                 distance_between_region):
+                 distance_between_region,
+                 use_motion_aware,
+                 motion_aware_model_path):
         self.target_name = target_name
         self.obstacle_names = obstacle_names
         self.mesh_dir = mesh_dir
@@ -100,6 +103,8 @@ class DynamicGraspingWorld:
         self.use_gt = use_gt
         self.motion_predictor_kf = MotionPredictorKF(self.pose_duration)
         self.distance_between_region = distance_between_region
+        self.use_motion_aware = use_motion_aware
+        self.motion_aware_model_path = motion_aware_model_path
 
         self.distance_low = distance_low  # mico 0.15  ur5_robotiq: 0.3
         self.distance_high = distance_high  # mico 0.4  ur5_robotiq: 0.7
@@ -176,6 +181,12 @@ class DynamicGraspingWorld:
                 obstacle_mesh = trimesh.load_mesh(mesh_filepath)
                 self.obstacle_extentss.append(obstacle_mesh.bounding_box.extents.tolist())
                 self.obstacle_zs.append(-obstacle_mesh.bounds.min(0)[2])
+
+        if self.use_motion_aware:
+            self.motion_aware_network = MotionQualityEvaluationNet()
+            self.motion_aware_network.load_state_dict(torch.load(
+                os.path.join(self.motion_aware_model_path, self.target_name,
+                             'motion_ware_net.pt')))
 
     def reset(self, mode, reset_dict=None):
         """
@@ -538,6 +549,7 @@ class DynamicGraspingWorld:
         # optionally rank grasp based on reachability
         rank_grasp_time_start = time.time()
         grasp_order_idxs = self.rank_grasps(target_pose)
+        grasp_order_idxs = self.rank_grasps(target_pose)
         rank_grasp_time = time.time() - rank_grasp_time_start
         print('rank grasp takes {}'.format(rank_grasp_time))
 
@@ -593,6 +605,14 @@ class DynamicGraspingWorld:
     def rank_grasps(self, target_pose):
         pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
                                          self.pre_grasps_link6_ref]
+        if self.use_motion_aware:
+            # TODO calculate angle given the conveyor belt
+            # TODO get target speed from kalman filter
+            angle = 0
+            speed = 0.03
+            motion_aware_qualities = self.get_motion_aware_qualities(self.grasps_eef, self.pre_grasps_eef, angle, speed)
+            grasp_order_idxs = np.argsort(motion_aware_qualities)[::-1]
+
         if self.disable_reachability:
             grasp_order_idxs = np.random.permutation(np.arange(len(pre_grasps_link6_ref_in_world)))
         else:
@@ -609,6 +629,23 @@ class DynamicGraspingWorld:
         # gu.visualize_grasp_with_reachability(planned_grasp, sdf_values[grasp_order_idxs[0]],
         #                                      maximum=max(sdf_values), minimum=min(sdf_values))
         return grasp_order_idxs
+
+    def get_motion_aware_qualities(self, grasps_eef, pre_grasps_eef, angle, speed):
+        qualities = [self.compute_motion_aware_quality(g, pg, angle, speed) for g, pg in zip(grasps_eef, pre_grasps_eef)]
+        return qualities
+
+    def compute_motion_aware_quality(self, grasp_pose_7d_in_object, pre_grasp_pose_7d_in_object, angle, speed):
+        """
+
+        :param grasp_pose_7d_in_object: 7d grasp pose in object frame and uses eef reference frame
+        :param pre_grasp_pose_7d_in_object: 7d pre grasp pose in object frame and uses eef reference frame
+        :return:
+        """
+        x = torch.tensor(list(grasp_pose_7d_in_object) + list(pre_grasp_pose_7d_in_object) + [angle] + [speed])
+        logits = self.motion_aware_network(x)
+        probs = softmax(logits)
+        quality = probs[1]
+        return quality.item()
 
     def plan_grasp(self, target_pose, old_grasp_idx):
         """ Plan a reachable pre_grasp and grasp pose"""
