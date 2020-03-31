@@ -549,7 +549,6 @@ class DynamicGraspingWorld:
         # optionally rank grasp based on reachability
         rank_grasp_time_start = time.time()
         grasp_order_idxs = self.rank_grasps(target_pose)
-        grasp_order_idxs = self.rank_grasps(target_pose)
         rank_grasp_time = time.time() - rank_grasp_time_start
         print('rank grasp takes {}'.format(rank_grasp_time))
 
@@ -608,8 +607,18 @@ class DynamicGraspingWorld:
         if self.use_motion_aware:
             # TODO calculate angle given the conveyor belt
             # TODO get target speed from kalman filter
-            angle = 0
-            speed = 0.03
+            tmp = np.array(self.conveyor.target_pose)-np.array(self.conveyor.start_pose)
+            conveyor_direction_in_world = np.arctan2(tmp[1], tmp[2])
+
+            pu.get_body_pose(self.target)
+            target_object_angle_in_world = p.getEulerFromQuaternion(pu.get_body_pose(self.target)[1])
+            conveyor_direction_in_object = conveyor_direction_in_world - target_object_angle_in_world
+            angle = conveyor_direction_in_object
+
+            if self.use_kf:
+                speed = np.linalg.norm(self.motion_predictor_kf.kf.x[3:5])  # this and angle computation assumes no motion in z! TODO: make it more general
+            elif self.use_gt:
+                speed = self.conveyor_speed
             motion_aware_qualities = self.get_motion_aware_qualities(self.grasps_eef, self.pre_grasps_eef, angle, speed)
             grasp_order_idxs = np.argsort(motion_aware_qualities)[::-1]
 
