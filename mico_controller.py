@@ -491,7 +491,7 @@ class MicoController:
             plan = plan[1]
         if start_joint_velocities is not None and len(plan.joint_trajectory.points) > 0:
             plan.joint_trajectory.points[0].velocities = start_joint_velocities
-            plan = self.arm_commander_group.retime_trajectory(start_robot_state, plan)
+        plan = self.arm_commander_group.retime_trajectory(start_robot_state, plan)
         return plan
 
     def plan_straight_line(self, goal_eef_pose, start_joint_values=None, ee_step=0.05, jump_threshold=3.0,
