@@ -11,7 +11,7 @@ import rospy
 import threading
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import String
-from math import pi, cos, sin, sqrt, atan, radians
+from math import pi, cos, sin, sqrt, atan, radians, degrees
 from kalman_filter_3d import KalmanFilter, create_kalman_filter
 import random
 import tf_conversions as tfc
@@ -605,22 +605,20 @@ class DynamicGraspingWorld:
         pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
                                          self.pre_grasps_link6_ref]
         if self.use_motion_aware:
-            # TODO calculate angle given the conveyor belt
-            # TODO get target speed from kalman filter
-            tmp = np.array(self.conveyor.target_pose)-np.array(self.conveyor.start_pose)
-            conveyor_direction_in_world = np.arctan2(tmp[1], tmp[2])
-
-            pu.get_body_pose(self.target)
-            target_object_angle_in_world = p.getEulerFromQuaternion(pu.get_body_pose(self.target)[1])
-            conveyor_direction_in_object = conveyor_direction_in_world - target_object_angle_in_world
-            angle = conveyor_direction_in_object
-
-            if self.use_kf:
-                speed = np.linalg.norm(self.motion_predictor_kf.kf.x[3:5])  # this and angle computation assumes no motion in z! TODO: make it more general
-            elif self.use_gt:
-                speed = self.conveyor_speed
-            motion_aware_qualities = self.get_motion_aware_qualities(self.grasps_eef, self.pre_grasps_eef, angle, speed)
+            if self.conveyor.direction == 1:
+                conveyor_angle_in_world = self.conveyor.theta + 90
+            elif self.conveyor.direction == -1:
+                conveyor_angle_in_world = self.conveyor.theta - 90
+            else:
+                raise TypeError
+            # visualize target pose
+            # pu.create_frame_marker(target_pose)
+            target_angle_in_world = degrees(pu.get_euler_from_quaternion(target_pose[1])[2])
+            conveyor_angle_in_object = conveyor_angle_in_world - target_angle_in_world
+            speed = self.conveyor.speed
+            motion_aware_qualities = self.get_motion_aware_qualities(self.grasps_eef, self.pre_grasps_eef, radians(conveyor_angle_in_object), speed)
             grasp_order_idxs = np.argsort(motion_aware_qualities)[::-1]
+            # TODO the logic for using motion ware with reachability aware
 
         if self.disable_reachability:
             grasp_order_idxs = np.random.permutation(np.arange(len(pre_grasps_link6_ref_in_world)))
@@ -640,6 +638,14 @@ class DynamicGraspingWorld:
         return grasp_order_idxs
 
     def get_motion_aware_qualities(self, grasps_eef, pre_grasps_eef, angle, speed):
+        """
+
+        :param grasps_eef: a list of grasps in eef reference frame
+        :param pre_grasps_eef: a list of pre grasps in eef reference frame
+        :param angle: angle in radians
+        :param speed: speed in m/s
+        :return:
+        """
         qualities = [self.compute_motion_aware_quality(g, pg, angle, speed) for g, pg in zip(grasps_eef, pre_grasps_eef)]
         return qualities
 

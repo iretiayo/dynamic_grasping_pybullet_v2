@@ -33,6 +33,7 @@ def get_args():
                         help="name of robot configs to load from grasputils. Ex: mico or ur5_robotiq")
     parser.add_argument('--grasp_database_path', type=str, required=True)
     parser.add_argument('--rendering', action='store_true', default=False)
+    parser.add_argument('--debug', action='store_true', default=False)
     parser.add_argument('--realtime', action='store_true', default=False)
     parser.add_argument('--num_trials', type=int, required=True)
     parser.add_argument('--result_dir', type=str, required=True)
@@ -99,7 +100,7 @@ def get_args():
 if __name__ == "__main__":
     args = get_args()
     json.dump(vars(args), open(os.path.join(args.result_dir, args.object_name + '.json'), 'w'), indent=4)
-    mu.configure_pybullet(args.rendering, debug=False)
+    mu.configure_pybullet(args.rendering, debug=args.debug)
     rospy.init_node('dynamic_grasping')
 
     print()
