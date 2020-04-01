@@ -16,6 +16,7 @@ from moveit_msgs.srv import GetPositionIK, GetPositionFK
 
 import rospy
 from moveit_msgs.msg import DisplayTrajectory, PositionIKRequest, RobotState, GenericTrajectory, RobotTrajectory
+from moveit_msgs.msg import TrajectoryConstraints, Constraints, JointConstraint
 from sensor_msgs.msg import JointState
 from moveit_msgs.srv import GetPositionIK, GetPositionFK
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -384,10 +385,6 @@ class MicoController:
 
     def create_seed_trajectory(self, seed_discretized_plan, start_joint_values, goal_joint_values):
 
-        joint_trajectory_seed = JointTrajectory()
-        # joint_trajectory_seed.header.frame_id = ''
-        joint_trajectory_seed.joint_names = self.GROUPS['arm']
-        joint_trajectory_seed.points = []
         skip = max(1, len(seed_discretized_plan) // 100)
         seed_discretized_plan_trimmed = seed_discretized_plan[::skip]
 
@@ -406,7 +403,21 @@ class MicoController:
         final_waypoints = seed_discretized_plan_trimmed[-1] + np.linspace(0, 1, 30)[:, None] * diffs
         waypoints = [start_joint_values] + seed_discretized_plan_trimmed.tolist() + final_waypoints.tolist()
 
-        for wp in waypoints:
+        planner_description = self.arm_commander_group.get_interface_description()
+        if 'CHOMP' in planner_description.planner_ids:
+            reference_trajectories = self.encode_seed_trajectory_chomp(waypoints)
+        elif 'STOMP' in planner_description.planner_ids:
+            reference_trajectories = self.encode_seed_trajectory_stomp(waypoints)
+        else:
+            reference_trajectories = None
+        return reference_trajectories
+
+    def encode_seed_trajectory_chomp(self, joint_wps):
+        joint_trajectory_seed = JointTrajectory()
+        # joint_trajectory_seed.header.frame_id = ''
+        joint_trajectory_seed.joint_names = self.GROUPS['arm']
+        joint_trajectory_seed.points = []
+        for wp in joint_wps:
             point = JointTrajectoryPoint()
             point.positions = wp
             joint_trajectory_seed.points.append(point)
@@ -417,6 +428,22 @@ class MicoController:
 
         return reference_trajectories
 
+    def encode_seed_trajectory_stomp(self, joint_wps):
+        if joint_wps is None or len(joint_wps) == 0:
+            return None
+        tcs = TrajectoryConstraints()
+
+        for joint_wp in joint_wps:
+            cs = Constraints()
+            for j_idx in range(len(joint_wp)):
+                jc = JointConstraint()
+                # jc.joint_name = plan.joint_trajectory.joint_names[j_idx]
+                jc.joint_name = self.GROUPS['arm'][j_idx]
+                jc.position = joint_wp[j_idx]
+                cs.joint_constraints.append(jc)
+            tcs.constraints.append(cs)
+        return tcs
+
     def display_trajectory(self, plan):
         # can display plan directly or seed trajectory created with GenericTrajectory
         if isinstance(plan, list):
@@ -424,6 +451,15 @@ class MicoController:
                 moveit_plan = RobotTrajectory()
                 moveit_plan.joint_trajectory = plan[0].joint_trajectory[0]
                 plan = moveit_plan
+        if isinstance(plan, TrajectoryConstraints):
+            moveit_plan = RobotTrajectory()
+            moveit_plan.joint_trajectory.joint_names = [jc.joint_name for jc in plan.constraints[0].joint_constraints]
+            for cs in plan.constraints:
+                point = JointTrajectoryPoint()
+                for jc in cs.joint_constraints:
+                    point.positions.append(jc.position)
+                    moveit_plan.joint_trajectory.points.append(point)
+            plan = moveit_plan
 
         display_trajectory = DisplayTrajectory()
         display_trajectory.trajectory_start = self.robot.get_current_state()
@@ -481,9 +517,21 @@ class MicoController:
         self.arm_commander_group.set_start_state(start_robot_state)
         self.arm_commander_group.set_joint_value_target(goal_joint_values)
         self.arm_commander_group.set_planning_time(maximum_planning_time)
+
         # takes around 0.11 second
         if seed_trajectory is not None:
-            plan = self.arm_commander_group.plan(reference_trajectories=seed_trajectory)
+            planner_description = self.arm_commander_group.get_interface_description()
+            if 'CHOMP' in planner_description.planner_ids:
+                # self.arm_commander_group.set_reference_trajectories(seed_trajectory)
+                plan = self.arm_commander_group.plan(reference_trajectories=seed_trajectory)
+                self.arm_commander_group.clear_reference_trajectories()
+            elif 'STOMP' in planner_description.planner_ids:
+                self.arm_commander_group.set_joint_value_target([jc.position for jc in seed_trajectory.constraints[-1].joint_constraints])
+                self.arm_commander_group.set_trajectory_constraints(seed_trajectory)
+                plan = self.arm_commander_group.plan()
+                self.arm_commander_group.clear_trajectory_constraints()
+            else:
+                assert False, 'seed trajectory not handled by planner {}'.format(planner_description.planner_ids)
         else:
             plan = self.arm_commander_group.plan()
         if isinstance(plan, tuple):
