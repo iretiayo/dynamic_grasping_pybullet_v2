@@ -184,8 +184,9 @@ class DynamicGraspingWorld:
 
         if self.use_motion_aware:
             self.motion_aware_network = MotionQualityEvaluationNet()
+            epoch_dir = os.listdir(os.path.join(self.motion_aware_model_path, self.target_name))[0]
             self.motion_aware_network.load_state_dict(torch.load(
-                os.path.join(self.motion_aware_model_path, self.target_name,
+                os.path.join(self.motion_aware_model_path, self.target_name, epoch_dir,
                              'motion_ware_net.pt')))
 
     def reset(self, mode, reset_dict=None):

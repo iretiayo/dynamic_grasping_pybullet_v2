@@ -24,4 +24,4 @@ if __name__ == "__main__":
             if test_acc >= best_acc:
                 best_acc = test_acc
                 best_epoch_name = e
-        print(os.path.join(args.checkpoint_path, n, best_epoch_name, 'motion_ware_net.pt'))
+        print(os.path.join(args.checkpoint_path, n, best_epoch_name))
