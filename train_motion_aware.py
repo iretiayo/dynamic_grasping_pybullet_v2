@@ -207,6 +207,7 @@ if __name__ == "__main__":
         epoch_dir = os.path.join(args.save_dir, epoch_dir_name)
         os.makedirs(epoch_dir)
         checkpoint_metadata = {
+            'epoch': epoch,
             'train_loss': train_loss,
             'train_accuracy': train_accuracy,
             'train_FPR': train_FPR,
@@ -216,5 +217,5 @@ if __name__ == "__main__":
             'test_FPR': test_FPR,
             'test_FNR': test_FNR
         }
-        json.dump(model_metadata, open(os.path.join(epoch_dir, 'checkpoint_metadata.yaml'), 'w'), indent=4)
+        json.dump(checkpoint_metadata, open(os.path.join(epoch_dir, 'checkpoint_metadata.yaml'), 'w'), indent=4)
         torch.save(model.state_dict(), os.path.join(epoch_dir, "motion_ware_net.pt"))
