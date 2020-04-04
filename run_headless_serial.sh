@@ -13,13 +13,11 @@ screen -d -m -S ${timestr}_moveit bash -c "source ../../devel/setup.bash && \
 
 sleep 3
 
-
 source ../../devel/setup.bash
 export ROS_MASTER_URI=http://localhost:$node_id
 
-for object_name in bleach_cleanser mustard_bottle potted_meat_can sugar_box tomato_soup_can cube power_drill
-do
-    python run_dynamic_with_motion.py \
+for object_name in bleach_cleanser mustard_bottle potted_meat_can sugar_box tomato_soup_can cube power_drill; do
+  python run_dynamic_with_motion.py \
     --object_name $object_name \
     --robot_config_name mico \
     --num_trials 100 \
@@ -27,7 +25,7 @@ do
     --grasp_database_path assets/grasps/filtered_grasps_noise_100 \
     --baseline_experiment_path assets/results/dynamic/linear_motion/2020-01-10_18-33-49 \
     --grasp_threshold 0.03 \
-    --lazy_threshold  0.3 \
+    --lazy_threshold 0.3 \
     --conveyor_speed 0.03 \
     --close_delay 0.5 \
     --back_off 0.05 \
@@ -37,6 +35,10 @@ do
     --max_check 3 \
     --use_box \
     --use_kf \
-    --approach_prediction ;
-    sleep 5
+    --approach_prediction \
+    --fix_motion_planning_time 0.14 \
+    --fix_grasp_ranking_time 0.135 \
+    --use_motion_aware \
+    --motion_aware_model_path assets/motion_aware_models;
+  sleep 5
 done
