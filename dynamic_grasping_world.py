@@ -173,6 +173,7 @@ class DynamicGraspingWorld:
             self.obstacle_urdfs = []
             self.obstacle_zs = []
             self.obstacle_extentss = []
+            self.obstacle_mesh_filepaths = []
             for obstacle_name in self.obstacle_names:
                 mesh_filepath = os.path.join(self.mesh_dir, '{}'.format(obstacle_name), '{}.obj'.format(obstacle_name))
                 self.obstacle_urdfs.append(mu.create_object_urdf(mesh_filepath, obstacle_name,
@@ -181,6 +182,7 @@ class DynamicGraspingWorld:
                 obstacle_mesh = trimesh.load_mesh(mesh_filepath)
                 self.obstacle_extentss.append(obstacle_mesh.bounding_box.extents.tolist())
                 self.obstacle_zs.append(-obstacle_mesh.bounds.min(0)[2])
+                self.obstacle_mesh_filepaths.append(mesh_filepath)
 
         if self.use_motion_aware:
             self.motion_aware_network = MotionQualityEvaluationNet()
@@ -243,7 +245,7 @@ class DynamicGraspingWorld:
             p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
             self.conveyor.set_pose(conveyor_pose)
             if self.load_obstacles:
-                if reset_dict['obstacle_poses'] is None:
+                if reset_dict is None or reset_dict['obstacle_poses'] is None:
                     self.obstacles = self.load_obstacles_collision_free(distance, theta, length)
                 else:
                     # self.get_obstacles_regions(distance, theta, length, visualize_region=True)
@@ -257,6 +259,12 @@ class DynamicGraspingWorld:
                 for i, n, e in zip(self.obstacles, self.obstacle_names, self.obstacle_extentss):
                     self.scene.add_box(n, gu.list_2_ps(pu.get_body_pose(i)), size=e)
                     obstacle_poses.append(pu.merge_pose_2d(pu.get_body_pose(i)))
+
+                # optionally embed obstacles into the reachability space
+                obstacle_mesh_filepaths = [m_path.replace('.obj', '.ply') for m_path in self.obstacle_mesh_filepaths]
+                obstacle_mesh_poses = [tfc.toMsg(tfc.fromTf(pu.split_7d(m_p))) for m_p in obstacle_poses]
+                self.sdf_reachability_space, self.mins, self.step_size, self.dims = gu.get_reachability_space(
+                    self.reachability_data_dir, obstacle_mesh_filepaths, obstacle_mesh_poses)
 
             self.motion_predictor_kf.initialize_predictor(target_pose)
             pu.draw_line(self.conveyor.start_pose[0], self.conveyor.target_pose[0])

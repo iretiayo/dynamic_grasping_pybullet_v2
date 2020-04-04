@@ -14,7 +14,8 @@ import grid_sample_client
 from geometry_msgs.msg import Pose, Point, Quaternion, PoseStamped
 
 from reachability_utils.reachability_resolution_analysis import interpolate_pose_in_reachability_space_grid
-from reachability_utils.process_reachability_data_from_csv import load_reachability_data_from_dir
+from reachability_utils.process_reachability_data_from_csv import load_reachability_data_from_dir, \
+    generate_SDF_from_binary_space
 import plyfile
 from collections import namedtuple
 
@@ -486,10 +487,22 @@ def visualize_grasp_with_reachability(grasp_pose, sdf_value, maximum, minimum, u
         pu.create_arrow_marker(grasp_pose, raw_color=pu.rgb(sdf_value, maximum=maximum, minimum=minimum))
 
 
-def get_reachability_space(reachability_data_dir):
+def get_reachability_space(reachability_data_dir, obstacle_mesh_filepaths=None, obstacle_poses=None):
     rospy.loginfo("start creating sdf reachability space...")
     start_time = time.time()
-    _, mins, step_size, dims, sdf_reachability_space = load_reachability_data_from_dir(reachability_data_dir)
+    binary_reachability_space, mins, step_size, dims, _ = load_reachability_data_from_dir(reachability_data_dir)
+
+    if obstacle_mesh_filepaths is not None and len(obstacle_mesh_filepaths) > 0:
+        obstacles_mask_3d = create_occupancy_grid_from_obstacles(obstacle_mesh_filepaths=obstacle_mesh_filepaths,
+                                                                 obstacle_poses=obstacle_poses,
+                                                                 mins_xyz=mins[:3],
+                                                                 step_size_xyz=step_size[:3],
+                                                                 dims_xyz=dims[:3])
+        # embed obstacles into reachability space
+        binary_reachability_space[obstacles_mask_3d > 0] = 0
+
+    sdf_reachability_space = generate_SDF_from_binary_space(binary_reachability_space)
+
     rospy.loginfo("sdf reachability space created, which takes {}".format(time.time() - start_time))
     return sdf_reachability_space, mins, step_size, dims
 
