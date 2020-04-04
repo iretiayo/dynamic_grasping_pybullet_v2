@@ -186,8 +186,9 @@ class DynamicGraspingWorld:
 
         if self.use_motion_aware:
             self.motion_aware_network = MotionQualityEvaluationNet()
+            epoch_dir = os.listdir(os.path.join(self.motion_aware_model_path, self.target_name))[0]
             self.motion_aware_network.load_state_dict(torch.load(
-                os.path.join(self.motion_aware_model_path, self.target_name,
+                os.path.join(self.motion_aware_model_path, self.target_name, epoch_dir,
                              'motion_ware_net.pt')))
 
     def reset(self, mode, reset_dict=None):
@@ -612,21 +613,6 @@ class DynamicGraspingWorld:
     def rank_grasps(self, target_pose):
         pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
                                          self.pre_grasps_link6_ref]
-        if self.use_motion_aware:
-            if self.conveyor.direction == 1:
-                conveyor_angle_in_world = self.conveyor.theta + 90
-            elif self.conveyor.direction == -1:
-                conveyor_angle_in_world = self.conveyor.theta - 90
-            else:
-                raise TypeError
-            # visualize target pose
-            # pu.create_frame_marker(target_pose)
-            target_angle_in_world = degrees(pu.get_euler_from_quaternion(target_pose[1])[2])
-            conveyor_angle_in_object = conveyor_angle_in_world - target_angle_in_world
-            speed = self.conveyor.speed
-            motion_aware_qualities = self.get_motion_aware_qualities(self.grasps_eef, self.pre_grasps_eef, radians(conveyor_angle_in_object), speed)
-            grasp_order_idxs = np.argsort(motion_aware_qualities)[::-1]
-            # TODO the logic for using motion ware with reachability aware
 
         if self.disable_reachability:
             grasp_order_idxs = np.random.permutation(np.arange(len(pre_grasps_link6_ref_in_world)))
@@ -643,6 +629,45 @@ class DynamicGraspingWorld:
         # gu.visualize_grasps_with_reachability(grasps_eef_in_world, sdf_values)
         # gu.visualize_grasp_with_reachability(planned_grasp, sdf_values[grasp_order_idxs[0]],
         #                                      maximum=max(sdf_values), minimum=min(sdf_values))
+
+        # pick top 10 reachable grasp for motion aware quality ranking
+        if self.use_motion_aware:
+            # max_check must be smaller than this number
+            num_motion_aware_grasps = 10
+            most_reachable_grasps_indices = grasp_order_idxs[:num_motion_aware_grasps]
+            if self.conveyor.direction == 1:
+                conveyor_angle_in_world = self.conveyor.theta + 90
+            elif self.conveyor.direction == -1:
+                conveyor_angle_in_world = self.conveyor.theta - 90
+            else:
+                raise TypeError
+            # visualize target pose
+            # pu.create_frame_marker(target_pose)
+            target_angle_in_world = degrees(pu.get_euler_from_quaternion(target_pose[1])[2])
+            conveyor_angle_in_object = conveyor_angle_in_world - target_angle_in_world
+            speed = self.conveyor.speed
+
+            most_reachable_grasps_eef = [self.grasps_eef[i] for i in most_reachable_grasps_indices]
+            most_reachable_pre_grasps_eef = [self.pre_grasps_eef[i] for i in most_reachable_grasps_indices]
+            # start = time.time()
+            motion_aware_qualities = self.get_motion_aware_qualities(most_reachable_grasps_eef,
+                                                                     most_reachable_pre_grasps_eef,
+                                                                     radians(conveyor_angle_in_object),
+                                                                     speed)
+            # print(time.time() - start)
+            grasp_order_idxs = [x for _, x in sorted(zip(motion_aware_qualities, most_reachable_grasps_indices))]
+
+            # visualization
+            # all_motion_aware_qualities = self.get_motion_aware_qualities(self.grasps_eef,
+            #                                                          self.pre_grasps_eef,
+            #                                                          radians(conveyor_angle_in_object),
+            #                                                          speed)
+            # grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+            #                        self.grasps_eef]
+            # gu.visualize_grasps_with_reachability(grasps_eef_in_world, all_motion_aware_qualities)
+            # gu.visualize_grasp_with_reachability(grasps_eef_in_world[grasp_order_idxs[0]], sdf_values[grasp_order_idxs[0]],
+            #                                      maximum=max(sdf_values), minimum=min(sdf_values))
+
         return grasp_order_idxs
 
     def get_motion_aware_qualities(self, grasps_eef, pre_grasps_eef, angle, speed):

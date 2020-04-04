@@ -36,7 +36,11 @@ do
             --max_check 3 \
             --use_box \
             --use_kf \
-            --approach_prediction"
+            --approach_prediction \
+	    --fix_motion_planning_time 0.14 \
+	    --fix_grasp_ranking_time 0.135 \
+	    --use_motion_aware \
+	    --motion_aware_model_path assets/motion_aware_models; $SHELL"
     sleep 3
     ((node_id++))
 done
