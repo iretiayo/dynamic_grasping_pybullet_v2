@@ -61,6 +61,8 @@ class DynamicGraspingWorld:
                  distance_travelled_threshold,
                  distance_low,
                  distance_high,
+                 circular_distance_low,
+                 circular_distance_high,
                  use_box,
                  use_baseline_method,
                  approach_prediction,
@@ -108,6 +110,8 @@ class DynamicGraspingWorld:
 
         self.distance_low = distance_low  # mico 0.15  ur5_robotiq: 0.3
         self.distance_high = distance_high  # mico 0.4  ur5_robotiq: 0.7
+        self.circular_distance_low = circular_distance_low
+        self.circular_distance_high = circular_distance_high
 
         self.grasp_database_path = grasp_database_path
         actual_grasps, graspit_grasps = gu.load_grasp_database_new(grasp_database_path, self.target_name)
@@ -264,7 +268,43 @@ class DynamicGraspingWorld:
             return distance, theta, length, direction, target_quaternion, obstacle_poses
 
         elif mode == 'dynamic_circular':
-            raise NotImplementedError
+            pu.remove_all_markers()
+            if len(self.obstacles) != 0:
+                for i in self.obstacles:
+                    p.removeBody(i)
+            self.motion_predictor_kf.reset_predictor()
+            self.conveyor.clear_motion()
+
+            if reset_dict is None:
+                distance, theta, length, direction = self.sample_convey_circular_motion()
+                target_quaternion = self.sample_target_angle()
+            else:
+                distance, theta, length, direction = reset_dict['distance'], reset_dict['theta'], reset_dict['length'], \
+                                                     reset_dict['direction']
+                target_quaternion = reset_dict['target_quaternion']
+            self.conveyor.initialize_circular_motion(distance, theta, length, direction, self.conveyor_speed)
+            conveyor_pose = self.conveyor.start_pose
+            target_pose = [[conveyor_pose[0][0], conveyor_pose[0][1], self.target_initial_pose[0][2]],
+                           target_quaternion]
+            p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
+            self.conveyor.set_pose(conveyor_pose)
+            self.robot.reset()
+            # self.scene.add_box("floor", gu.list_2_ps(((0, 0, -0.055), (0, 0, 0, 1))), size=(2, 2, 0.1))
+            pu.step(2)
+
+            obstacle_poses = []
+            self.motion_predictor_kf.initialize_predictor(target_pose)
+
+            # visualize circular motion, evenly pick points in the trajectory
+            num_plot_points = 100
+            idx = np.round(np.linspace(0, len(self.conveyor.discretized_trajectory) - 1, num_plot_points)).astype(int)
+            for i in range(len(idx) - 1):
+                pos1 = self.conveyor.discretized_trajectory[idx[i]][0]
+                pos2 = self.conveyor.discretized_trajectory[idx[i+1]][0]
+                pu.draw_line(pos1, pos2)
+
+            return distance, theta, length, direction, target_quaternion, obstacle_poses
+
         elif mode == 'hand_over':
             raise NotImplementedError
         else:
@@ -794,6 +834,27 @@ class DynamicGraspingWorld:
             direction = random.sample([-1, 1], 1)[0]
         return dist, theta, length, direction
 
+    def sample_convey_circular_motion(self, dist=None, theta=None, length=None, direction=None):
+        """
+        theta is in degrees
+
+        dist: the distance from the robot,
+        theta: the angle of the starting position,
+        length: the length of the trajectory
+        direction: 1 is counter clockwise, -1 is clockwise
+        """
+        # this is effectively the only difference
+        if dist is None:
+            dist = np.random.uniform(low=self.circular_distance_low, high=self.circular_distance_high)
+        if theta is None:
+            theta = np.random.uniform(low=0, high=360)
+        if length is None:
+            length = 1.0
+        if direction is None:
+            direction = random.sample([-1, 1], 1)[0]
+        return dist, theta, length, direction
+
+
     def get_obstacles_regions(self, distance, theta, length, visualize_region=True):
         region_length = (length - 2 * self.distance_between_region) / 3
         theta = theta - 90
@@ -961,11 +1022,11 @@ class Conveyor:
             -1: from larger theta to smaller theta
         :param speed: the speed of the conveyor
         """
-        self.distance = dist
-        self.theta = theta
-        self.length = length
-        self.direction = direction
-        self.speed = speed
+        self.distance = float(dist)
+        self.theta = float(theta)
+        self.length = float(length)
+        self.direction = float(direction)
+        self.speed = float(speed)
         # uses the z value and orientation of the current pose
         z = self.get_pose()[0][-1]
         orientation = self.get_pose()[1]
@@ -994,6 +1055,38 @@ class Conveyor:
         position_trajectory = np.linspace(start_position, target_position, num_steps)
         self.discretized_trajectory = [[list(p), orientation] for p in position_trajectory]
         self.wp_target_index = 1
+
+    def initialize_circular_motion(self, dist, theta, length, direction, speed):
+        """
+        :param dist: distance to robot center,
+        :param theta: the angle of rotation, (0, 360)
+        :param length: the length of the motion
+        :param direction: the direction of the motion
+            1: counter clockwise
+            -1: clockwise
+        :param speed: the speed of the conveyor
+        """
+        self.distance = float(dist)
+        self.theta = float(theta)
+        self.length = float(length)
+        self.direction = float(direction)
+        self.speed = float(speed)
+        # uses the z value and orientation of the current pose
+        z = self.get_pose()[0][-1]
+        orientation = self.get_pose()[1]
+
+        # calculate waypoints
+        num_points = int(self.length / self.speed) * 240
+        delta_angle = self.length / self.distance
+        angles = np.linspace(radians(theta), radians(theta)+delta_angle, num_points)
+        if direction == -1:
+            angles = angles[::-1]
+
+        self.discretized_trajectory = [[(cos(ang) * self.distance, sin(ang) * self.distance, z), orientation] for ang in angles]
+        self.wp_target_index = 1
+
+        self.start_pose = self.discretized_trajectory[0]
+        self.target_pose = self.discretized_trajectory[-1]
 
     def initialize_linear_motion_v2(self, angle, speed, distance, start_pose=None):
         """

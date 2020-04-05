@@ -31,6 +31,7 @@ def get_args():
                         help="Target object to be grasped. Ex: cube")
     parser.add_argument('--robot_config_name', type=str, default='mico',
                         help="name of robot configs to load from grasputils. Ex: mico or ur5_robotiq")
+    parser.add_argument('--motion_mode', type=str, default='dynamic_linear')
     parser.add_argument('--grasp_database_path', type=str, required=True)
     parser.add_argument('--rendering', action='store_true', default=False)
     parser.add_argument('--debug', action='store_true', default=False)
@@ -41,6 +42,8 @@ def get_args():
     parser.add_argument('--back_off', type=float, default=0.05)
     parser.add_argument('--distance_low', type=float, default=0.15)
     parser.add_argument('--distance_high', type=float, default=0.4)
+    parser.add_argument('--circular_distance_low', type=float, default=0.3)
+    parser.add_argument('--circular_distance_high', type=float, default=0.5)
     parser.add_argument('--disable_reachability', action='store_true', default=False)
     parser.add_argument('--record_videos', action='store_true', default=False)
     parser.add_argument('--baseline_experiment_path', type=str, help='use motion path in this file for the run')
@@ -154,6 +157,8 @@ if __name__ == "__main__":
                                                   distance_travelled_threshold=args.distance_travelled_threshold,
                                                   distance_low=args.distance_low,
                                                   distance_high=args.distance_high,
+                                                  circular_distance_low=args.circular_distance_low,
+                                                  circular_distance_high=args.circular_distance_high,
                                                   use_box=args.use_box,
                                                   use_baseline_method=args.use_baseline_method,
                                                   approach_prediction=args.approach_prediction,
@@ -204,7 +209,7 @@ if __name__ == "__main__":
                 continue
 
         distance, theta, length, direction, target_quaternion, obstacle_poses = dynamic_grasping_world.reset(
-            mode='dynamic_linear',
+            mode=args.motion_mode,
             reset_dict=reset_dict)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         if args.record_videos:
