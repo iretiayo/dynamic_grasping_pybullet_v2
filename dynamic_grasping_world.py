@@ -272,6 +272,7 @@ class DynamicGraspingWorld:
             if len(self.obstacles) != 0:
                 for i in self.obstacles:
                     p.removeBody(i)
+            self.motion_predictor_kf = CircularMotionPredictorKF(self.pose_duration)
             self.motion_predictor_kf.reset_predictor()
             self.conveyor.clear_motion()
 
@@ -1172,6 +1173,62 @@ class MotionPredictorKF:
         # print("current position: {}".format(self.target_pose[0]))
         future_estimate = np.dot(self.kf.H, self.kf.predict(dt=duration, predict_only=True))
         future_position = list(np.squeeze(future_estimate))
+        # print("future position: {}\n".format(future_position))
+        future_orientation = self.target_pose[1]
+        return [future_position, future_orientation]
+
+
+class CircularMotionPredictorKF:
+    def __init__(self, time_step):
+        # the predictor takes a pose estimation once every time step
+        self.time_step = time_step
+        self.target_pose = None
+        self.kf = None
+        self.radius = None
+        self.initialized = False
+        self.reference_angle = 0
+
+    def adjust_angle_range(self, angle):
+        # temporary function to handle wrap around angle
+        diff = pu.wrap_angle(angle-self.reference_angle)
+        return self.reference_angle + diff
+
+    def initialize_predictor(self, initial_pose):
+        self.target_pose = initial_pose
+        x0 = np.zeros(3)
+        radius, angle = np.linalg.norm(initial_pose[0][:2]), np.arctan2(initial_pose[0][1], initial_pose[0][0])
+        self.radius = radius
+        self.reference_angle = angle
+        x0[:1] = angle
+        # x0[3] = 0.03
+        x0 = x0[:, None]
+        self.kf = create_kalman_filter(x0=x0, ndim=1)
+        self.initialized = True
+
+    def reset_predictor(self):
+        self.target_pose = None
+        self.kf = None
+
+    def update(self, current_pose):
+        # TODO quaternion is not considered yet
+        if not self.initialized:
+            raise ValueError("predictor not initialized!")
+        self.target_pose = current_pose
+        current_position = current_pose[0]
+        current_angle = np.arctan2(current_pose[0][1], current_pose[0][0])
+        current_angle = self.adjust_angle_range(current_angle)
+        self.reference_angle = current_angle
+        self.kf.predict(dt=self.time_step)
+        self.kf.update(np.array([current_angle])[:, None])
+
+    def predict(self, duration):
+        """ return just a predicted pose """
+        if not self.initialized:
+            raise ValueError("predictor not initialized!")
+        # print("current position: {}".format(self.target_pose[0]))
+        future_estimate = np.dot(self.kf.H, self.kf.predict(dt=duration, predict_only=True))
+        angle = np.squeeze(future_estimate)
+        future_position = [self.radius*np.cos(angle), self.radius*np.sin(angle), self.target_pose[0][2]]
         # print("future position: {}\n".format(future_position))
         future_orientation = self.target_pose[1]
         return [future_position, future_orientation]

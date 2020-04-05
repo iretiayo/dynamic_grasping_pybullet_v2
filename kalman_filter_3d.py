@@ -118,8 +118,7 @@ def example_ND(ndim=3):
     plt.show()
 
 
-def create_kalman_filter(x0=None):
-    ndim = 3
+def create_kalman_filter(x0=None, ndim=3):
 
     # state transition model
     def F_func(dt):
