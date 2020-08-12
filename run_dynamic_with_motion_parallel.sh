@@ -20,6 +20,7 @@ do
         python run_dynamic_with_motion.py \
             --object_name $object_name \
             --robot_config_name mico \
+            --motion_mode dynamic_linear \
             --rendering \
             --num_trials 100 \
             --result_dir $timestr \

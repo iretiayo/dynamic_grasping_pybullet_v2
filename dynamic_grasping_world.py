@@ -199,6 +199,8 @@ class DynamicGraspingWorld:
             initial: reset the target to the fixed initial pose, not moving
             static_random: reset the target to a random pose, not moving
             dynamic_linear: initialize the conveyor with a linear motion
+            dynamic_linear_vary_speed: initialize the conveyor with a linear motion with variable speed
+            dynamic_sinusoid: initialize the conveyor with a sinusoid motion
             dynamic_circular: initialize the conveyor with a circular motion
             hand_over: TODO
         """
@@ -226,7 +228,7 @@ class DynamicGraspingWorld:
             pu.step(2)
             return target_pose, distance
 
-        elif mode == 'dynamic_linear':
+        elif mode in ['dynamic_linear', 'dynamic_linear_vary_speed', 'dynamic_sinusoid']:
             pu.remove_all_markers()
             if len(self.obstacles) != 0:
                 for i in self.obstacles:
@@ -241,7 +243,11 @@ class DynamicGraspingWorld:
                 distance, theta, length, direction = reset_dict['distance'], reset_dict['theta'], reset_dict['length'], \
                                                      reset_dict['direction']
                 target_quaternion = reset_dict['target_quaternion']
-            self.conveyor.initialize_linear_motion(distance, theta, length, direction, self.conveyor_speed)
+            if mode == 'dynamic_sinusoid':
+                self.conveyor.initialize_sinusoid_motion(distance, theta, length, direction, self.conveyor_speed)
+            else:
+                self.conveyor.initialize_linear_motion(distance, theta, length, direction, self.conveyor_speed,
+                                                       variable_speed=mode == 'dynamic_linear_vary_speed')
             conveyor_pose = self.conveyor.start_pose
             target_pose = [[conveyor_pose[0][0], conveyor_pose[0][1], self.target_initial_pose[0][2]],
                            target_quaternion]
@@ -264,7 +270,16 @@ class DynamicGraspingWorld:
                     obstacle_poses.append(pu.merge_pose_2d(pu.get_body_pose(i)))
 
             self.motion_predictor_kf.initialize_predictor(target_pose)
-            pu.draw_line(self.conveyor.start_pose[0], self.conveyor.target_pose[0])
+
+            if mode == 'dynamic_sinusoid':
+                num_plot_points = 100
+                idx = np.linspace(0, len(self.conveyor.discretized_trajectory) - 1, num_plot_points).astype(int)
+                for i in range(len(idx) - 1):
+                    pos1 = self.conveyor.discretized_trajectory[idx[i]][0]
+                    pos2 = self.conveyor.discretized_trajectory[idx[i+1]][0]
+                    pu.draw_line(pos1, pos2)
+            else:
+                pu.draw_line(self.conveyor.start_pose[0], self.conveyor.target_pose[0])
             return distance, theta, length, direction, target_quaternion, obstacle_poses
 
         elif mode == 'dynamic_circular':
@@ -1013,7 +1028,7 @@ class Conveyor:
             self.control_pose(self.discretized_trajectory[self.wp_target_index])
             self.wp_target_index += 1
 
-    def initialize_linear_motion(self, dist, theta, length, direction, speed):
+    def initialize_linear_motion(self, dist, theta, length, direction, speed, variable_speed=False):
         """
         :param dist: distance to robot center,
         :param theta: the angle of rotation, (0, 360)
@@ -1022,6 +1037,7 @@ class Conveyor:
             1: from smaller theta to larger theta
             -1: from larger theta to smaller theta
         :param speed: the speed of the conveyor
+        :param variable_speed: determines if the speed of the conveyor is variable or constant
         """
         self.distance = float(dist)
         self.theta = float(theta)
@@ -1052,9 +1068,61 @@ class Conveyor:
         self.start_pose = [start_position, orientation]
         self.target_pose = [target_position, orientation]
 
+        if variable_speed:
+            acc_levels = 2     # accelerate / decelerate level e.g. acc_levels = 3 -> [1/3, 1/2, 1, 2, 3]
+            speed_multipliers = set(np.concatenate((np.arange(1, acc_levels+1), 1./np.arange(1, acc_levels+1))))
+            speeds = np.array(sorted(speed_multipliers)) * self.speed
+            n_segments = 10  # num speed switches
+            segments = np.linspace(start_position, target_position, n_segments+1)
+            position_trajectory = []
+            for i in range(n_segments):
+                speed = np.random.choice(speeds)
+                dist = np.linalg.norm(segments[i] - segments[i+1])
+                num_steps = int(dist / speed * 240)
+                wps = np.linspace(segments[i], segments[i+1], num_steps)
+                position_trajectory.extend(wps)
+        else:
+            num_steps = int(self.length / self.speed * 240)
+            position_trajectory = np.linspace(start_position, target_position, num_steps)
+        self.discretized_trajectory = [[list(pos), orientation] for pos in position_trajectory]
+        self.wp_target_index = 1
+
+    def initialize_sinusoid_motion(self, dist, theta, length, direction, speed):
+        """
+        :param dist: distance to robot center,
+        :param theta: the angle of rotation, (0, 360)
+        :param length: the length of the motion
+        :param direction: the direction of the motion
+            1: from smaller theta to larger theta
+            -1: from larger theta to smaller theta
+        :param speed: the speed of the conveyor
+        """
+        self.distance = float(dist)
+        self.theta = float(theta)
+        self.length = float(length)
+        self.direction = float(direction)
+        self.speed = float(speed)
+        # uses the z value and orientation of the current pose
+        z = self.get_pose()[0][-1]
+        orientation = self.get_pose()[1]
+
         num_steps = int(self.length / self.speed * 240)
+
+        start_position = np.array([0, -length / 2.0, 1]) * direction
+        target_position = np.array([0, length / 2.0, 1]) * direction
         position_trajectory = np.linspace(start_position, target_position, num_steps)
-        self.discretized_trajectory = [[list(p), orientation] for p in position_trajectory]
+        # Amplitude: dist/2., period: self.length/3 i.e. 3 sinusoids within the length of the trajectory
+        position_trajectory[:, 0] = dist/2. * np.sin(2*np.pi * position_trajectory[:, 1] / (self.length/3))
+        T_1 = np.array([[np.cos(self.theta), -np.sin(self.theta), 0],
+                        [np.sin(self.theta), np.cos(self.theta), 0],
+                        [0, 0, 1]])
+        T_2 = np.array([[1, 0, self.distance], [0, 1, 0], [0, 0, 1]])
+        position_trajectory = np.dot(T_1, np.dot(T_2, position_trajectory.T)).T
+        position_trajectory[:, -1] = z
+        self.start_pose = [position_trajectory[0], orientation]
+        self.target_pose = [position_trajectory[-1], orientation]
+
+        self.discretized_trajectory = [[list(pos), orientation] for pos in position_trajectory]
         self.wp_target_index = 1
 
     def initialize_circular_motion(self, dist, theta, length, direction, speed):
