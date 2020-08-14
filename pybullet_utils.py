@@ -1,15 +1,18 @@
-from collections import namedtuple
 import pybullet as p
 import numpy as np
 import time
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from collections import defaultdict, deque, namedtuple
-from itertools import product, combinations, count
+from collections import defaultdict, deque, namedtuple, OrderedDict
+from itertools import product, combinations
+import pybullet_data
+import os
+import csv
 
 INF = np.inf
 PI = np.pi
 CIRCULAR_LIMITS = -PI, PI
+MAX_DISTANCE = 0
 
 
 def step(duration=1.0):
@@ -31,12 +34,34 @@ def merge_pose_2d(pose):
     return pose[0] + pose[1]
 
 
-def get_euler_from_quaternion(quaternion):
+def change_quat_rep(quaternion):
+    """
+    change the representation of quaternion from [w, x, y, z] to [x, y, z, w].
+    ROS and pybullet are using [x, y, z, w], transformations.py and pyquaternion is using [w, x, y, z]
+    """
+    quaternion = list(quaternion)
+    return quaternion[1:] + [quaternion[0]]
+
+
+def euler_from_quaternion(quaternion):
     return list(p.getEulerFromQuaternion(quaternion))
 
 
-def get_quaternion_from_euler(euler):
+def quaternion_from_euler(euler):
     return list(p.getQuaternionFromEuler(euler))
+
+
+def write_csv_line(result_file_path, result):
+    """ write a line in a csv file; create the file and write the first line if the file does not already exist """
+    # pp = pprint.PrettyPrinter(indent=4)
+    # pp.pprint(result)
+    result = OrderedDict(result)
+    file_exists = os.path.exists(result_file_path)
+    with open(result_file_path, 'a') as csv_file:
+        writer = csv.DictWriter(csv_file, result.keys())
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(result)
 
 
 # Constraints
@@ -293,22 +318,150 @@ def get_difference_fn(body, joints):
         difference = []
         for joint, value2, value1 in zip(joints, q2, q1):
             difference.append(circular_difference(value2, value1)
-                              if is_circular(body, joint) else (value2 - value1))
+                              if is_circular(body, joint)
+                              else (np.array(value2) - np.array(value1)))
         return list(difference)
 
     return fn
 
 
-def get_refine_fn(body, joints, num_steps=0):
+def get_distance_fn(body, joints, weights=None):
+    if weights is None:
+        weights = 1 * np.ones(len(joints))
     difference_fn = get_difference_fn(body, joints)
-    num_steps = num_steps + 1
 
     def fn(q1, q2):
-        q = q1
+        diff = np.array(difference_fn(q2, q1))
+        return np.sqrt(np.dot(weights, diff * diff))
+
+    return fn
+
+
+def get_sample_fn(body, joints):
+    def fn():
+        values = []
+        for joint in joints:
+            limits = CIRCULAR_LIMITS if is_circular(body, joint) \
+                else get_joint_limits(body, joint)
+            values.append(np.random.uniform(*limits))
+        return list(values)
+
+    return fn
+
+
+def get_extend_fn(body, joints, resolutions=None):
+    if resolutions is None:
+        resolutions = 0.05 * np.ones(len(joints))
+    difference_fn = get_difference_fn(body, joints)
+
+    def fn(q1, q2):
+        steps = np.abs(np.divide(difference_fn(q2, q1), resolutions))
+        num_steps = int(max(steps))
+        waypoints = []
+        diffs = difference_fn(q2, q1)
         for i in range(num_steps):
-            q = tuple((1. / (num_steps - i)) * np.array(difference_fn(q2, q)) + q)
-            yield q
-            # TODO: should wrap these joints
+            waypoints.append(
+                list(((float(i) + 1.0) / float(num_steps)) * np.array(diffs) + q1))
+        return waypoints
+
+    return fn
+
+
+# Collision
+
+def pairwise_collision(body1, body2, max_distance=MAX_DISTANCE):  # 10000
+    # getContactPoints
+    # return len(p.getClosestPoints(bodyA=body1, bodyB=body2, distance=max_distance)) != 0
+    return p.getContactPoints(body1, body2) != ()
+
+
+def pairwise_link_collision(body1, link1, body2, link2, max_distance=MAX_DISTANCE):  # 10000
+    # return len(p.getClosestPoints(bodyA=body1, bodyB=body2, distance=max_distance,
+    #                               linkIndexA=link1, linkIndexB=link2)) != 0  # getContactPoints
+    return p.getContactPoints(
+        bodyA=body1,
+        bodyB=body2,
+        linkIndexA=link1,
+        linkIndexB=link2)
+
+
+def single_collision(body1, **kwargs):
+    for body2 in get_bodies():
+        if (body1 != body2) and pairwise_collision(body1, body2, **kwargs):
+            return True
+    return False
+
+
+def all_collision(**kwargs):
+    bodies = get_bodies()
+    for i in range(len(bodies)):
+        for j in range(i + 1, len(bodies)):
+            if pairwise_collision(bodies[i], bodies[j], **kwargs):
+                return True
+    return False
+
+
+def get_moving_links(body, moving_joints):
+    moving_links = list(moving_joints)
+    for link in moving_joints:
+        moving_links += get_link_descendants(body, link)
+    return list(set(moving_links))
+
+
+def get_moving_pairs(body, moving_joints):
+    moving_links = get_moving_links(body, moving_joints)
+    for i in range(len(moving_links)):
+        link1 = moving_links[i]
+        ancestors1 = set(get_joint_ancestors(body, link1)) & set(moving_joints)
+        for j in range(i + 1, len(moving_links)):
+            link2 = moving_links[j]
+            ancestors2 = set(get_joint_ancestors(
+                body, link2)) & set(moving_joints)
+            if ancestors1 != ancestors2:
+                yield link1, link2
+
+
+def get_self_link_pairs(body, joints, disabled_collisions=set()):
+    moving_links = get_moving_links(body, joints)
+    fixed_links = list(set(get_links(body)) - set(moving_links))
+    check_link_pairs = list(product(moving_links, fixed_links))
+    if True:
+        check_link_pairs += list(get_moving_pairs(body, joints))
+    else:
+        check_link_pairs += list(combinations(moving_links, 2))
+    check_link_pairs = list(
+        filter(lambda pair: not are_links_adjacent(body, *pair), check_link_pairs))
+    check_link_pairs = list(filter(lambda pair: (pair not in disabled_collisions) and
+                                                (pair[::-1] not in disabled_collisions), check_link_pairs))
+    return check_link_pairs
+
+
+def get_collision_fn(body, joints, obstacles, attachments, self_collisions, disabled_collisions):
+    check_link_pairs = get_self_link_pairs(
+        body, joints, disabled_collisions) if self_collisions else []
+    moving_bodies = [body] + [attachment.child for attachment in attachments]
+    if obstacles is None:
+        obstacles = list(set(get_bodies()) - set(moving_bodies))
+    # + list(combinations(moving_bodies, 2))
+    check_body_pairs = list(product(moving_bodies, obstacles))
+
+    def collision_fn(q):
+        if violates_limits(body, joints, q):
+            return True
+        set_joint_positions(body, joints, q)
+        for attachment in attachments:
+            attachment.assign()
+        for link1, link2 in check_link_pairs:
+            if pairwise_link_collision(body, link1, body, link2):
+                return True
+        return any(pairwise_collision(*pair) for pair in check_body_pairs)
+
+    return collision_fn
+
+
+def get_goal_test_fn(goal_conf, atol=0.001, rtol=0):
+    def fn(conf):
+        return np.allclose(conf, goal_conf, atol=atol, rtol=rtol)
 
     return fn
 
@@ -400,12 +553,15 @@ def dump_body(body):
         body, get_body_name(body), is_rigid_body(body), is_fixed_base(body)))
     for joint in get_joints(body):
         print('Joint id: {} | Name: {} | Type: {} | Circular: {} | Limits: {}'.format(
-            joint, get_joint_name(body, joint), JOINT_TYPES[get_joint_type(body, joint)],
+            joint, get_joint_name(
+                body, joint), JOINT_TYPES[get_joint_type(body, joint)],
             is_circular(body, joint), get_joint_limits(body, joint)))
-    print('Link id: {} | Name: {} | Mass: {}'.format(-1, get_base_name(body), get_mass(body)))
+    print('Link id: {} | Name: {} | Mass: {}'.format(-1,
+                                                     get_base_name(body), get_mass(body)))
     for link in get_links(body):
         print('Link id: {} | Name: {} | Parent: {} | Mass: {}'.format(
-            link, get_link_name(body, link), get_link_name(body, get_link_parent(body, link)),
+            link, get_link_name(body, link), get_link_name(
+                body, get_link_parent(body, link)),
             get_mass(body, link)))
         # print(get_joint_parent_frame(body, link))
         # print(map(get_data_geometry, get_visual_data(body, link)))
@@ -464,11 +620,12 @@ def control_joint(body, joint, value):
                                    force=get_max_force(body, joint))
 
 
-def control_joints(body, joints, positions):
-    return p.setJointMotorControlArray(body, joints, p.POSITION_CONTROL,
+def control_joints(body, joints, positions, velocity=0.01, acceleration=2.0):
+    return p.setJointMotorControlArray(body,
+                                       joints,
+                                       p.POSITION_CONTROL,
                                        targetPositions=positions,
-                                       targetVelocities=[0.0] * len(joints),
-                                       forces=[get_max_force(body, joint) for joint in joints])
+                                       positionGains=[velocity] * len(joints))
 
 
 def forward_kinematics(body, joints, positions, eef_link=None):
@@ -671,7 +828,8 @@ CameraInfo = namedtuple('CameraInfo', ['width', 'height',
 
 
 def reset_camera(yaw=50.0, pitch=-35.0, dist=5.0, target=(0.0, 0.0, 0.0)):
-    p.resetDebugVisualizerCamera(cameraDistance=dist, cameraYaw=yaw, cameraPitch=pitch, cameraTargetPosition=target)
+    p.resetDebugVisualizerCamera(
+        cameraDistance=dist, cameraYaw=yaw, cameraPitch=pitch, cameraTargetPosition=target)
 
 
 def get_camera():
@@ -694,7 +852,8 @@ def create_frame_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
     position = np.array(pose[0])
     orientation = np.array(pose[1])
 
-    pts = np.array([[0, 0, 0], [line_length, 0, 0], [0, line_length, 0], [0, 0, line_length]])
+    pts = np.array([[0, 0, 0], [line_length, 0, 0], [
+                   0, line_length, 0], [0, 0, line_length]])
     rotIdentity = np.array([0, 0, 0, 1])
     po, _ = p.multiplyTransforms(position, orientation, pts[0, :], rotIdentity)
     px, _ = p.multiplyTransforms(position, orientation, pts[1, :], rotIdentity)
@@ -702,9 +861,12 @@ def create_frame_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
     pz, _ = p.multiplyTransforms(position, orientation, pts[3, :], rotIdentity)
 
     if replace_frame_id is not None:
-        x_id = p.addUserDebugLine(po, px, x_color, line_width, life_time, replaceItemUniqueId=replace_frame_id[0])
-        y_id = p.addUserDebugLine(po, py, y_color, line_width, life_time, replaceItemUniqueId=replace_frame_id[1])
-        z_id = p.addUserDebugLine(po, pz, z_color, line_width, life_time, replaceItemUniqueId=replace_frame_id[2])
+        x_id = p.addUserDebugLine(
+            po, px, x_color, line_width, life_time, replaceItemUniqueId=replace_frame_id[0])
+        y_id = p.addUserDebugLine(
+            po, py, y_color, line_width, life_time, replaceItemUniqueId=replace_frame_id[1])
+        z_id = p.addUserDebugLine(
+            po, pz, z_color, line_width, life_time, replaceItemUniqueId=replace_frame_id[2])
     else:
         x_id = p.addUserDebugLine(po, px, x_color, line_width, life_time)
         y_id = p.addUserDebugLine(po, py, y_color, line_width, life_time)
@@ -728,14 +890,17 @@ def create_arrow_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
 
     position = np.array(pose[0])
     orientation = np.array(pose[1])
-    color = raw_color if raw_color is not None else rgb_colors_1[color_index % len(rgb_colors_1)]
+    color = raw_color if raw_color is not None else rgb_colors_1[color_index % len(
+        rgb_colors_1)]
 
-    pts = np.array([[0, 0, 0], [line_length, 0, 0], [0, line_length, 0], [0, 0, line_length]])
+    pts = np.array([[0, 0, 0], [line_length, 0, 0], [
+                   0, line_length, 0], [0, 0, line_length]])
     z_extend = [0, 0, line_length + arrow_length]
     rotIdentity = np.array([0, 0, 0, 1])
     po, _ = p.multiplyTransforms(position, orientation, pts[0, :], rotIdentity)
     pz, _ = p.multiplyTransforms(position, orientation, pts[3, :], rotIdentity)
-    pz_extend, _ = p.multiplyTransforms(position, orientation, z_extend, rotIdentity)
+    pz_extend, _ = p.multiplyTransforms(
+        position, orientation, z_extend, rotIdentity)
 
     if replace_frame_id is not None:
         z_id = p.addUserDebugLine(po, pz, color, line_width, life_time,
@@ -744,7 +909,8 @@ def create_arrow_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
                                          replaceItemUniqueId=replace_frame_id[2])
     else:
         z_id = p.addUserDebugLine(po, pz, color, line_width, life_time)
-        z_extend_id = p.addUserDebugLine(pz, pz_extend, color, arrow_width, life_time)
+        z_extend_id = p.addUserDebugLine(
+            pz, pz_extend, color, arrow_width, life_time)
     frame_id = (z_id, z_extend_id)
     return frame_id
 
@@ -818,25 +984,11 @@ def draw_line(start_pos, end_pos, rgb_color=(1, 0, 0), width=3, lifetime=0):
     return lid
 
 
-def draw_circle_around_z_axis(centre, radius, rgb_color=(1, 0, 0), width=3, lifetime=0, num_divs=100):
-    points = np.array(centre) + radius * np.array(
-        [(np.cos(ang), np.sin(ang), 0) for ang in np.linspace(0, 2 * np.pi, num_divs)])
-    lids = []
-    for i in range(len(points) - 1):
-        start_pos = points[i]
-        end_pos = points[i + 1]
-        lid = p.addUserDebugLine(lineFromXYZ=start_pos,
-                                 lineToXYZ=end_pos,
-                                 lineColorRGB=rgb_color,
-                                 lineWidth=width,
-                                 lifeTime=lifetime)
-        lids.append(lid)
-    return lids
-
-
 def draw_sphere_body(position, radius, rgba_color):
-    vs_id = p.createVisualShape(p.GEOM_SPHERE, radius=radius, rgbaColor=rgba_color)
-    body_id = p.createMultiBody(basePosition=position, baseCollisionShapeIndex=-1, baseVisualShapeIndex=vs_id)
+    vs_id = p.createVisualShape(
+        p.GEOM_SPHERE, radius=radius, rgbaColor=rgba_color)
+    body_id = p.createMultiBody(
+        basePosition=position, baseCollisionShapeIndex=-1, baseVisualShapeIndex=vs_id)
     return body_id
 
 

@@ -7,10 +7,10 @@ import pybullet as p
 import pybullet_utils as pu
 import pandas as pd
 from math import radians, cos, sin
-import tf_conversions as tfc
 import numpy as np
 import random
 from shapely.geometry import Polygon, Point
+from trimesh import load_mesh
 
 
 def write_csv_line(result_file_path, result):
@@ -42,8 +42,8 @@ def configure_pybullet(rendering=False, debug=False, yaw=50.0, pitch=-35.0, dist
 
 
 def create_object_urdf(object_mesh_filepath, object_name,
-                       urdf_template_filepath='assets/object_template.urdf',
-                       urdf_target_object_filepath='assets/target_object.urdf'):
+                       urdf_template_filepath='assets/models/object_template.urdf',
+                       urdf_target_object_filepath='assets/models/target_object.urdf'):
     # set_up urdf
     os.system('cp {} {}'.format(urdf_template_filepath, urdf_target_object_filepath))
     sed_cmd = "sed -i 's|{}|{}|g' {}".format('object_name.obj', object_mesh_filepath, urdf_target_object_filepath)
@@ -72,20 +72,6 @@ def calculate_target_pose(start_pose_in_world, angle, distance):
     return target_pose_in_object, target_pose_in_world
 
 
-def calculate_transform(frame1, frame2):
-    """ given two frames (frame1 and frame2) expressed in world frame,
-    calculate the transform frame1_T_frame2 """
-    world_T_frame1 = tfc.toMatrix(tfc.fromTf(frame1))
-    world_T_frame2 = tfc.toMatrix(tfc.fromTf(frame2))
-    frame1_T_world = np.linalg.inv(world_T_frame1)
-    frame1_T_frame2 = frame1_T_world.dot(world_T_frame2)
-    return frame1_T_frame2
-
-
-def pose_2_matrix(p):
-    return tfc.toMatrix(tfc.fromTf(p))
-
-
 def random_point_in_polygon(polygon):
     min_x, min_y, max_x, max_y = polygon.bounds
 
@@ -99,3 +85,16 @@ def random_point_in_polygon(polygon):
     return (x, y)
 
 
+def load_object(object_name, xy_position, surface_height, rpy):
+    """" rpy is in degrees """
+    mesh_dir = 'assets/models/'
+    rpy = [radians(i) for i in rpy]
+    object_mesh_filepath = os.path.join(mesh_dir, '{}'.format(object_name), '{}.obj'.format(object_name))
+    target_urdf = create_object_urdf(object_mesh_filepath, object_name)
+    target_mesh = load_mesh(object_mesh_filepath)
+    target_z = -target_mesh.bounds.min(0)[2] + surface_height
+    target_initial_pose = [
+        [xy_position[0], xy_position[1], target_z], pu.quaternion_from_euler(rpy)]
+    return p.loadURDF(target_urdf,
+                      basePosition=target_initial_pose[0],
+                      baseOrientation=target_initial_pose[1])

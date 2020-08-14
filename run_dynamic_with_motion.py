@@ -1,22 +1,10 @@
 import os
-import numpy as np
 import pybullet as p
-import pybullet_data
 import time
 import trimesh
 import argparse
 import grasp_utils as gu
 import misc_utils as mu
-import pybullet_utils as pu
-from collections import OrderedDict
-import csv
-import tqdm
-import tf_conversions
-from mico_controller import MicoController
-import rospy
-import threading
-from geometry_msgs.msg import PoseStamped
-from math import pi
 import pprint
 from dynamic_grasping_world import DynamicGraspingWorld
 import json
@@ -29,16 +17,16 @@ def get_args():
 
     parser.add_argument('--object_name', type=str, default='bleach_cleanser',
                         help="Target object to be grasped. Ex: cube")
-    parser.add_argument('--robot_config_name', type=str, default='mico',
-                        help="name of robot configs to load from grasputils. Ex: mico or ur5_robotiq")
+    parser.add_argument('--robot_name', type=str, default='mico',
+                        help="mico or ur5_robotiq")
     parser.add_argument('--motion_mode', type=str, default='dynamic_linear')
     parser.add_argument('--grasp_database_path', type=str, required=True)
     parser.add_argument('--rendering', action='store_true', default=False)
     parser.add_argument('--debug', action='store_true', default=False)
     parser.add_argument('--realtime', action='store_true', default=False)
-    parser.add_argument('--num_trials', type=int, required=True)
+    parser.add_argument('--num_trials', type=int, default=100)
     parser.add_argument('--result_dir', type=str, required=True)
-    parser.add_argument('--max_check', type=int, default=1)
+    parser.add_argument('--max_check', type=int, default=20)
     parser.add_argument('--back_off', type=float, default=0.05)
     parser.add_argument('--distance_low', type=float, default=0.15)
     parser.add_argument('--distance_high', type=float, default=0.4)
@@ -80,9 +68,6 @@ def get_args():
     args.mesh_dir = os.path.abspath('assets/models')
     args.conveyor_urdf = os.path.abspath('assets/conveyor.urdf')
 
-    robot_configs = gu.robot_configs[args.robot_config_name]
-    args.__dict__.update(robot_configs.__dict__)
-
     # timestr = time.strftime("%Y-%m-%d-%H-%M-%S")
     # args.runstr = 'static-'+timestr
 
@@ -104,7 +89,6 @@ if __name__ == "__main__":
     args = get_args()
     json.dump(vars(args), open(os.path.join(args.result_dir, args.object_name + '.json'), 'w'), indent=4)
     mu.configure_pybullet(args.rendering, debug=args.debug)
-    rospy.init_node('dynamic_grasping')
 
     print()
     print("Arguments:")
@@ -124,22 +108,20 @@ if __name__ == "__main__":
     conveyor_initial_pose = [[0.3, 0.3, 0.01], [0, 0, 0, 1]]
     obstacle_names = ['tomato_soup_can', 'power_drill', 'bleach_cleanser']
 
-    dynamic_grasping_world = DynamicGraspingWorld(target_name=args.object_name,
+    dynamic_grasping_world = DynamicGraspingWorld(motion_mode=args.motion_mode,
+                                                  target_name=args.object_name,
                                                   obstacle_names=obstacle_names,
                                                   mesh_dir=args.mesh_dir,
-                                                  robot_config_name=args.robot_config_name,
+                                                  robot_name=args.robot_name,
                                                   target_initial_pose=target_initial_pose,
-                                                  robot_initial_pose=robot_initial_pose,
-                                                  robot_initial_state=MicoController.HOME,
                                                   conveyor_initial_pose=conveyor_initial_pose,
-                                                  robot_urdf=args.robot_urdf,
                                                   conveyor_urdf=args.conveyor_urdf,
                                                   conveyor_speed=args.conveyor_speed,
                                                   target_urdf=target_urdf,
                                                   target_mesh_file_path=object_mesh_filepath,
                                                   target_extents=target_extents,
                                                   grasp_database_path=args.grasp_database_path,
-                                                  reachability_data_dir=args.reachability_data_dir,
+                                                  reachability_data_dir=None,
                                                   realtime=args.realtime,
                                                   max_check=args.max_check,
                                                   disable_reachability=args.disable_reachability,
