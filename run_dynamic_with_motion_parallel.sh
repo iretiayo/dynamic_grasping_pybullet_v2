@@ -38,6 +38,7 @@ do
             --max_check 3 \
             --use_box \
             --use_kf \
+            --lstm_model_filepath lstm_model_weights.h5 \
             --approach_prediction; $SHELL'"
     sleep 3
     ((node_id++))

@@ -24,6 +24,8 @@ from itertools import combinations
 from train_motion_aware import MotionQualityEvaluationNet
 import torch
 from torch.nn.functional import softmax
+import lstm_prediction_model
+from collections import deque
 
 
 class DynamicGraspingWorld:
@@ -52,6 +54,8 @@ class DynamicGraspingWorld:
                  use_seed_trajectory,
                  use_previous_jv,
                  use_kf,
+                 use_lstm_prediction,
+                 lstm_model_filepath,
                  use_gt,
                  grasp_threshold,
                  lazy_threshold,
@@ -102,8 +106,13 @@ class DynamicGraspingWorld:
         self.use_seed_trajectory = use_seed_trajectory
         self.use_previous_jv = use_previous_jv
         self.use_kf = use_kf
+        self.use_lstm_prediction = use_lstm_prediction
+        self.lstm_model_filepath = lstm_model_filepath
         self.use_gt = use_gt
-        self.motion_predictor_kf = MotionPredictorKF(self.pose_duration)
+        if use_lstm_prediction:
+            self.motion_predictor_kf = LSTMMotionPredictorKF(self.pose_duration, lstm_model_filepath)
+        else:
+            self.motion_predictor_kf = MotionPredictorKF(self.pose_duration)
         self.distance_between_region = distance_between_region
         self.use_motion_aware = use_motion_aware
         self.motion_aware_model_path = motion_aware_model_path
@@ -1298,5 +1307,52 @@ class CircularMotionPredictorKF:
         angle = np.squeeze(future_estimate)
         future_position = [self.radius*np.cos(angle), self.radius*np.sin(angle), self.target_pose[0][2]]
         # print("future position: {}\n".format(future_position))
+        future_orientation = self.target_pose[1]
+        return [future_position, future_orientation]
+
+
+class LSTMMotionPredictorKF:
+    def __init__(self, time_step, model_weight_path):
+        # the predictor takes a pose estimation once every time step
+        self.time_step = time_step
+        self.target_pose = None
+        self.kf = None
+        self.initialized = False
+        self.future_position = None
+
+        input_shape = (4,)
+        output_shape = 2
+        self.prediction_model = lstm_prediction_model.create_model(input_shape=input_shape, output_shape=output_shape,
+                                                                   stateful=True, batch_size=1)
+        self.prediction_model.load_weights(model_weight_path)
+        self.position_history = deque(maxlen=2)
+
+    def initialize_predictor(self, initial_pose):
+        for _ in range(self.position_history.maxlen):
+            self.position_history.append(initial_pose[0])
+        self.target_pose = initial_pose
+        self.future_position = np.array(initial_pose[0])
+        self.initialized = True
+
+    def reset_predictor(self):
+        self.prediction_model.reset_states()
+        self.target_pose = None
+
+    def update(self, current_pose):
+        # TODO quaternion is not considered yet
+        if not self.initialized:
+            raise ValueError("predictor not initialized!")
+        self.position_history.append(current_pose[0])
+        xy = self.prediction_model.predict(np.array(self.position_history)[:, :2].flatten()[None, None, ...]).squeeze()
+        self.future_position = [xy[0], xy[1], self.position_history[-1][-1]]
+        self.target_pose = current_pose
+
+    def predict(self, duration):
+        """ return just a predicted pose """
+        if not self.initialized:
+            raise ValueError("predictor not initialized!")
+
+        # TODO: make this dependent on duration
+        future_position = self.future_position
         future_orientation = self.target_pose[1]
         return [future_position, future_orientation]

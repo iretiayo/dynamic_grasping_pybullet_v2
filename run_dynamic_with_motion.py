@@ -65,8 +65,10 @@ def get_args():
     parser.add_argument('--use_previous_jv', action='store_true', default=False)
     parser.add_argument('--use_box', action='store_true', default=False)
     parser.add_argument('--use_baseline_method', action='store_true', default=False)
-    parser.add_argument('--use_kf', action='store_true', default=False)
     parser.add_argument('--use_gt', action='store_true', default=False)
+    parser.add_argument('--use_kf', action='store_true', default=False)
+    parser.add_argument('--use_lstm_prediction', action='store_true', default=False)
+    parser.add_argument('--lstm_model_filepath', type=str)
     parser.add_argument('--pose_freq', type=int, default=5)
     parser.add_argument('--approach_prediction', action='store_true', default=False)
     parser.add_argument('--approach_prediction_duration', type=float, default=1.0)
@@ -147,8 +149,10 @@ if __name__ == "__main__":
                                                   pose_freq=args.pose_freq,
                                                   use_seed_trajectory=args.use_seed_trajectory,
                                                   use_previous_jv=args.use_previous_jv,
-                                                  use_kf=args.use_kf,
                                                   use_gt=args.use_gt,
+                                                  use_kf=args.use_kf,
+                                                  use_lstm_prediction=args.use_lstm_prediction,
+                                                  lstm_model_filepath=args.lstm_model_filepath,
                                                   grasp_threshold=args.grasp_threshold,
                                                   lazy_threshold=args.lazy_threshold,
                                                   large_prediction_threshold=args.large_prediction_threshold,
