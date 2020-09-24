@@ -19,7 +19,7 @@ def load_ur_robotiq_robot(robot_initial_pose):
     # load robot
     urdf_dir = os.path.join(rospkg.RosPack().get_path('ur5_robotiq_description'), 'urdf')
     urdf_filepath = os.path.join(urdf_dir, 'ur5_robotiq.urdf')
-    xacro_filepath = os.path.join(urdf_dir, 'ur5_robotiq.xacro')
+    xacro_filepath = os.path.join(urdf_dir, 'ur5_robotiq_robot.xacro')
     if not os.path.exists(urdf_filepath):
         cmd = 'rosrun xacro xacro --inorder {} -o {}'.format(xacro_filepath, urdf_filepath)
         os.system(cmd)
