@@ -21,10 +21,6 @@ from shapely.geometry import Polygon, Point
 import misc_utils as mu
 import trimesh
 from itertools import combinations
-from train_motion_aware import MotionQualityEvaluationNet
-import torch
-from torch.nn.functional import softmax
-import lstm_prediction_model
 from collections import deque
 
 
@@ -196,6 +192,9 @@ class DynamicGraspingWorld:
                 self.obstacle_zs.append(-obstacle_mesh.bounds.min(0)[2])
 
         if self.use_motion_aware:
+            from train_motion_aware import MotionQualityEvaluationNet
+            import torch
+            from torch.nn.functional import softmax
             self.motion_aware_network = MotionQualityEvaluationNet()
             epoch_dir = os.listdir(os.path.join(self.motion_aware_model_path, self.target_name))[0]
             self.motion_aware_network.load_state_dict(torch.load(
@@ -1322,6 +1321,7 @@ class LSTMMotionPredictorKF:
 
         input_shape = (4,)
         output_shape = 2
+        import lstm_prediction_model
         self.prediction_model = lstm_prediction_model.create_model(input_shape=input_shape, output_shape=output_shape,
                                                                    stateful=True, batch_size=1)
         self.prediction_model.load_weights(model_weight_path)

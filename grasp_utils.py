@@ -370,6 +370,10 @@ def get_reachability_of_grasps_pose_2d(grasps_in_world, sdf_reachability_space, 
 
 
 def read_vertex_points_from_ply_filepath(ply_filepath):
+    # # TODO: remove dependency on plyfile, replace with trimesh
+    # import trimesh
+    # mesh = trimesh.load(ply_filepath)
+    # return np.array(mesh.vertices)
     ply = plyfile.PlyData.read(ply_filepath)
 
     mesh_vertices = np.ones((ply['vertex']['x'].shape[0], 3))

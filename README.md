@@ -13,7 +13,7 @@
     - [ ] Writing
 
 ## Dependencies
-numpy-1.16.2
+[git lfs](https://git-lfs.github.com/) needed to download assets that contains large files, otherwise the asset files would be broken.
 
 
 ## Grasp Database Generation
