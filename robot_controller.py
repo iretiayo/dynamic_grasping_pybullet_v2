@@ -475,3 +475,11 @@ class RobotController(object):
 
     def get_pose(self):
         return p.getBasePositionAndOrientation(self.id)
+
+    def update_arm_motion_plan(self, arm_discretized_plan):
+        self.arm_discretized_plan = arm_discretized_plan
+        self.arm_wp_target_index = 1
+
+    def update_gripper_motion_plan(self, gripper_discretized_plan):
+        self.gripper_discretized_plan = gripper_discretized_plan
+        self.gripper_wp_target_index = 1

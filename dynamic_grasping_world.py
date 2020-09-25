@@ -128,7 +128,6 @@ class DynamicGraspingWorld:
         # self.sdf_reachability_space, self.mins, self.step_size, self.dims = gu.get_reachability_space(
         #     self.reachability_data_dir)
 
-
         self.grasp_threshold = grasp_threshold
         self.close_delay = close_delay
         self.lazy_threshold = lazy_threshold
@@ -300,7 +299,7 @@ class DynamicGraspingWorld:
             idx = np.round(np.linspace(0, len(self.conveyor.discretized_trajectory) - 1, num_plot_points)).astype(int)
             for i in range(len(idx) - 1):
                 pos1 = self.conveyor.discretized_trajectory[idx[i]][0]
-                pos2 = self.conveyor.discretized_trajectory[idx[i+1]][0]
+                pos2 = self.conveyor.discretized_trajectory[idx[i + 1]][0]
                 pu.draw_line(pos1, pos2)
 
             return distance, theta, length, direction, target_quaternion, obstacle_poses
@@ -482,7 +481,8 @@ class DynamicGraspingWorld:
 
             # check can grasp or not
             can_grasp = self.can_grasp(grasp_idx)
-            can_grasp_old = self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=self.grasp_threshold)
+            can_grasp_old = self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv,
+                                                  tol=self.grasp_threshold)
             if can_grasp or can_grasp_old:
                 if self.approach_prediction:
                     # one extra IK call, right now ignore the time because it is very small
@@ -611,7 +611,8 @@ class DynamicGraspingWorld:
         ik_error_sum = np.array(pregrasp_ik_error) + np.array(grasp_ik_error)
         min_error_idx = np.argmin(ik_error_sum)
         margin = 0.02  # TODO: check if this margin makes sense
-        if old_grasp_idx and ik_error_sum[-1] < ik_error_sum[min_error_idx] + margin:   # -1: old grasp index is last in list, keep old grasp if error is not far from min
+        if old_grasp_idx and ik_error_sum[-1] < ik_error_sum[
+            min_error_idx] + margin:  # -1: old grasp index is last in list, keep old grasp if error is not far from min
             grasp_idx = -1
         else:
             grasp_idx = min_error_idx
@@ -718,7 +719,8 @@ class DynamicGraspingWorld:
         :param speed: speed in m/s
         :return:
         """
-        qualities = [self.compute_motion_aware_quality(g, pg, angle, speed) for g, pg in zip(grasps_eef, pre_grasps_eef)]
+        qualities = [self.compute_motion_aware_quality(g, pg, angle, speed) for g, pg in
+                     zip(grasps_eef, pre_grasps_eef)]
         return qualities
 
     def compute_motion_aware_quality(self, grasp_pose_7d_in_object, pre_grasp_pose_7d_in_object, angle, speed):
@@ -796,16 +798,15 @@ class DynamicGraspingWorld:
                         1. / 240)  # TODO: confirm that getting joint velocity this way is right
             previous_discretized_plan = self.robot.arm_discretized_plan[
                                         future_target_index:] if self.use_seed_trajectory else None
-            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_joint_values=start_joint_values,
-                                                                    previous_discretized_plan=previous_discretized_plan,
-                                                                    start_joint_velocities=start_joint_velocities)
+            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_conf=start_joint_values)
         else:
             arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv)
 
         actual_planning_time = time.time() - start_time
         planning_time = actual_planning_time if self.fix_motion_planning_time is None else self.fix_motion_planning_time
         print("Planning a motion actually takes {:.6f}, fixed motion planning time {:.6}".format(actual_planning_time,
-                                                                                                 self.fix_motion_planning_time))
+                                                                                                 self.fix_motion_planning_time
+                                                                                                 if self.fix_motion_planning_time is not None else -1.0))
         return planning_time, arm_discretized_plan
 
     def sample_target_location(self):
@@ -859,7 +860,6 @@ class DynamicGraspingWorld:
             direction = random.sample([-1, 1], 1)[0]
         return dist, theta, length, direction
 
-
     def get_obstacles_regions(self, distance, theta, length, visualize_region=True):
         region_length = (length - 2 * self.distance_between_region) / 3
         theta = theta - 90
@@ -888,9 +888,12 @@ class DynamicGraspingWorld:
                     (-length / 2.0 + 3 * region_length + 2 * self.distance_between_region, self.obstacle_distance_low)],
 
                    [(-length / 2.0 + 2 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_low),
-                    (-length / 2.0 + 2 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_high),
-                    (-length / 2.0 + 3 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_high),
-                    (-length / 2.0 + 3 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_low)],
+                    (
+                    -length / 2.0 + 2 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_high),
+                    (
+                    -length / 2.0 + 3 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_high),
+                    (
+                    -length / 2.0 + 3 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_low)],
 
                    [(-length / 2.0 + region_length + self.distance_between_region, -self.obstacle_distance_low),
                     (-length / 2.0 + region_length + self.distance_between_region, -self.obstacle_distance_high),
@@ -1104,11 +1107,12 @@ class Conveyor:
         # calculate waypoints
         num_points = int(self.length / self.speed) * 240
         delta_angle = self.length / self.distance
-        angles = np.linspace(radians(theta), radians(theta)+delta_angle, num_points)
+        angles = np.linspace(radians(theta), radians(theta) + delta_angle, num_points)
         if direction == -1:
             angles = angles[::-1]
 
-        self.discretized_trajectory = [[(cos(ang) * self.distance, sin(ang) * self.distance, z), orientation] for ang in angles]
+        self.discretized_trajectory = [[(cos(ang) * self.distance, sin(ang) * self.distance, z), orientation] for ang in
+                                       angles]
         self.wp_target_index = 1
 
         self.start_pose = self.discretized_trajectory[0]
@@ -1215,7 +1219,7 @@ class CircularMotionPredictorKF:
 
     def adjust_angle_range(self, angle):
         # temporary function to handle wrap around angle
-        diff = pu.wrap_angle(angle-self.reference_angle)
+        diff = pu.wrap_angle(angle - self.reference_angle)
         return self.reference_angle + diff
 
     def initialize_predictor(self, initial_pose):
@@ -1253,7 +1257,7 @@ class CircularMotionPredictorKF:
         # print("current position: {}".format(self.target_pose[0]))
         future_estimate = np.dot(self.kf.H, self.kf.predict(dt=duration, predict_only=True))
         angle = np.squeeze(future_estimate)
-        future_position = [self.radius*np.cos(angle), self.radius*np.sin(angle), self.target_pose[0][2]]
+        future_position = [self.radius * np.cos(angle), self.radius * np.sin(angle), self.target_pose[0][2]]
         # print("future position: {}\n".format(future_position))
         future_orientation = self.target_pose[1]
         return [future_position, future_orientation]

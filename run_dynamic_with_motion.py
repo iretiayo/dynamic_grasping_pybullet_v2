@@ -27,7 +27,8 @@ def get_args():
     parser.add_argument('--num_trials', type=int, default=100)
     parser.add_argument('--result_dir', type=str, required=True)
     parser.add_argument('--max_check', type=int, default=20)
-    parser.add_argument('--back_off', type=float, default=0.05)
+    parser.add_argument('--back_off', type=float, default=0.05,
+                        help="back off value for ur5 is supposed to be 0.10")
     parser.add_argument('--distance_low', type=float, default=0.15)
     parser.add_argument('--distance_high', type=float, default=0.4)
     parser.add_argument('--circular_distance_low', type=float, default=0.3)
