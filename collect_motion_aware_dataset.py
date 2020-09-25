@@ -97,7 +97,10 @@ if __name__ == "__main__":
         # world.reset(reset_dict)
         for t in range(args.num_trials_per_grasp):
             angle, speed = world.reset()
-            success = world.dynamic_grasp(grasp_link6_com_in_object, pre_grasp_link6_com_in_object)
+            object_velocity = np.array([np.cos(radians(angle)), np.sin(radians(angle)), 0]) * speed
+            success = world.dynamic_grasp(pu.split_7d(grasp_link6_com_in_object),
+                                          pu.split_7d(pre_grasp_link6_com_in_object),
+                                          args.back_off, object_velocity)
             data[i * args.num_trials_per_grasp + t] = list(pre_grasp_eef) + list(grasp_eef) + [radians(angle)] + [speed]
             labels[i * args.num_trials_per_grasp + t] = float(success)
             pbar.update(1)

@@ -11,6 +11,7 @@ from dynamic_grasping_world import Conveyor
 import misc_utils as mu
 from random import uniform
 import tf_conversions
+import matplotlib.pyplot as plt
 
 
 class EEFController:
@@ -237,6 +238,11 @@ class EEFOnlyDynamicWorld:
 
         self.controller = EEFController(self.robot_config_name, self.gripper_initial_pose)
         self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf)
+        p.changeDynamics(self.target, -1, mass=1)
+        hand_id = self.controller.id
+        for joint in range(p.getNumJoints(hand_id)):
+            p.changeDynamics(hand_id, joint, mass=1)
+        p.changeDynamics(hand_id, -1, mass=50)
 
     def reset(self, reset_dict=None):
         pu.remove_all_markers()
@@ -270,28 +276,118 @@ class EEFOnlyDynamicWorld:
         p.stepSimulation()
         # time.sleep(1.0/240.0)
 
-    def dynamic_grasp(self, grasp_link6_com_in_object, pre_grasp_link6_com_in_object):
-
+    def get_grasping_plan_simple(self, grasp_link6_com_in_object, pre_grasp_link6_com_in_object):
         object_pose = p.getBasePositionAndOrientation(self.target)
-        success_height_threshold = object_pose[0][2] + self.controller.LIFT_VALUE - 0.05
-        grasp_link6_com_in_object = pu.split_7d(grasp_link6_com_in_object)
         grasp_link6_com_in_world = gu.convert_grasp_in_object_to_world(object_pose, grasp_link6_com_in_object)
-        pre_grasp_link6_com_in_object = pu.split_7d(pre_grasp_link6_com_in_object)
         pre_grasp_link6_com_in_world = gu.convert_grasp_in_object_to_world(object_pose, pre_grasp_link6_com_in_object)
 
         self.controller.reset_to(pre_grasp_link6_com_in_world)
-        self.controller.initialize_hand_plan(grasp_link6_com_in_world, pre_grasp_link6_com_in_world, )
+        self.controller.initialize_hand_plan(grasp_link6_com_in_world, pre_grasp_link6_com_in_world)
         self.controller.initialize_gripper_plan(self.controller.OPEN_POSITION, self.controller.CLOSED_POSITION)
 
-        done = False
-        while not done:
-            self.step()
-            done = self.check_done()
+    def get_grasping_plan_timed_control(self, grasp_link6_com_in_object, pre_grasp_link6_com_in_object, back_off,
+                                        object_velocity):
+
+        object_pose = p.getBasePositionAndOrientation(self.target)
+        pre_grasp_link6_com_in_world = gu.convert_grasp_in_object_to_world(object_pose, pre_grasp_link6_com_in_object)
+
+        max_eef_speed = 0.05    # should be dependent on the Jacobian
+        approach_duration = abs(back_off) / max_eef_speed
+        approach_direction = np.array(grasp_link6_com_in_object[0]) - np.array(pre_grasp_link6_com_in_object[0])
+        approach_direction /= np.linalg.norm(approach_direction)
+
+        object_position_at_grasp_pose = np.array(pu.get_body_pose(self.target)[0]) + object_velocity * approach_duration
+        object_pose_at_grasp_pose = [object_position_at_grasp_pose, object_pose[1]]
+        at_grasp_pose = gu.convert_grasp_in_object_to_world(object_pose_at_grasp_pose, grasp_link6_com_in_object)
+
+        gripper_close_duration = approach_duration * 0.2
+        object_position_at_grasp_closed = object_position_at_grasp_pose + object_velocity * gripper_close_duration
+        object_pose_at_grasp_closed = [object_position_at_grasp_closed, object_pose[1]]
+        final_grasp_pose = gu.convert_grasp_in_object_to_world(object_pose_at_grasp_closed, grasp_link6_com_in_object)
+
+        grasping_timing = [0, approach_duration, approach_duration + gripper_close_duration]
+        grasping_eef_wp = [pre_grasp_link6_com_in_world, at_grasp_pose, final_grasp_pose]
+        grasping_gripper_wp = [self.controller.OPEN_POSITION, self.controller.OPEN_POSITION, self.controller.CLOSED_POSITION]
+        self.discretize_grasping_plan(grasping_timing, grasping_eef_wp, grasping_gripper_wp)
+
+    def discretize_grasping_plan(self, grasping_timing, grasping_eef_wp, grasping_gripper_wp):
+        num_steps = 240 * np.array(grasping_timing)
+
+        arm_discretized_plan = []
+        gripper_discretized_plan = []
+        for i in range(len(grasping_timing)-1):
+            positions = np.linspace(grasping_eef_wp[i][0], grasping_eef_wp[i+1][0], num_steps[i+1] - num_steps[i])
+            quaternions = np.linspace(grasping_eef_wp[i][1], grasping_eef_wp[i+1][1], num_steps[i+1] - num_steps[i])
+            arm_discretized_plan.extend([[list(pos), list(quat)] for pos, quat in zip(positions, quaternions)])
+
+            gripper_wp = np.linspace(grasping_gripper_wp[i], grasping_gripper_wp[i+1], num_steps[i+1] - num_steps[i])
+            gripper_discretized_plan.extend(gripper_wp)
+
+        self.controller.arm_discretized_plan = arm_discretized_plan
+        self.controller.gripper_discretized_plan = gripper_discretized_plan
+        self.controller.arm_wp_target_index = 1
+        self.controller.gripper_wp_target_index = 1
+
+    def dynamic_grasp(self, grasp_link6_com_in_object, pre_grasp_link6_com_in_object, back_off, object_velocity,
+                      use_simple=False, show_plot=False):
+
+        object_pose = p.getBasePositionAndOrientation(self.target)
+        success_height_threshold = object_pose[0][2] + self.controller.LIFT_VALUE - 0.05
+
+        pre_grasp_link6_com_in_world = gu.convert_grasp_in_object_to_world(object_pose, pre_grasp_link6_com_in_object)
+        self.controller.reset_to(pre_grasp_link6_com_in_world)
+
+        if use_simple:
+            self.get_grasping_plan_simple(grasp_link6_com_in_object, pre_grasp_link6_com_in_object)
+        else:
+            self.get_grasping_plan_timed_control(grasp_link6_com_in_object, pre_grasp_link6_com_in_object, back_off,
+                                                 object_velocity)
+
+        if show_plot:
+            self.execute_grasp_plan_with_plot(grasp_link6_com_in_object)
+        else:
+            self.execute_grasp_plan()
+
         self.controller.lift()
         self.controller.lift(0.2)
         self.controller.lift(-0.2)
         success = p.getBasePositionAndOrientation(self.target)[0][2] > success_height_threshold
         return success
+
+    def execute_grasp_plan(self):
+        done = False
+        while not done:
+            self.step()
+            done = self.check_done()
+
+    def execute_grasp_plan_with_plot(self, grasp_link6_com_in_object):
+
+        distance_eef_to_object_actual = np.array(grasp_link6_com_in_object[0])
+        distance_eef_to_object_list = []
+
+        done = False
+        while not done:
+            self.step()
+            done = self.check_done()
+            distance_eef_to_object = self.get_distance_eef_to_object()
+            distance_eef_to_object_list.append(distance_eef_to_object)
+
+        colors = ['r', 'g', 'b']
+        labels = ['x', 'y', 'z']
+        plt.hlines(distance_eef_to_object_actual, xmin=0.0, xmax=len(distance_eef_to_object_list),
+                   colors=colors, linestyles='dashed')
+        for i in range(3):
+            plt.plot(np.array(distance_eef_to_object_list).T[i], color=colors[i], label=labels[i])
+        plt.legend()
+        plt.show()
+
+    def get_distance_eef_to_object(self):
+        object_pose = p.getBasePositionAndOrientation(self.target)
+        gripper_pose = pu.get_link_pose(self.controller.id, -1)
+        object_to_gripper = tf_conversions.toTf(
+            tf_conversions.fromTf(object_pose).Inverse() * tf_conversions.fromTf(gripper_pose))
+
+        return np.array(object_to_gripper[0])
 
     def check_done(self):
         done = False

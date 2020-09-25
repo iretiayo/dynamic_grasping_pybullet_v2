@@ -36,6 +36,7 @@ if __name__ == "__main__":
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.setPhysicsEngineParameter(enableFileCaching=0)
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+    p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0)
     pu.reset_camera(yaw=50.0, pitch=-35.0, dist=1.2)
 
     object_names = os.listdir(args.grasp_database)
