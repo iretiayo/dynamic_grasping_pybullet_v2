@@ -68,6 +68,7 @@ def configure_pybullet(rendering=False):
         p.connect(p.GUI_SERVER)
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+    p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0)
     pu.reset_camera(yaw=50.0, pitch=-35.0, dist=1.200002670288086, target=(0.0, 0.0, 0.0))
     p.setPhysicsEngineParameter(enableFileCaching=0)
     p.resetSimulation()
@@ -167,8 +168,10 @@ if __name__ == "__main__":
                                                   pose_freq=5,
                                                   use_seed_trajectory=None,
                                                   use_previous_jv=None,
-                                                  use_kf=None,
                                                   use_gt=None,
+                                                  use_kf=None,
+                                                  use_lstm_prediction=None,
+                                                  lstm_model_filepath=None,
                                                   grasp_threshold=None,
                                                   lazy_threshold=None,
                                                   large_prediction_threshold=None,
@@ -177,6 +180,8 @@ if __name__ == "__main__":
                                                   distance_travelled_threshold=None,
                                                   distance_low=args.distance_low,
                                                   distance_high=args.distance_high,
+                                                  circular_distance_low=args.distance_low,
+                                                  circular_distance_high=args.distance_high,
                                                   use_box=args.use_box,
                                                   use_baseline_method=args.use_baseline_method,
                                                   approach_prediction=args.approach_prediction,
@@ -186,7 +191,9 @@ if __name__ == "__main__":
                                                   load_obstacles=False,
                                                   obstacle_distance_low=0.15,
                                                   obstacle_distance_high=0.25,
-                                                  distance_between_region=0.05)
+                                                  distance_between_region=0.05,
+                                                  use_motion_aware=False,
+                                                  motion_aware_model_path=None)
 
     for i in range(args.num_trials):
         target_pose, distance = dynamic_grasping_world.reset(mode='static_random')
