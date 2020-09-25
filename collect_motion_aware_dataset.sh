@@ -4,6 +4,8 @@ for object_name in bleach_cleanser mustard_bottle potted_meat_can sugar_box toma
 do
     python collect_motion_aware_dataset.py \
     --object_name $object_name \
+    --robot_config_name mico \
+    --back_off 0.05 \
     --grasp_database_path assets/grasps/filtered_grasps_noise_100 \
     --save_folder_path motion_aware_dataset \
     --num_trials_per_grasp 1000 \

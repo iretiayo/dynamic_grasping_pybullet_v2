@@ -16,6 +16,8 @@ def get_args():
 
     parser.add_argument('--object_name', type=str, default='bleach_cleanser',
                         help="Target object to be grasped. Ex: cube")
+    parser.add_argument('--robot_config_name', type=str, default='mico',
+                        help="name of robot configs to load from grasputils. Ex: mico or ur5_robotiq")
     parser.add_argument('--grasp_database_path', type=str, required=True)
     parser.add_argument('--save_folder_path', type=str, required=True)
     parser.add_argument('--disable_gui', action='store_true', default=False)
@@ -56,14 +58,34 @@ if __name__ == "__main__":
     world = EEFOnlyDynamicWorld(target_initial_pose,
                                 conveyor_initial_pose,
                                 gripper_initial_pose,
-                                args.gripper_urdf,
+                                args.robot_config_name,
                                 target_urdf,
                                 args.conveyor_urdf,
                                 min_speed=args.min_speed,
                                 max_speed=args.max_speed)
 
-    grasps_eef, grasps_link6_ref, grasps_link6_com, pre_grasps_eef, pre_grasps_link6_ref, pre_grasps_link6_com = \
-        gu.load_grasp_database(args.grasp_database_path, args.object_name, args.back_off)
+    actual_grasps, graspit_grasps = gu.load_grasp_database_new(args.grasp_database_path, args.object_name)
+    graspit_pregrasps = [pu.merge_pose_2d(
+        gu.back_off_pose_2d(pu.split_7d(g), args.back_off, world.controller.robot_configs.graspit_approach_dir)) for g
+                         in graspit_grasps]
+    grasps_eef = [pu.merge_pose_2d(
+        gu.change_end_effector_link_pose_2d(pu.split_7d(g), world.controller.GRASPIT_LINK_TO_MOVEIT_LINK)) for g in
+                  graspit_grasps]
+    grasps_link6_com = [pu.merge_pose_2d(
+        gu.change_end_effector_link_pose_2d(pu.split_7d(g), world.controller.GRASPIT_LINK_TO_PYBULLET_LINK_COM)) for g
+                        in graspit_grasps]
+    grasps_link6_ref = [pu.merge_pose_2d(
+        gu.change_end_effector_link_pose_2d(pu.split_7d(g), world.controller.GRASPIT_LINK_TO_PYBULLET_LINK)) for g in
+                        graspit_grasps]
+    pre_grasps_eef = [pu.merge_pose_2d(
+        gu.change_end_effector_link_pose_2d(pu.split_7d(g), world.controller.GRASPIT_LINK_TO_MOVEIT_LINK)) for g in
+                      graspit_pregrasps]
+    pre_grasps_link6_ref = [pu.merge_pose_2d(
+        gu.change_end_effector_link_pose_2d(pu.split_7d(g), world.controller.GRASPIT_LINK_TO_PYBULLET_LINK)) for g in
+                            graspit_pregrasps]
+    pre_grasps_link6_com = [pu.merge_pose_2d(
+        gu.change_end_effector_link_pose_2d(pu.split_7d(g), world.controller.GRASPIT_LINK_TO_PYBULLET_LINK_COM)) for g
+                            in graspit_pregrasps]
 
     # 7D pregrasp pose, 7D grasp pose, 1 angle, 1 speed
     data = np.zeros((len(grasps_eef) * args.num_trials_per_grasp, 16))

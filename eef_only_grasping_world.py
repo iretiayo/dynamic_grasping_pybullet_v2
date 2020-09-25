@@ -218,7 +218,7 @@ class EEFOnlyDynamicWorld:
     def __init__(self, target_initial_pose,
                  conveyor_initial_pose,
                  gripper_initial_pose,
-                 gripper_urdf,
+                 robot_config_name,
                  target_urdf,
                  conveyor_urdf,
                  min_speed,
@@ -226,7 +226,7 @@ class EEFOnlyDynamicWorld:
         self.target_initial_pose = target_initial_pose
         self.conveyor_initial_pose = conveyor_initial_pose
         self.gripper_initial_pose = gripper_initial_pose
-        self.gripper_urdf = gripper_urdf
+        self.robot_config_name = robot_config_name
         self.target_urdf = target_urdf
         self.conveyor_urdf = conveyor_urdf
         self.min_speed = min_speed
@@ -235,7 +235,7 @@ class EEFOnlyDynamicWorld:
         self.plane = p.loadURDF("plane.urdf")
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
 
-        self.controller = EEFController(self.gripper_urdf, self.gripper_initial_pose)
+        self.controller = EEFController(self.robot_config_name, self.gripper_initial_pose)
         self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf)
 
     def reset(self, reset_dict=None):
@@ -281,7 +281,7 @@ class EEFOnlyDynamicWorld:
 
         self.controller.reset_to(pre_grasp_link6_com_in_world)
         self.controller.initialize_hand_plan(grasp_link6_com_in_world, pre_grasp_link6_com_in_world, )
-        self.controller.initialize_gripper_plan(self.OPEN_POSITION, self.CLOSED_POSITION)
+        self.controller.initialize_gripper_plan(self.controller.OPEN_POSITION, self.controller.CLOSED_POSITION)
 
         done = False
         while not done:
