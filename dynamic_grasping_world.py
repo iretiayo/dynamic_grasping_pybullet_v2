@@ -525,7 +525,7 @@ class DynamicGraspingWorld:
             arm_discretized_plan = self.robot.plan_arm_joint_values_simple(grasp_jv, duration=prediction_duration)
 
         # there is no gripper discretized plan
-        gripper_discretized_plan = self.robot.plan_gripper_joint_values(self.robot.CLOSED_POSITION,
+        gripper_discretized_plan = self.robot.plan_gripper_joint_values(self.robot.robot_config['closed_position'],
                                                                         duration=prediction_duration)
 
         planning_time = time.time() - start_time
@@ -555,6 +555,7 @@ class DynamicGraspingWorld:
                 self.motion_predictor_kf.update(pu.get_body_pose(self.target.id))
 
     def execute_lift(self):
+        # TODO from here, execute lift
         plan, fraction = self.robot.plan_cartesian_control(z=0.07)
         if fraction != 1.0:
             print('fraction {} not 1'.format(fraction))
@@ -780,7 +781,7 @@ class DynamicGraspingWorld:
         print("Planning a grasp takes {:.6f}".format(planning_time))
         return grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
 
-    def plan_arm_motion(self, grasp_jv):
+    def plan_arm_motion(self, grasp_jv, timeout=0.2):
         """ plan a discretized motion for the arm """
         # whether we should have a fixed planning time
         predicted_period = 0.25 if self.fix_motion_planning_time is None else self.fix_motion_planning_time
@@ -798,9 +799,9 @@ class DynamicGraspingWorld:
                         1. / 240)  # TODO: confirm that getting joint velocity this way is right
             previous_discretized_plan = self.robot.arm_discretized_plan[
                                         future_target_index:] if self.use_seed_trajectory else None
-            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_conf=start_joint_values)
+            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_conf=start_joint_values, timeout=timeout)
         else:
-            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv)
+            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, timeout=timeout)
 
         actual_planning_time = time.time() - start_time
         planning_time = actual_planning_time if self.fix_motion_planning_time is None else self.fix_motion_planning_time

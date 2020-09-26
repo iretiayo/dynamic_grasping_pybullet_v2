@@ -13,7 +13,6 @@ import time
 Grasp = namedtuple('Grasp', ['grasp_pose', 'grasp_jv', 'pre_grasp_pose', 'pre_grasp_jv',
                              'pos_distance', 'quat_distance', 'pre_pos_distance', 'pre_quat_distance'])
 
-
 ur5_robot_config = {
     'groups': {
         'arm': ['shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint',
@@ -26,7 +25,7 @@ ur5_robot_config = {
         'gripper': [9, 11, 13, 14, 16, 18]
     },
     'states': {
-        'reset': [-np.pi, -np.pi / 2, np.pi / 2, -np.pi / 2, -np.pi / 2, 0],     # required
+        'reset': [-np.pi, -np.pi / 2, np.pi / 2, -np.pi / 2, -np.pi / 2, 0],  # required
         'lie': [0, 0, 0, 0, 0, 0],
         'up': [0, -1.5707, 0, -1.5707, 0, 0]
     },
@@ -34,7 +33,7 @@ ur5_robot_config = {
     'base_link': 'base_link',
     'closed_position': 0.4 * np.array([1, 1, -1, 1, 1, -1]),
     'open_position': [0] * 6,
-    'max_arm_velocity': [3.15, 3.15, 3.15, 3.15, 3.15, 3.15]    # read from moveit_configs joint_limits.yaml
+    'max_arm_velocity': [3.15, 3.15, 3.15, 3.15, 3.15, 3.15]  # read from moveit_configs joint_limits.yaml
 }
 
 
@@ -47,7 +46,8 @@ class RobotController(object):
         self.urdf = urdf
         self.robot_config = robot_config
         self.base_pose = base_pose
-        self.initial_arm_joint_values = initial_arm_joint_values if initial_arm_joint_values else self.robot_config['states']['reset']
+        self.initial_arm_joint_values = initial_arm_joint_values if initial_arm_joint_values else \
+        self.robot_config['states']['reset']
 
         self.id = p.loadURDF(urdf,
                              basePosition=base_pose[0],
@@ -135,7 +135,8 @@ class RobotController(object):
         return discretized_plan
 
     def get_arm_fk_pybullet(self, joint_values):
-        return pu.forward_kinematics(self.id, self.robot_config['group_index']['arm'], joint_values, self.EEF_LINK_INDEX)
+        return pu.forward_kinematics(self.id, self.robot_config['group_index']['arm'], joint_values,
+                                     self.EEF_LINK_INDEX)
 
     def get_end_effector_pose(self):
         return self.get_arm_fk_pybullet(self.get_arm_joint_values())
@@ -378,7 +379,8 @@ class RobotController(object):
                               goal_bias=0.2,
                               resolutions=0.05,
                               iterations=2000,
-                              restarts=10):
+                              restarts=10,
+                              timeout=0.2):
         current_conf = self.get_arm_joint_values()
         start_conf = current_conf if start_conf is None else start_conf
 
@@ -405,7 +407,8 @@ class RobotController(object):
                                 greedy=greedy,
                                 visualize=True,
                                 fk=self.get_arm_fk_pybullet,
-                                group=False)
+                                group=False,
+                                timeout=timeout)
                 iter_time = time.time() - iter_start
                 self.set_arm_joints(current_conf)
                 if path_conf is None:
@@ -417,23 +420,27 @@ class RobotController(object):
         elif planner == 'birrt':
             for i in range(restarts):
                 iter_start = time.time()
-                path_conf = birrt(start_conf=start_conf,
-                                  goal_conf=goal_conf,
-                                  distance=self.arm_difference_fn,
-                                  sample=self.arm_sample_fn,
-                                  extend=extend_fn,
-                                  collision=collision_fn,
-                                  iterations=iterations,
-                                  smooth=smooth,
-                                  visualize=True,
-                                  fk=self.get_arm_fk_pybullet,
-                                  group=False,
-                                  greedy=greedy)
-                iter_time = time.time() - iter_start
+                success, info, path_conf = birrt(start_conf=start_conf,
+                                                 goal_conf=goal_conf,
+                                                 distance=self.arm_difference_fn,
+                                                 sample=self.arm_sample_fn,
+                                                 extend=extend_fn,
+                                                 collision=collision_fn,
+                                                 iterations=iterations,
+                                                 smooth=smooth,
+                                                 visualize=True,
+                                                 fk=self.get_arm_fk_pybullet,
+                                                 group=False,
+                                                 greedy=greedy,
+                                                 timeout=timeout)
                 self.set_arm_joints(current_conf)
+                iter_time = time.time() - iter_start
+                if iter_time > timeout:
+                    print("planning fails because of timeout")
+                    return None
                 if path_conf is None:
-                    print('trial {} ({} iterations) fails in {:.2f} seconds'.format(
-                        i + 1, iterations, iter_time))
+                    print('trial {} ({} iterations) fails in {:.2f} seconds because of {}'.format(
+                        i + 1, iterations, iter_time, info))
                     pu.remove_all_markers()
                 else:
                     return path_conf

@@ -2,6 +2,7 @@ from motion_planners.smoothing import smooth_path
 from motion_planners.rrt import TreeNode, configs
 from motion_planners.rrt_utils import irange, argmin
 import pybullet_utils as pu
+import time
 
 
 def rrt_connect(q1,
@@ -14,14 +15,18 @@ def rrt_connect(q1,
                 visualize,
                 fk,
                 group,
-                greedy):
+                greedy,
+                timeout):
     if collision(q1) or collision(q2):
-        return None
+        return False, "start or goal conf has collision", None
     root1, root2 = TreeNode(q1), TreeNode(q2)
     nodes1, nodes2 = [root1], [root2]
     if visualize:
         color1, color2 = [0, 1, 0], [0, 0, 1]
+    start_time = time.time()
     for _ in irange(iterations):
+        if time.time() - start_time > timeout:
+            return False, "timeout", None
         if len(nodes1) > len(nodes2):
             nodes1, nodes2 = nodes2, nodes1
             if visualize:
@@ -67,8 +72,8 @@ def rrt_connect(q1,
             path1, path2 = last1.retrace(), last2.retrace()
             if path1[0] != root1:
                 path1, path2 = path2, path1
-            return configs(path1[:-1] + path2[::-1])
-    return None
+            return True, "success", configs(path1[:-1] + path2[::-1])
+    return False, "no path found", None
 
 
 # TODO: version which checks whether the segment is valid
@@ -95,23 +100,25 @@ def birrt(start_conf,
           visualize,
           fk,
           group,
-          greedy):
+          greedy,
+          timeout=2):
     if collision(start_conf) or collision(goal_conf):
-        return None
+        return False, "start or goal conf has collision", None
     path = direct_path(start_conf, goal_conf, extend, collision)
     if path is not None:
-        return path
-    path = rrt_connect(start_conf,
-                       goal_conf,
-                       distance,
-                       sample,
-                       extend,
-                       collision,
-                       iterations,
-                       visualize,
-                       fk,
-                       group,
-                       greedy)
+        return True, "direct path", path
+    success, info, path = rrt_connect(start_conf,
+                                      goal_conf,
+                                      distance,
+                                      sample,
+                                      extend,
+                                      collision,
+                                      iterations,
+                                      visualize,
+                                      fk,
+                                      group,
+                                      greedy,
+                                      timeout)
     if path is not None:
-        return smooth_path(path, extend, collision, iterations=smooth)
-    return None
+        return success, info, smooth_path(path, extend, collision, iterations=smooth)
+    return success, info, path

@@ -2,6 +2,7 @@ from random import random
 
 from motion_planners.rrt_utils import irange, argmin
 import pybullet_utils as pu
+import time
 
 
 class TreeNode(object):
@@ -53,7 +54,8 @@ def rrt(start,
         greedy=True,
         visualize=False,
         fk=None,
-        group=False):
+        group=False,
+        timeout=2):
     """
     RRT algorithm
     :param start: start configuration
@@ -71,13 +73,15 @@ def rrt(start,
     :return: a list of configurations
     """
     if collision(start):
-        print("rrt fails, start configuration has collision")
-        return None
+        return False, "start configuration has collision", None
     if not callable(goal_sample):
         g = goal_sample
         goal_sample = lambda: g
     nodes = [TreeNode(start)]
+    start_time = time.time()
     for i in irange(iterations):
+        if time.time() - start_time > timeout:
+            return False, "timeout", None
         goal = random() < goal_probability or i == 0
         s = goal_sample() if goal else sample()
 
@@ -97,11 +101,11 @@ def rrt(start,
             last = TreeNode(q, parent=last)
             nodes.append(last)
             if goal_test(last.config):
-                return configs(last.retrace())
+                return True, "success", configs(last.retrace())
             if not greedy:
                 break
         else:
             if goal:
                 print('impossible')
                 return configs(last.retrace())
-    return None
+    return False, "no path found", None
