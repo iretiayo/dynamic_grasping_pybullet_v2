@@ -4,8 +4,6 @@ import pybullet as p
 import rospy
 import rospkg
 import tf_conversions
-import moveit_commander as mc
-from moveit_msgs.srv import GetPositionIK, GetPositionFK
 
 from ur5_robotiq_moveit import UR5RobotiqMoveIt
 
@@ -91,14 +89,12 @@ class UR5RobotiqPybulletController(object):
         self.EEF_LINK_INDEX = pu.link_from_name(robot_id, self.EE_LINK_NAME)
 
         self.moveit = UR5RobotiqMoveIt()
-
-        self.arm_commander_group = mc.MoveGroupCommander(self.ARM)
-        self.robot = mc.RobotCommander()
-        self.scene = mc.PlanningSceneInterface()
         rospy.sleep(2)
 
         self.arm_difference_fn = pu.get_difference_fn(self.id, self.GROUP_INDEX['arm'])
         self.reset()
+
+        self.arm_max_joint_velocities = [pu.get_max_velocity(self.id, j_id) for j_id in self.GROUP_INDEX['arm']]
 
     def reset(self):
         self.set_arm_joints(self.initial_joint_values)
@@ -141,6 +137,13 @@ class UR5RobotiqPybulletController(object):
         num_steps = 240 if duration is None else int(duration*240)
         discretized_plan = np.linspace(start_joint_values, goal_joint_values, num_steps)
         return discretized_plan
+
+    def get_current_max_eef_velocity(self, arm_joint_values):
+        arm_joint_values = self.get_arm_joint_values() if arm_joint_values is None else arm_joint_values
+        return self.moveit.get_current_max_eef_velocity(arm_joint_values)
+
+    def get_manipulability(self, list_of_joint_values):
+        return self.moveit.get_manipulability(list_of_joint_values)
 
     def clear_scene(self):
         self.moveit.clear_scene()

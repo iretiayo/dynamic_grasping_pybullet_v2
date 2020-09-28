@@ -666,7 +666,7 @@ class DynamicGraspingWorld:
             num_ik_called += 1
         return num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
 
-    def rank_grasps(self, target_pose):
+    def rank_grasps(self, target_pose, visualize_sdf=False):
         pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
                                          self.pre_grasps_link6_ref]
 
@@ -680,11 +680,13 @@ class DynamicGraspingWorld:
                                                                self.dims)
             grasp_order_idxs = np.argsort(sdf_values)[::-1]
 
-        # grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
-        #                        self.grasps_eef]
-        # gu.visualize_grasps_with_reachability(grasps_eef_in_world, sdf_values)
-        # gu.visualize_grasp_with_reachability(planned_grasp, sdf_values[grasp_order_idxs[0]],
-        #                                      maximum=max(sdf_values), minimum=min(sdf_values))
+        if visualize_sdf and not self.disable_reachability:
+            grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+                                   self.grasps_link6_ref]
+            gu.visualize_grasps_with_reachability(grasps_eef_in_world, sdf_values)
+            gu.visualize_grasp_with_reachability(grasps_eef_in_world[grasp_order_idxs[0]],
+                                                 sdf_values[grasp_order_idxs[0]],
+                                                 maximum=max(sdf_values), minimum=min(sdf_values))
 
         # pick top 10 reachable grasp for motion aware quality ranking
         if self.use_motion_aware:

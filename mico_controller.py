@@ -101,9 +101,6 @@ class MicoController:
         self.scene = mc.PlanningSceneInterface()
         rospy.sleep(2)
 
-        # the service names have to be this
-        self.arm_ik_svr = rospy.ServiceProxy('compute_ik', GetPositionIK)
-        self.arm_fk_svr = rospy.ServiceProxy('compute_fk', GetPositionFK)
         if use_manipulability:
             from manipulability_computation.srv import GetManipulabilityIndex
             self.compute_manipulability_svr = rospy.ServiceProxy('compute_manipulability_index', GetManipulabilityIndex)

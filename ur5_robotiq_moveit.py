@@ -24,8 +24,9 @@ class UR5RobotiqMoveIt(object):
     OPEN_POSITION = [0]
     CLOSED_POSITION = [0.72]
     FINGER_MAXTURN = 1.3
+    MOVEIT_ARM_MAX_VELOCITY = [3.15, 3.15, 3.15, 3.15, 3.15, 3.15]
 
-    def __init__(self):
+    def __init__(self, use_manipulability=False):
         # the service names have to be this
         self.arm_ik_svr = rospy.ServiceProxy('compute_ik', GetPositionIK)
         self.arm_fk_svr = rospy.ServiceProxy('compute_fk', GetPositionFK)
@@ -39,6 +40,14 @@ class UR5RobotiqMoveIt(object):
                                                             DisplayTrajectory,
                                                             queue_size=20)
         self.eef_link = self.arm_commander_group.get_end_effector_link()
+
+        self.robot_state_template = self.robot.get_current_state()
+        self.use_manipulability = use_manipulability
+        if use_manipulability:
+            from manipulability_computation.srv import GetManipulabilityIndex
+            rospy.wait_for_service('compute_manipulability_index', timeout=10)
+            self.compute_manipulability_svr = rospy.ServiceProxy('compute_manipulability_index', GetManipulabilityIndex)
+            self.compute_manipulability_svr.wait_for_service()
 
     def plan(self, start_joint_values, goal_joint_values, maximum_planning_time=0.5,
              seed_trajectory=None, start_joint_velocities=None):
@@ -121,6 +130,26 @@ class UR5RobotiqMoveIt(object):
         for p in plan.joint_trajectory.points:
             p.time_from_start = rospy.Duration.from_sec(p.time_from_start.to_sec() / 1.5)
         return plan, fraction
+
+    def get_current_max_eef_velocity(self, arm_joint_values):
+        jacobian = self.arm_commander_group.get_jacobian_matrix(arm_joint_values)
+        max_eef_velocity = np.dot(jacobian, self.MOVEIT_ARM_MAX_VELOCITY)
+        return np.squeeze(np.array(max_eef_velocity))
+
+    def get_manipulability(self, list_of_joint_values):
+        assert self.use_manipulability, 'self.use_manipulability flag is set to false, ' \
+                                        'check constructor and start manipulability ros service'
+        manipulability_indexes = []
+        for jvs in list_of_joint_values:
+            if jvs is None:
+                manipulability_indexes.append(None)
+            else:
+                self.robot_state_template.joint_state.name = self.robot_state_template.joint_state.name[:len(jvs)]
+                self.robot_state_template.joint_state.position = jvs
+                result = self.compute_manipulability_svr(self.robot_state_template, self.ARM)
+
+                manipulability_indexes.append(result.manipulability_index)
+        return manipulability_indexes
 
     def get_arm_eff_pose(self):
         """ Return [[x, y, x], [x, y, z, w]]"""
