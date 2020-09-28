@@ -485,7 +485,16 @@ class DynamicGraspingWorld:
                 self.step(grasp_planning_time, None, None)
                 continue
             self.step(grasp_planning_time, None, None)
-            pu.create_arrow_marker(planned_pre_grasp, color_index=grasp_idx)
+            if self.robot_configs.graspit_approach_dir == 'x':
+                pu.create_arrow_marker(tfc.toTf(
+                    tfc.fromTf(planned_pre_grasp) * tfc.fromTf(([0.0, 0.0, 0.0], [0.0, 0.7071, 0.0, 0.7071]))),
+                    color_index=grasp_idx)
+            else:
+                pu.create_arrow_marker(planned_pre_grasp, color_index=grasp_idx)
+            # pu.create_frame_marker(gu.convert_grasp_in_object_to_world(predicted_target_pose, pu.split_7d(
+            #     self.pre_grasps_link6_ref[grasp_idx])))
+            # self.robot.set_arm_joints(planned_pre_grasp_jv)
+            # continue
 
             # plan a motion
             distance = np.linalg.norm(np.array(self.robot.get_eef_pose()[0]) - np.array(planned_pre_grasp[0]))
@@ -507,24 +516,112 @@ class DynamicGraspingWorld:
             can_grasp = self.can_grasp(grasp_idx)
             can_grasp_old = self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=self.grasp_threshold)
             if can_grasp or can_grasp_old:
-                if self.approach_prediction:
-                    # one extra IK call, right now ignore the time because it is very small
-                    predicted_target_pose, predicted_conveyor_pose = self.predict(self.approach_prediction_duration)
-                    planned_grasp_in_object = pu.split_7d(self.grasps_eef[grasp_idx])
-                    planned_grasp = gu.convert_grasp_in_object_to_world(predicted_target_pose, planned_grasp_in_object)
-                    planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False,
-                                                             arm_joint_values=self.robot.get_arm_joint_values())
-                    if planned_grasp_jv is None:
-                        print("the predicted approach motion is not reachable")
-                        continue
-
-                motion_planning_time, arm_motion_plan, gripper_motion_plan = self.plan_approach_motion(planned_grasp_jv,
-                                                                                                       self.approach_prediction_duration)
+                # grasp_plan_found, motion_planning_time = self.approach_and_grasp_timed(grasp_idx)
+                grasp_plan_found, motion_planning_time = self.approach_and_grasp(grasp_idx, planned_pre_grasp_jv)
                 dynamic_grasp_time += motion_planning_time
-                self.execute_appraoch_and_grasp(arm_motion_plan, gripper_motion_plan)
+                if not grasp_plan_found:
+                    print("the predicted approach motion is not reachable")
+                    continue
                 self.execute_lift()
                 return self.check_success(), grasp_idx, dynamic_grasp_time
         return False, None, dynamic_grasp_time
+
+    def approach_and_grasp(self, grasp_idx, planned_grasp_jv):
+        if self.approach_prediction:
+            # one extra IK call, right now ignore the time because it is very small
+            predicted_target_pose, predicted_conveyor_pose = self.predict(self.approach_prediction_duration)
+            planned_grasp_in_object = pu.split_7d(self.grasps_eef[grasp_idx])
+            planned_grasp = gu.convert_grasp_in_object_to_world(predicted_target_pose, planned_grasp_in_object)
+            planned_grasp_jv = self.robot.get_arm_ik(planned_grasp, avoid_collisions=False,
+                                                     arm_joint_values=self.robot.get_arm_joint_values())
+            if planned_grasp_jv is None:
+                print("the predicted approach motion is not reachable")
+                return False, 0
+
+        motion_planning_time, arm_motion_plan, gripper_motion_plan = self.plan_approach_motion(planned_grasp_jv,
+                                                                                               self.approach_prediction_duration)
+        self.execute_approach_and_grasp(arm_motion_plan, gripper_motion_plan)
+        return True, motion_planning_time
+
+    def approach_and_grasp_timed(self, grasp_idx):
+        object_velocity = np.array(self.conveyor.target_pose[0]) - np.array(self.conveyor.start_pose[0])
+        object_velocity *= self.conveyor.speed / np.linalg.norm(object_velocity)
+        arm_discretized_plan, gripper_discretized_plan = self.get_grasping_plan_timed_control(grasp_idx,
+                                                                                              self.back_off,
+                                                                                              object_velocity)
+        self.execute_approach_and_grasp_timed(arm_discretized_plan, gripper_discretized_plan)
+        return True, 0
+
+    def get_grasping_plan_timed_control(self, grasp_idx, back_off, object_velocity):
+
+        pre_grasp_in_object = pu.split_7d(self.pre_grasps_eef[grasp_idx])
+        grasp_in_object = pu.split_7d(self.grasps_eef[grasp_idx])
+
+        pregrasp_object_pose = p.getBasePositionAndOrientation(self.target)
+        pre_grasp_link6_com_in_world = gu.convert_grasp_in_object_to_world(pregrasp_object_pose, pre_grasp_in_object)
+
+        max_eef_speed = 0.05    # should be dependent on the Jacobian
+        # max_eef_speed = self.robot.get_current_max_eef_velocity(self.robot.get_arm_joint_values())
+        # jac_t, jac_r, jacobian_moveit = self.get_pybullet_jacobian()
+        # np.dot(np.array(jac_t)[:, :6], self.robot.arm_max_joint_velocities)
+        # np.dot(np.abs(approach_direction), np.abs(max_eef_speed[:3]))
+        approach_duration = abs(back_off) / max_eef_speed
+        approach_direction = np.array(grasp_in_object[0]) - np.array(pre_grasp_in_object[0])
+        approach_direction /= np.linalg.norm(approach_direction)
+
+        object_position_at_grasp_pose = np.array(pu.get_body_pose(self.target)[0]) + object_velocity * approach_duration
+        object_pose_at_grasp_pose = [object_position_at_grasp_pose, pregrasp_object_pose[1]]
+        at_grasp_pose = gu.convert_grasp_in_object_to_world(object_pose_at_grasp_pose, grasp_in_object)
+
+        gripper_close_duration = approach_duration * 0.2
+        object_position_at_grasp_closed = object_position_at_grasp_pose + object_velocity * gripper_close_duration
+        object_pose_at_grasp_closed = [object_position_at_grasp_closed, pregrasp_object_pose[1]]
+        final_grasp_pose = gu.convert_grasp_in_object_to_world(object_pose_at_grasp_closed, grasp_in_object)
+
+        grasping_timing = [0, approach_duration, approach_duration + gripper_close_duration]
+        grasping_eef_wp = [pre_grasp_link6_com_in_world, at_grasp_pose, final_grasp_pose]
+        grasping_eef_jv = [self.robot.get_arm_ik(eef_pose, avoid_collisions=False) for eef_pose in grasping_eef_wp]
+
+        grasping_gripper_wp = [self.robot.OPEN_POSITION, self.robot.OPEN_POSITION, self.robot.CLOSED_POSITION]
+        arm_discretized_plan, gripper_discretized_plan = self.discretize_grasping_plan(grasping_timing, grasping_eef_jv,
+                                                                                       grasping_gripper_wp)
+        return arm_discretized_plan, gripper_discretized_plan
+
+    def discretize_grasping_plan(self, grasping_timing, grasping_eef_jv, grasping_gripper_wp):
+
+        num_steps = 240 * np.array(grasping_timing)
+        arm_discretized_plan = []
+        gripper_discretized_plan = []
+        for i in range(len(grasping_timing)-1):
+            arm_wp = np.linspace(grasping_eef_jv[i], grasping_eef_jv[i+1], num_steps[i+1] - num_steps[i])
+            arm_discretized_plan.extend(arm_wp)
+
+            gripper_wp = np.linspace(grasping_gripper_wp[i], grasping_gripper_wp[i+1], num_steps[i+1] - num_steps[i])
+            gripper_discretized_plan.extend(gripper_wp)
+        return arm_discretized_plan, gripper_discretized_plan
+
+    def execute_approach_and_grasp_timed(self, arm_discretized_plan, gripper_discretized_plan):
+        """ modify the arm and gripper plans according to close delay and execute it """
+        assert len(arm_discretized_plan) == len(gripper_discretized_plan)
+        for arm_wp, gripper_wp in zip(arm_discretized_plan, gripper_discretized_plan):
+            self.robot.control_arm_joints(arm_wp)
+            self.robot.control_gripper_joints(gripper_wp)
+            self.conveyor.step()
+            p.stepSimulation()
+            self.world_steps += 1
+            if self.world_steps % self.pose_steps == 0:
+                self.motion_predictor_kf.update(pu.get_body_pose(self.target))
+
+    def get_pybullet_jacobian(self):
+        gripper_joint_values = self.robot.get_gripper_joint_values()
+        arm_joint_values = self.robot.get_arm_joint_values()
+        current_positions = arm_joint_values + gripper_joint_values
+
+        zero_vec = [0.0] * len(current_positions)
+        jac_t, jac_r = p.calculateJacobian(self.robot.id, self.robot.EEF_LINK_INDEX, (0, 0, 0), current_positions,
+                                           zero_vec, zero_vec)
+        jacobian_moveit = self.robot.moveit.arm_commander_group.get_jacobian_matrix(arm_joint_values)
+        return jac_t, jac_r, jacobian_moveit
 
     def plan_approach_motion(self, grasp_jv, prediction_duration):
         """ Plan the discretized approach motion for both arm and gripper """
@@ -555,7 +652,7 @@ class DynamicGraspingWorld:
         print("Planning a motion takes {:.6f}".format(planning_time))
         return planning_time, arm_discretized_plan, gripper_discretized_plan
 
-    def execute_appraoch_and_grasp(self, arm_plan, gripper_plan):
+    def execute_approach_and_grasp(self, arm_plan, gripper_plan):
         """ modify the arm and gripper plans according to close delay and execute it """
         arm_len = len(arm_plan)
         num_delay_steps = int(arm_len * self.close_delay)
