@@ -220,22 +220,25 @@ class UR5RobotiqPybulletController(object):
 
     def create_seed_trajectory(self, seed_discretized_plan, start_joint_values, goal_joint_values):
 
-        joint_trajectory_seed = JointTrajectory()
-        # joint_trajectory_seed.header.frame_id = ''
-        joint_trajectory_seed.joint_names = self.GROUPS['arm']
-        joint_trajectory_seed.points = []
         skip = max(1, len(seed_discretized_plan) // 100)
-        waypoints = [start_joint_values] + seed_discretized_plan[::skip].tolist() + [goal_joint_values]
-        for wp in waypoints:
-            point = JointTrajectoryPoint()
-            point.positions = wp
-            joint_trajectory_seed.points.append(point)
+        seed_discretized_plan_trimmed = seed_discretized_plan[::skip]
 
-        generic_trajectory = GenericTrajectory()
-        generic_trajectory.joint_trajectory.append(joint_trajectory_seed)
-        reference_trajectories = [generic_trajectory]
+        # waypoints = [start_joint_values] + seed_discretized_plan_trimmed[::skip].tolist() + [goal_joint_values]
+        seed_start_adapted = self.adapt_conf(seed_discretized_plan_trimmed[0], start_joint_values)
+        seed_discretized_plan_trimmed = seed_discretized_plan_trimmed + (seed_start_adapted - seed_discretized_plan_trimmed[0])
 
-        return reference_trajectories
+        diff_first_3_joints = np.abs(self.arm_difference_fn(goal_joint_values, seed_discretized_plan_trimmed[-1]))[:3]
+        if any(diff_first_3_joints[:2] > 1):
+            print('Discarding seed trajectory, end of seed trajectory is too far from new goal joint values')
+            return None
+
+        end_idx = max(int(len(seed_discretized_plan_trimmed) * 0.75), 2)
+        seed_discretized_plan_trimmed = seed_discretized_plan_trimmed[:end_idx]   # remove last portion of trajectory
+        diffs = self.arm_difference_fn(goal_joint_values, seed_discretized_plan_trimmed[-1])
+        final_waypoints = seed_discretized_plan_trimmed[-1] + np.linspace(0, 1, 30)[:, None] * diffs
+        waypoints = [start_joint_values] + seed_discretized_plan_trimmed.tolist() + final_waypoints.tolist()
+
+        return self.moveit.create_seed_trajectory(waypoints)
 
     def plan_arm_joint_values(self, goal_joint_values, start_joint_values=None, maximum_planning_time=0.5,
                               previous_discretized_plan=None, start_joint_velocities=None):

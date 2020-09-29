@@ -219,6 +219,7 @@ if __name__ == "__main__":
         if args.record_videos:
             logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, '{}.mp4'.format(i)))
         success, grasp_idx, dynamic_grasping_time = dynamic_grasping_world.dynamic_grasp()
+        time.sleep(0.5)
         if args.record_videos:
             p.stopStateLogging(logging)
         result = [('exp_idx', i),

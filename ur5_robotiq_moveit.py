@@ -6,9 +6,31 @@ import moveit_commander as mc
 from moveit_msgs.msg import DisplayTrajectory, PositionIKRequest, RobotState
 from sensor_msgs.msg import JointState
 from moveit_msgs.srv import GetPositionIK, GetPositionFK
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from moveit_msgs.msg import GenericTrajectory, RobotTrajectory
+from moveit_msgs.msg import TrajectoryConstraints, Constraints, JointConstraint
 
 from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
 from std_msgs.msg import Header
+
+
+def normalize_angle_positive(angle):
+    two_pi = 2.0 * np.pi
+    return ((angle % two_pi) + two_pi) % two_pi
+
+
+def shortest_angular_distance(start, end):
+    diff = normalize_angle_positive(end) - normalize_angle_positive(start)
+    if diff > np.pi:
+        diff = - (2 * np.pi - diff)
+    return normalize_angle(diff)
+
+
+def normalize_angle(angle):
+    angle_normalized = normalize_angle_positive(angle)
+    if angle_normalized > np.pi:
+        angle_normalized -= 2 * np.pi
+    return angle_normalized
 
 
 class UR5RobotiqMoveIt(object):
@@ -253,6 +275,73 @@ class UR5RobotiqMoveIt(object):
 
     def get_attached_object_names(self):
         return self.scene.get_attached_objects().keys()
+
+    # def create_seed_trajectory(self, seed_discretized_plan_trimmed, start_joint_values, goal_joint_values):
+    def create_seed_trajectory(self, waypoints):
+
+        planner_description = self.arm_commander_group.get_interface_description()
+        if 'CHOMP' in planner_description.planner_ids:
+            reference_trajectories = self.encode_seed_trajectory_chomp(waypoints)
+        elif 'STOMP' in planner_description.planner_ids:
+            reference_trajectories = self.encode_seed_trajectory_stomp(waypoints)
+        else:
+            reference_trajectories = None
+        return reference_trajectories
+
+    def encode_seed_trajectory_chomp(self, joint_wps):
+        joint_trajectory_seed = JointTrajectory()
+        # joint_trajectory_seed.header.frame_id = ''
+        joint_trajectory_seed.joint_names = self.ARM_JOINT_NAMES
+        joint_trajectory_seed.points = []
+        for wp in joint_wps:
+            point = JointTrajectoryPoint()
+            point.positions = wp
+            joint_trajectory_seed.points.append(point)
+
+        generic_trajectory = GenericTrajectory()
+        generic_trajectory.joint_trajectory.append(joint_trajectory_seed)
+        reference_trajectories = [generic_trajectory]
+
+        return reference_trajectories
+
+    def encode_seed_trajectory_stomp(self, joint_wps):
+        if joint_wps is None or len(joint_wps) == 0:
+            return None
+        tcs = TrajectoryConstraints()
+
+        for joint_wp in joint_wps:
+            cs = Constraints()
+            for j_idx in range(len(joint_wp)):
+                jc = JointConstraint()
+                # jc.joint_name = plan.joint_trajectory.joint_names[j_idx]
+                jc.joint_name = self.GROUPS['arm'][j_idx]
+                jc.position = joint_wp[j_idx]
+                cs.joint_constraints.append(jc)
+            tcs.constraints.append(cs)
+        return tcs
+
+    def display_trajectory(self, plan):
+        # can display plan directly or seed trajectory created with GenericTrajectory
+        if isinstance(plan, list):
+            if isinstance(plan[0], GenericTrajectory):
+                moveit_plan = RobotTrajectory()
+                moveit_plan.joint_trajectory = plan[0].joint_trajectory[0]
+                plan = moveit_plan
+        if isinstance(plan, TrajectoryConstraints):
+            moveit_plan = RobotTrajectory()
+            moveit_plan.joint_trajectory.joint_names = [jc.joint_name for jc in plan.constraints[0].joint_constraints]
+            for cs in plan.constraints:
+                point = JointTrajectoryPoint()
+                for jc in cs.joint_constraints:
+                    point.positions.append(jc.position)
+                    moveit_plan.joint_trajectory.points.append(point)
+            plan = moveit_plan
+
+        display_trajectory = DisplayTrajectory()
+        display_trajectory.trajectory_start = self.robot.get_current_state()
+        display_trajectory.trajectory.append(plan)
+
+        self.display_trajectory_publisher.publish(display_trajectory)
 
 
 if __name__ == "__main__":
