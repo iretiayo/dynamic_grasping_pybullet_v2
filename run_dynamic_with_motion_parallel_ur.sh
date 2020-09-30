@@ -3,6 +3,9 @@
 timestr=$(date '+%Y-%m-%d_%H-%M-%S')
 node_id=10000
 
+mkdir $timestr
+cp run_dynamic_with_motion_parallel_ur.sh $timestr
+
 for object_name in bleach_cleanser mustard_bottle potted_meat_can sugar_box tomato_soup_can cube power_drill
 do
 
@@ -21,7 +24,7 @@ do
             --rendering \
             --num_trials 100 \
             --result_dir $timestr \
-            --grasp_database_path assets/grasps/filtered_grasps_robotiq_no_noise_100 \
+            --grasp_database_path assets/grasps/filtered_grasps_noise_robotiq_100_1.00 \
             --grasp_threshold 0.03 \
             --lazy_threshold  0.3 \
             --conveyor_speed 0.03 \
@@ -37,5 +40,3 @@ do
     sleep 3
     ((node_id++))
 done
-
-cp run_dynamic_with_motion_parallel.sh $timestr
