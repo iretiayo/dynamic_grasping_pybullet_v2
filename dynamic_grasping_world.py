@@ -288,6 +288,8 @@ class DynamicGraspingWorld:
                     pu.draw_line(pos1, pos2)
             else:
                 pu.draw_line(self.conveyor.start_pose[0], self.conveyor.target_pose[0])
+            p.resetDebugVisualizerCamera(cameraDistance=1.3, cameraYaw=theta + 90, cameraPitch=-35,
+                                         cameraTargetPosition=(0.0, 0.0, 0.0))
             return distance, theta, length, direction, target_quaternion, obstacle_poses
 
         elif mode == 'dynamic_circular':
