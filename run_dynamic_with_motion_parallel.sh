@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-timestr=exp_name_$(date '+%Y-%m-%d_%H-%M-%S')
+exp_name="exp_test"
+timestr=${exp_name}_mico_$(hostname)_$(date '+%Y-%m-%d_%H-%M-%S')
+echo $timestr
 node_id=10000
 
 mkdir $timestr
