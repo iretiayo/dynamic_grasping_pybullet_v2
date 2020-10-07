@@ -771,13 +771,11 @@ def rgb(value, minimum=-1, maximum=1):
 
 
 def plot_heatmap_bar(cmap_name, vmin=-1, vmax=-1):
-    fig = plt.figure(figsize=(10, 2))
+    plt.figure(num=-1, figsize=(10, 2))
     cmap = plt.get_cmap(cmap_name)
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 
-    cb = mpl.colorbar.ColorbarBase(plt.gca(), cmap=cmap,
-                                   norm=norm,
-                                   orientation='horizontal')
+    cb = mpl.colorbar.ColorbarBase(plt.gca(), cmap=cmap, norm=norm, orientation='horizontal')
     cb.set_label('Heatmap bar')
     plt.pause(0.001)
 

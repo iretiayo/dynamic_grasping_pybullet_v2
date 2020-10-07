@@ -468,11 +468,14 @@ def visualize_grasps_with_reachability(grasp_poses, sdf_values, use_cmap_from_mp
     if use_cmap_from_mpl:
         cmap = pu.MplColorHelper(unicode(cmap_name), minimum, maximum)
         pu.plot_heatmap_bar(unicode(cmap_name), minimum, maximum)
+    frame_ids_all = []
     for g, r in zip(grasp_poses, sdf_values):
         if use_cmap_from_mpl:
-            pu.create_arrow_marker(g, raw_color=cmap.get_rgb(r))
+            frame_ids = pu.create_arrow_marker(g, raw_color=cmap.get_rgb(r))
         else:
-            pu.create_arrow_marker(g, raw_color=pu.rgb(r, maximum=maximum, minimum=minimum))
+            frame_ids = pu.create_arrow_marker(g, raw_color=pu.rgb(r, maximum=maximum, minimum=minimum))
+        frame_ids_all.extend(frame_ids)
+    return frame_ids_all
 
 
 def visualize_grasp_with_reachability(grasp_pose, sdf_value, maximum, minimum, use_cmap_from_mpl=True,
@@ -485,9 +488,10 @@ def visualize_grasp_with_reachability(grasp_pose, sdf_value, maximum, minimum, u
     if use_cmap_from_mpl:
         cmap = pu.MplColorHelper(unicode(cmap_name), minimum, maximum)
         pu.plot_heatmap_bar(unicode(cmap_name), minimum, maximum)
-        pu.create_arrow_marker(grasp_pose, raw_color=cmap.get_rgb(sdf_value), line_length=0.3, line_width=3)
+        frame_ids = pu.create_arrow_marker(grasp_pose, raw_color=cmap.get_rgb(sdf_value), line_length=0.3, line_width=3)
     else:
-        pu.create_arrow_marker(grasp_pose, raw_color=pu.rgb(sdf_value, maximum=maximum, minimum=minimum))
+        frame_ids = pu.create_arrow_marker(grasp_pose, raw_color=pu.rgb(sdf_value, maximum=maximum, minimum=minimum))
+    return frame_ids
 
 
 def get_reachability_space(reachability_data_dir):
