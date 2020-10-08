@@ -610,6 +610,8 @@ class DynamicGraspingWorld:
             self.robot.control_gripper_joints(gripper_wp)
             self.conveyor.step()
             p.stepSimulation()
+            if self.realtime:
+                time.sleep(1.0 / 240.0)
             self.world_steps += 1
             if self.world_steps % self.pose_steps == 0:
                 self.motion_predictor_kf.update(pu.get_body_pose(self.target))
@@ -672,6 +674,8 @@ class DynamicGraspingWorld:
             self.robot.control_gripper_joints(gripper_wp)
             self.conveyor.step()
             p.stepSimulation()
+            if self.realtime:
+                time.sleep(1.0 / 240.0)
             self.world_steps += 1
             if self.world_steps % self.pose_steps == 0:
                 self.motion_predictor_kf.update(pu.get_body_pose(self.target))
