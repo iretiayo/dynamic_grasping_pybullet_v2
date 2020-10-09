@@ -1234,8 +1234,8 @@ class Conveyor:
         position_trajectory = np.linspace(start_position, target_position, num_steps)
         # Amplitude: dist/2., period: self.length/3 i.e. 3 sinusoids within the length of the trajectory
         position_trajectory[:, 0] = dist/2. * np.sin(2*np.pi * position_trajectory[:, 1] / (self.length/3))
-        T_1 = np.array([[np.cos(self.theta), -np.sin(self.theta), 0],
-                        [np.sin(self.theta), np.cos(self.theta), 0],
+        T_1 = np.array([[np.cos(radians(self.theta)), -np.sin(radians(self.theta)), 0],
+                        [np.sin(radians(self.theta)), np.cos(radians(self.theta)), 0],
                         [0, 0, 1]])
         T_2 = np.array([[1, 0, self.distance], [0, 1, 0], [0, 0, 1]])
         position_trajectory = np.dot(T_1, np.dot(T_2, position_trajectory.T)).T
