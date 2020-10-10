@@ -771,7 +771,7 @@ class DynamicGraspingWorld:
 
     def rank_grasps(self, target_pose, visualize_sdf=False):
         pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
-                                         self.pre_grasps_link6_ref]
+                                         self.graspit_pregrasps]
 
         if self.disable_reachability:
             grasp_order_idxs = np.random.permutation(np.arange(len(pre_grasps_link6_ref_in_world)))
