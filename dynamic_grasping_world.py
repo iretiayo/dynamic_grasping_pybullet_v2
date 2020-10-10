@@ -774,9 +774,9 @@ class DynamicGraspingWorld:
         if self.disable_reachability:
             grasp_order_idxs = np.random.permutation(np.arange(len(self.graspit_pregrasps)))
         else:
-            pre_grasps_link6_ref_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+            graspit_pregrasps_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
                                              self.graspit_pregrasps]
-            sdf_values = gu.get_reachability_of_grasps_pose_2d(pre_grasps_link6_ref_in_world,
+            sdf_values = gu.get_reachability_of_grasps_pose_2d(graspit_pregrasps_in_world,
                                                                self.sdf_reachability_space,
                                                                self.mins,
                                                                self.step_size,
