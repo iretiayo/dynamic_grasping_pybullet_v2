@@ -715,9 +715,7 @@ def create_frame_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
 
 def create_arrow_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
                         line_length=0.1,
-                        arrow_length=0.01,
                         line_width=2,
-                        arrow_width=6,
                         life_time=0,
                         color_index=0,
                         raw_color=None,
@@ -726,26 +724,25 @@ def create_arrow_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
     Create an arrow marker that identifies the z-axis of the end effector frame. Add a dot towards the positive direction.
     """
 
-    position = np.array(pose[0])
-    orientation = np.array(pose[1])
     color = raw_color if raw_color is not None else rgb_colors_1[color_index % len(rgb_colors_1)]
 
-    pts = np.array([[0, 0, 0], [line_length, 0, 0], [0, line_length, 0], [0, 0, line_length]])
-    z_extend = [0, 0, line_length + arrow_length]
-    rotIdentity = np.array([0, 0, 0, 1])
-    po, _ = p.multiplyTransforms(position, orientation, pts[0, :], rotIdentity)
-    pz, _ = p.multiplyTransforms(position, orientation, pts[3, :], rotIdentity)
-    pz_extend, _ = p.multiplyTransforms(position, orientation, z_extend, rotIdentity)
+    po, _ = p.multiplyTransforms(pose[0], pose[1], [0, 0, 0], [0, 0, 0, 1])
+    pz, _ = p.multiplyTransforms(pose[0], pose[1], [0, 0, line_length], [0, 0, 0, 1])
+    pz_extend1, _ = p.multiplyTransforms(pz, pose[1], [0, line_length*0.2, -line_length*0.2], [0, 0, 0, 1])
+    pz_extend2, _ = p.multiplyTransforms(pz, pose[1], [0, -line_length*0.2, -line_length*0.2], [0, 0, 0, 1])
 
     if replace_frame_id is not None:
         z_id = p.addUserDebugLine(po, pz, color, line_width, life_time,
                                   replaceItemUniqueId=replace_frame_id[2])
-        z_extend_id = p.addUserDebugLine(pz, pz_extend, color, arrow_width, life_time,
-                                         replaceItemUniqueId=replace_frame_id[2])
+        z_extend_id1 = p.addUserDebugLine(pz, pz_extend1, color, line_width, life_time,
+                                          replaceItemUniqueId=replace_frame_id[2])
+        z_extend_id2 = p.addUserDebugLine(pz, pz_extend2, color, line_width, life_time,
+                                          replaceItemUniqueId=replace_frame_id[2])
     else:
         z_id = p.addUserDebugLine(po, pz, color, line_width, life_time)
-        z_extend_id = p.addUserDebugLine(pz, pz_extend, color, arrow_width, life_time)
-    frame_id = (z_id, z_extend_id)
+        z_extend_id1 = p.addUserDebugLine(pz, pz_extend1, color, line_width, life_time)
+        z_extend_id2 = p.addUserDebugLine(pz, pz_extend2, color, line_width, life_time)
+    frame_id = (z_id, z_extend_id1, z_extend_id2)
     return frame_id
 
 

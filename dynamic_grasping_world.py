@@ -487,14 +487,13 @@ class DynamicGraspingWorld:
                 self.step(grasp_planning_time, None, None)
                 continue
             self.step(grasp_planning_time, None, None)
-            if self.robot_configs.graspit_approach_dir == 'x':
-                pu.create_arrow_marker(tfc.toTf(
-                    tfc.fromTf(planned_pre_grasp) * tfc.fromTf(([0.0, 0.0, 0.0], [0.0, 0.7071, 0.0, 0.7071]))),
-                    color_index=grasp_idx)
-            else:
-                pu.create_arrow_marker(planned_pre_grasp, color_index=grasp_idx)
-            # pu.create_frame_marker(gu.convert_grasp_in_object_to_world(predicted_target_pose, pu.split_7d(
-            #     self.pre_grasps_link6_ref[grasp_idx])))
+
+            # planned_pre_grasp = gu.convert_grasp_in_object_to_world(pu.get_body_pose(self.target), pu.split_7d(
+            #     self.pre_grasps_eef[grasp_idx]))
+            line_length = 0.1
+            pu.create_arrow_marker(tfc.toTf(tfc.fromTf(planned_pre_grasp) * tfc.fromTf(
+                self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT) * tfc.fromTf(((0, 0, -line_length), (0, 0, 0, 1)))),
+                                   color_index=grasp_idx, line_length=line_length)
             # self.robot.set_arm_joints(planned_pre_grasp_jv)
             # continue
 
@@ -784,17 +783,19 @@ class DynamicGraspingWorld:
             grasp_order_idxs = np.argsort(sdf_values)[::-1]
 
         if visualize_sdf and not self.disable_reachability:
-            grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
-                                   self.grasps_link6_ref]
             pre_grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
-                                       self.pre_grasps_link6_ref]
+                                       self.pre_grasps_eef]
+            pre_grasps_eef_in_world = [
+                tfc.toTf(tfc.fromTf(g) * tfc.fromTf(self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT)) for g in
+                pre_grasps_eef_in_world]
+
             if hasattr(self, 'marker_frame_ids'):
                 pu.remove_markers(self.marker_frame_ids)
                 self.marker_frame_ids = []
             frame_ids = gu.visualize_grasps_with_reachability(np.array(pre_grasps_eef_in_world)[grasp_order_idxs[:100]],
                                                               np.array(sdf_values)[grasp_order_idxs[:100]])
             self.marker_frame_ids = frame_ids
-            frame_ids = gu.visualize_grasp_with_reachability(grasps_eef_in_world[grasp_order_idxs[0]],
+            frame_ids = gu.visualize_grasp_with_reachability(pre_grasps_eef_in_world[grasp_order_idxs[0]],
                                                              sdf_values[grasp_order_idxs[0]], use_cmap_from_mpl=False,
                                                              maximum=max(sdf_values), minimum=min(sdf_values))
             self.marker_frame_ids.extend(frame_ids)

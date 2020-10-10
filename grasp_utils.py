@@ -23,6 +23,7 @@ mico_configs = {
     'GRASPIT_LINK_TO_PYBULLET_LINK': ([0, 0, 0], [0.0, 0.0, 0.0, 1.0]),
     'PYBULLET_LINK_TO_COM': ([-0.002216, -0.000001, -0.06], [0.0, 0.0, 0.0, 1.0]),
     'PYBULLET_LINK_COM': [-0.002216, -0.000001, -0.06],
+    'MOVEIT_LINK_TO_GRASPING_POINT': ([0, 0, 0], [0.0, 0.0, 0.0, 1.0]),
 
     'robot_urdf': os.path.abspath('assets/mico/mico.urdf'),
     'gripper_urdf': os.path.abspath('assets/mico/mico_hand.urdf'),
@@ -41,6 +42,7 @@ ur5_robotiq_configs = {
     'GRASPIT_LINK_TO_PYBULLET_LINK': ([0.0, 0.0, 0.0], [0.0, 0.706825181105366, 0.0, 0.7073882691671998]),
     'PYBULLET_LINK_TO_COM': ([0.0, 0.0, 0.031451], [0.0, 0.0, 0.0, 1.0]),
     'PYBULLET_LINK_COM': [0.0, 0.0, 0.031451],
+    'MOVEIT_LINK_TO_GRASPING_POINT': ([0.130, -0.000, -0.0], [0.500, -0.500, 0.500, -0.500]),
 
     'robot_urdf': os.path.abspath('assets/NONE'),
     'gripper_urdf': os.path.abspath('assets/robotiq_2f_85_hand/robotiq_arg2f_85_model.urdf'),
@@ -468,12 +470,15 @@ def visualize_grasps_with_reachability(grasp_poses, sdf_values, use_cmap_from_mp
     if use_cmap_from_mpl:
         cmap = pu.MplColorHelper(unicode(cmap_name), minimum, maximum)
         pu.plot_heatmap_bar(unicode(cmap_name), minimum, maximum)
+    line_length = 0.1
     frame_ids_all = []
     for g, r in zip(grasp_poses, sdf_values):
+        g = tf_conversions.toTf(tf_conversions.fromTf(g) * tf_conversions.fromTf(((0, 0, -line_length), (0, 0, 0, 1))))
         if use_cmap_from_mpl:
-            frame_ids = pu.create_arrow_marker(g, raw_color=cmap.get_rgb(r))
+            frame_ids = pu.create_arrow_marker(g, raw_color=cmap.get_rgb(r), line_length=line_length)
         else:
-            frame_ids = pu.create_arrow_marker(g, raw_color=pu.rgb(r, maximum=maximum, minimum=minimum))
+            frame_ids = pu.create_arrow_marker(g, raw_color=pu.rgb(r, maximum=maximum, minimum=minimum),
+                                               line_length=line_length)
         frame_ids_all.extend(frame_ids)
     return frame_ids_all
 
@@ -488,8 +493,14 @@ def visualize_grasp_with_reachability(grasp_pose, sdf_value, maximum, minimum, u
     if use_cmap_from_mpl:
         cmap = pu.MplColorHelper(unicode(cmap_name), minimum, maximum)
         pu.plot_heatmap_bar(unicode(cmap_name), minimum, maximum)
+        line_length = 0.3
+        grasp_pose = tf_conversions.toTf(
+            tf_conversions.fromTf(grasp_pose) * tf_conversions.fromTf(((0, 0, -line_length), (0, 0, 0, 1))))
         frame_ids = pu.create_arrow_marker(grasp_pose, raw_color=cmap.get_rgb(sdf_value), line_length=0.3, line_width=3)
     else:
+        line_length = 0.1
+        grasp_pose = tf_conversions.toTf(
+            tf_conversions.fromTf(grasp_pose) * tf_conversions.fromTf(((0, 0, -line_length), (0, 0, 0, 1))))
         frame_ids = pu.create_arrow_marker(grasp_pose, raw_color=pu.rgb(sdf_value, maximum=maximum, minimum=minimum))
     return frame_ids
 
