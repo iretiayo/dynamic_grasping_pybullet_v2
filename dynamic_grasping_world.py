@@ -45,6 +45,7 @@ class DynamicGraspingWorld:
                  realtime,
                  max_check,
                  disable_reachability,
+                 rank_by_manipulability,
                  back_off,
                  pose_freq,
                  use_seed_trajectory,
@@ -95,6 +96,7 @@ class DynamicGraspingWorld:
         self.max_check = max_check
         self.back_off = back_off
         self.disable_reachability = disable_reachability
+        self.rank_by_manipulability = rank_by_manipulability
         self.world_steps = 0
         self.pose_freq = pose_freq
         self.pose_duration = 1.0 / self.pose_freq
@@ -773,13 +775,18 @@ class DynamicGraspingWorld:
         if self.disable_reachability:
             grasp_order_idxs = np.random.permutation(np.arange(len(self.graspit_pregrasps)))
         else:
-            graspit_pregrasps_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
-                                             self.graspit_pregrasps]
-            sdf_values = gu.get_reachability_of_grasps_pose_2d(graspit_pregrasps_in_world,
-                                                               self.sdf_reachability_space,
-                                                               self.mins,
-                                                               self.step_size,
-                                                               self.dims)
+            if self.rank_by_manipulability:
+                manipulabilities_pregrasp, pre_grasp_jvs = self.get_manipulabilities_eef_poses(self.pre_grasps_eef,
+                                                                                               target_pose)
+                sdf_values = manipulabilities_pregrasp
+            else:
+                graspit_pregrasps_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+                                              self.graspit_pregrasps]
+                sdf_values = gu.get_reachability_of_grasps_pose_2d(graspit_pregrasps_in_world,
+                                                                   self.sdf_reachability_space,
+                                                                   self.mins,
+                                                                   self.step_size,
+                                                                   self.dims)
             grasp_order_idxs = np.argsort(sdf_values)[::-1]
 
         if visualize_sdf and not self.disable_reachability:
@@ -839,6 +846,19 @@ class DynamicGraspingWorld:
             #                                      maximum=max(sdf_values), minimum=min(sdf_values))
 
         return grasp_order_idxs
+
+    def get_manipulabilities_eef_poses(self, eef_poses_in_object, target_pose):
+
+        eefs_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in eef_poses_in_object]
+
+        ik_jvs = [self.robot.get_arm_ik(pre_g, timeout=0.02, restarts=5, avoid_collisions=True) for pre_g in
+                  eefs_in_world]
+
+        manipulabilities_eef = -np.ones(len(ik_jvs))
+        idx = np.where(np.array(ik_jvs) != None)[0]
+        manipulabilities_eef[idx] = self.robot.get_manipulability(np.array(ik_jvs)[idx])
+
+        return manipulabilities_eef, ik_jvs
 
     def get_motion_aware_qualities(self, grasps_eef, pre_grasps_eef, angle, speed):
         """
