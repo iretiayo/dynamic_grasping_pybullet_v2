@@ -145,6 +145,17 @@ class UR5RobotiqPybulletController(object):
     def get_manipulability(self, list_of_joint_values):
         return self.moveit.get_manipulability(list_of_joint_values)
 
+    def get_jacobian_pybullet(self, arm_joint_values):
+
+        gripper_joint_values = self.get_gripper_joint_values()
+        current_positions = arm_joint_values + gripper_joint_values
+
+        zero_vec = [0.0] * len(current_positions)
+        jac_t, jac_r = p.calculateJacobian(self.id, self.EEF_LINK_INDEX, (0, 0, 0),
+                                           current_positions, zero_vec, zero_vec)
+        jacobian = np.concatenate((np.array(jac_t)[:, :6], np.array(jac_r)[:, :6]), axis=0)
+        return jacobian
+
     def clear_scene(self):
         self.moveit.clear_scene()
 
