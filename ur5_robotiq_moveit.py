@@ -158,7 +158,7 @@ class UR5RobotiqMoveIt(object):
         max_eef_velocity = np.dot(jacobian, self.MOVEIT_ARM_MAX_VELOCITY)
         return np.squeeze(np.array(max_eef_velocity))
 
-    def get_manipulability(self, list_of_joint_values):
+    def get_manipulability_srv(self, list_of_joint_values):
         assert self.use_manipulability, 'self.use_manipulability flag is set to false, ' \
                                         'check constructor and start manipulability ros service'
         manipulability_indexes = []
@@ -171,6 +171,25 @@ class UR5RobotiqMoveIt(object):
                 result = self.compute_manipulability_svr(self.robot_state_template, self.ARM)
 
                 manipulability_indexes.append(result.manipulability_index)
+        return manipulability_indexes
+
+    def get_manipulability(self, list_of_joint_values, translation_only=True):
+        manipulability_indexes = []
+        for jvs in list_of_joint_values:
+            if jvs is None:
+                manipulability_indexes.append(None)
+            else:
+                jacobian = self.arm_commander_group.get_jacobian_matrix(jvs)
+                if translation_only:
+                    matrix = np.dot(jacobian[:3], jacobian[:3].T)
+                else:
+                    matrix = np.dot(jacobian, jacobian.T)
+                manipulability_index = np.sqrt(np.linalg.det(matrix))
+                manipulability_indexes.append(manipulability_index)
+
+                # # u_, s_, vh_ = np.linalg.svd(jacobian, full_matrices=True)
+                # # index2 = np.sqrt(np.prod(s_))
+
         return manipulability_indexes
 
     def get_arm_eff_pose(self):
