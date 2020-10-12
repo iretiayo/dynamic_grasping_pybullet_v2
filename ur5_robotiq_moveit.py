@@ -9,6 +9,7 @@ from moveit_msgs.srv import GetPositionIK, GetPositionFK
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from moveit_msgs.msg import GenericTrajectory, RobotTrajectory
 from moveit_msgs.msg import TrajectoryConstraints, Constraints, JointConstraint
+from moveit_msgs.srv import GetStateValidityRequest, GetStateValidity
 
 from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
 from std_msgs.msg import Header
@@ -62,6 +63,9 @@ class UR5RobotiqMoveIt(object):
                                                             DisplayTrajectory,
                                                             queue_size=20)
         self.eef_link = self.arm_commander_group.get_end_effector_link()
+
+        rospy.wait_for_service('check_state_validity', timeout=10)
+        self.sv_srv = rospy.ServiceProxy('/check_state_validity', GetStateValidity)
 
         self.robot_state_template = self.robot.get_current_state()
         self.use_manipulability = use_manipulability
@@ -268,6 +272,20 @@ class UR5RobotiqMoveIt(object):
         return [d[n] for n in self.ARM_JOINT_NAMES]
 
     ''' scene and collision '''
+
+    def check_arm_collision(self, arm_joint_values, constraints=None):
+
+        robot_state = RobotState()
+        robot_state.joint_state.name = self.ARM_JOINT_NAMES
+        robot_state.joint_state.position = arm_joint_values
+
+        gsvr = GetStateValidityRequest()
+        gsvr.robot_state = robot_state
+        gsvr.group_name = self.ARM
+        if constraints is not None:
+            gsvr.constraints = constraints
+        result = self.sv_srv.call(gsvr)
+        return result
 
     def clear_scene(self):
         for obj_name in self.get_attached_object_names():
