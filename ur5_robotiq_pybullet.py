@@ -149,31 +149,11 @@ class UR5RobotiqPybulletController(object):
         self.moveit.clear_scene()
 
     def get_arm_fk(self, arm_joint_values):
-        pose = self.get_arm_fk_ros(arm_joint_values)
-        return gu.pose_2_list(pose) if pose is not None else None
+        pose = self.moveit.get_arm_fk(arm_joint_values)
+        return tf_conversions.toTf(tf_conversions.fromMsg(pose)) if pose is not None else None
 
     def get_arm_fk_pybullet(self, joint_values):
         return pu.forward_kinematics(self.id, self.GROUP_INDEX['arm'], joint_values, self.EEF_LINK_INDEX)
-
-    def get_arm_fk_ros(self, arm_joint_values):
-        """ return a ros pose """
-        rospy.wait_for_service('compute_fk')
-
-        header = Header(frame_id="world")
-        fk_link_names = [self.EEF_LINK]
-        robot_state = RobotState()
-        robot_state.joint_state.name = self.GROUPS['arm']
-        robot_state.joint_state.position = arm_joint_values
-
-        try:
-            resp = self.arm_fk_svr(header=header, fk_link_names=fk_link_names, robot_state=robot_state)
-            if resp.error_code.val != 1:
-                print("error ({}) happens when computing fk".format(resp.error_code.val))
-                return None
-            else:
-                return resp.pose_stamped[0].pose
-        except rospy.ServiceException, e:
-            print("Service call failed: %s" % e)
 
     def get_arm_ik(self, pose_2d, timeout=0.1, restarts=1, avoid_collisions=True, arm_joint_values=None,
                    gripper_joint_values=None):
