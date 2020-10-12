@@ -209,14 +209,23 @@ class UR5RobotiqPybulletController(object):
 
         return ik_result
 
-    def get_ik_fast(self, eef_pose):
+    def get_ik_fast(self, eef_pose, avoid_collisions=True, arm_joint_values=None):
         ik_results = self.get_ik_fast_full(eef_pose)
-        import ipdb; ipdb.set_trace()
 
-        if ik_results.any():
+        if avoid_collisions and ik_results.any():
             collision_check = [self.moveit.check_arm_collision(ik) for ik in ik_results]
             ik_results = np.array(ik_results)[np.where(collision_check)]
-        return ik_results
+
+        if not ik_results.any():
+            return None
+
+        if arm_joint_values is not None:
+            jv_dists = np.linalg.norm(ik_results - np.array(arm_joint_values), axis=1)
+            # jv_dists = np.max(np.abs(ik_results - np.array(arm_joint_values)), axis=1)
+            ik_result = ik_results[np.argsort(jv_dists)[0]]
+        else:
+            ik_result = ik_results[0]
+        return ik_result
 
     def get_ik_fast_full(self, eef_pose):
 
