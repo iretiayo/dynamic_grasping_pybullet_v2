@@ -183,7 +183,7 @@ class UR5RobotiqMoveIt(object):
             if jvs is None:
                 manipulability_indexes.append(None)
             else:
-                jacobian = self.arm_commander_group.get_jacobian_matrix(jvs)
+                jacobian = self.arm_commander_group.get_jacobian_matrix(list(jvs))
                 if translation_only:
                     matrix = np.dot(jacobian[:3], jacobian[:3].T)
                 else:
@@ -285,7 +285,7 @@ class UR5RobotiqMoveIt(object):
         if constraints is not None:
             gsvr.constraints = constraints
         result = self.sv_srv.call(gsvr)
-        return result
+        return result.valid
 
     def clear_scene(self):
         for obj_name in self.get_attached_object_names():

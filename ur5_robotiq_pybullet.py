@@ -3,7 +3,7 @@ import pybullet as p
 
 import rospy
 import rospkg
-import tf_conversions
+import tf_conversions as tfc
 
 from ur5_robotiq_moveit import UR5RobotiqMoveIt
 
@@ -150,7 +150,7 @@ class UR5RobotiqPybulletController(object):
 
     def get_arm_fk(self, arm_joint_values):
         pose = self.moveit.get_arm_fk(arm_joint_values)
-        return tf_conversions.toTf(tf_conversions.fromMsg(pose)) if pose is not None else None
+        return tfc.toTf(tfc.fromMsg(pose)) if pose is not None else None
 
     def get_arm_fk_pybullet(self, joint_values):
         return pu.forward_kinematics(self.id, self.GROUP_INDEX['arm'], joint_values, self.EEF_LINK_INDEX)
@@ -197,6 +197,41 @@ class UR5RobotiqPybulletController(object):
                     ik_result[i] -= 2 * np.pi
 
         return ik_result
+
+    def get_ik_fast(self, eef_pose):
+        ik_results = self.get_ik_fast_full(eef_pose)
+        import ipdb; ipdb.set_trace()
+
+        if ik_results.any():
+            collision_check = [self.moveit.check_arm_collision(ik) for ik in ik_results]
+            ik_results = np.array(ik_results)[np.where(collision_check)]
+        return ik_results
+
+    def get_ik_fast_full(self, eef_pose):
+
+        # base_2_shoulder = gu.get_transform('base_link', 'shoulder_link')
+        # base_2_shoulder = ([0.0, 0.0, 0.089159], [0.0, 0.0, 1.0, 0.0])
+        # the z-offset (0.089159) is from kinematics_file config in ur_description
+        base_correction = ([0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0])
+
+        # ee_2_wrist3 = gu.get_transform('ee_link', 'wrist_3_link')
+        ee_2_wrist3 = ([0.0, 0.0, 0.0], [-0.5, 0.5, -0.5, 0.5])
+        wrist_3_pose_in_shoulder = tfc.toTf(
+            tfc.fromTf(base_correction).Inverse() * tfc.fromTf(eef_pose) * tfc.fromTf(ee_2_wrist3))
+
+        if not hasattr(self, 'ur5_kin'):
+            from ikfastpy import ikfastpy
+            self.ur5_kin = ikfastpy.PyKinematics()
+        wrist_3_pose_in_shoulder = tfc.toMatrix(tfc.fromTf(wrist_3_pose_in_shoulder))[:3]
+        joint_configs = self.ur5_kin.inverse(wrist_3_pose_in_shoulder.reshape(-1).tolist())
+
+        n_joints = self.ur5_kin.getDOF()
+        n_solutions = int(len(joint_configs) / n_joints)
+        joint_configs = np.asarray(joint_configs).reshape(n_solutions, n_joints)
+        # print("%d solutions found:" % (n_solutions))
+        # for joint_config in joint_configs:
+        #     print(joint_config)
+        return joint_configs
 
     def create_seed_trajectory(self, seed_discretized_plan, start_joint_values, goal_joint_values):
 
@@ -291,8 +326,8 @@ class UR5RobotiqPybulletController(object):
         """
         if frame == "eef":
             pose_2d = self.get_eef_pose()
-            pose_2d_new = tf_conversions.toTf(
-                tf_conversions.fromTf(pose_2d) * tf_conversions.fromTf(((x, y, z), (0, 0, 0, 1))))
+            pose_2d_new = tfc.toTf(
+                tfc.fromTf(pose_2d) * tfc.fromTf(((x, y, z), (0, 0, 0, 1))))
         elif frame == "world":
             pose_2d_new = self.get_eef_pose()
             pose_2d_new[0][0] += x
@@ -300,9 +335,9 @@ class UR5RobotiqPybulletController(object):
             pose_2d_new[0][2] += z
         else:
             raise TypeError("not supported frame: {}".format(frame))
-        discretized_plan, fraction = self.plan_straight_line(tf_conversions.toMsg(tf_conversions.fromTf(pose_2d_new)),
-                                                        ee_step=0.01,
-                                                        avoid_collisions=False)
+        discretized_plan, fraction = self.plan_straight_line(tfc.toMsg(tfc.fromTf(pose_2d_new)),
+                                                             ee_step=0.01,
+                                                             avoid_collisions=False)
         return discretized_plan, fraction
 
     @staticmethod
