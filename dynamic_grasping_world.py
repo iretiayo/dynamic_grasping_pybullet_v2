@@ -682,11 +682,15 @@ class DynamicGraspingWorld:
                 self.motion_predictor_kf.update(pu.get_body_pose(self.target))
 
     def execute_lift(self):
-        plan, fraction = self.robot.plan_cartesian_control(z=0.07)
-        if fraction != 1.0:
-            print('fraction {} not 1'.format(fraction))
-        if plan is not None:
-            self.robot.execute_arm_plan(plan, self.realtime)
+        # lift twice in case the first lift attempt does not work
+        for _ in range(2):
+            plan, fraction = self.robot.plan_cartesian_control(z=0.07)
+            if fraction != 1.0:
+                print('fraction {} not 1'.format(fraction))
+            if plan is not None:
+                self.robot.execute_arm_plan(plan, self.realtime)
+                if fraction == 1.0:
+                    break
 
     def get_ik_error(self, eef_pose, ik_result, coeff=0.4):
 
