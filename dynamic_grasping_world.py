@@ -859,7 +859,7 @@ class DynamicGraspingWorld:
                   eefs_in_world]
 
         manipulabilities_eef = -np.ones(len(ik_jvs))
-        idx = np.where(np.array(ik_jvs) != None)[0]
+        idx = np.where([val is not None for val in ik_jvs])[0]
         manipulabilities_eef[idx] = self.robot.get_manipulability(np.array(ik_jvs)[idx])
 
         return manipulabilities_eef, ik_jvs
