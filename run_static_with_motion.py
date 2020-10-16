@@ -140,10 +140,11 @@ if __name__ == "__main__":
     target_mesh = trimesh.load_mesh(object_mesh_filepath)
     target_extents = target_mesh.bounding_box.extents.tolist()
     floor_offset = target_mesh.bounds.min(0)[2]
-    target_z = -target_mesh.bounds.min(0)[2] + 0.02
+    conveyor_thickness = 0.02
+    target_z = -target_mesh.bounds.min(0)[2] + conveyor_thickness
     target_initial_pose = [[0.3, 0.3, target_z], [0, 0, 0, 1]]
     robot_initial_pose = [[0, 0, 0], [0, 0, 0, 1]]
-    conveyor_initial_pose = [[0.3, 0.3, 0.01], [0, 0, 0, 1]]
+    conveyor_initial_pose = [[0.3, 0.3, conveyor_thickness/2], [0, 0, 0, 1]]
 
     dynamic_grasping_world = DynamicGraspingWorld(target_name=args.object_name,
                                                   obstacle_names=[],

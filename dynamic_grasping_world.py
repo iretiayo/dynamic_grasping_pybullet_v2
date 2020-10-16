@@ -218,7 +218,7 @@ class DynamicGraspingWorld:
         if mode == 'initial':
             pu.remove_all_markers()
             target_pose, distance = self.target_initial_pose, self.initial_distance
-            conveyor_pose = [[target_pose[0][0], target_pose[0][1], 0.01],
+            conveyor_pose = [[target_pose[0][0], target_pose[0][1], self.conveyor_initial_pose[0][2]],
                              [0, 0, 0, 1]] if target_pose is not None else self.conveyor_initial_pose
             p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
             self.conveyor.set_pose(conveyor_pose)
@@ -427,7 +427,7 @@ class DynamicGraspingWorld:
             # TODO verify that when duration is 0
             predicted_target_pose = self.motion_predictor_kf.predict(duration)
             predicted_conveyor_position = list(predicted_target_pose[0])
-            predicted_conveyor_position[2] = 0.01
+            predicted_conveyor_position[2] = self.conveyor_initial_pose[0][2]
             predicted_conveyor_pose = [predicted_conveyor_position, [0, 0, 0, 1]]
         elif self.use_gt:
             current_target_pose = pu.get_body_pose(self.target)
