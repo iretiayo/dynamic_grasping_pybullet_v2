@@ -583,7 +583,12 @@ class DynamicGraspingWorld:
 
         grasping_timing = [0, approach_duration, approach_duration + gripper_close_duration]
         grasping_eef_wp = [pre_grasp_link6_com_in_world, at_grasp_pose, final_grasp_pose]
-        grasping_eef_jv = [self.robot.get_arm_ik(eef_pose, avoid_collisions=False) for eef_pose in grasping_eef_wp]
+        # grasping_eef_jv = [self.robot.get_arm_ik(eef_pose, avoid_collisions=False) for eef_pose in grasping_eef_wp]
+        grasping_eef_jv = []
+        ik_seed = self.robot.get_arm_joint_values()
+        for eef_pose in grasping_eef_wp:
+            grasping_eef_jv.append(self.robot.get_arm_ik(eef_pose, avoid_collisions=False, arm_joint_values=ik_seed))
+            ik_seed = grasping_eef_jv[-1]
 
         grasping_gripper_wp = [self.robot.OPEN_POSITION, self.robot.OPEN_POSITION, self.robot.CLOSED_POSITION]
         arm_discretized_plan, gripper_discretized_plan = self.discretize_grasping_plan(grasping_timing, grasping_eef_jv,
