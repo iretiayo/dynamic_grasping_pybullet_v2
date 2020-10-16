@@ -143,6 +143,7 @@ class UR5RobotiqMoveIt(object):
         start_robot_state.joint_state.position = start_joint_values
 
         self.arm_commander_group.set_start_state(start_robot_state)
+        # self.arm_commander_group.set_planner_id('RRTConnect')
 
         start_eef_pose = self.get_arm_fk(start_joint_values)
         plan, fraction = self.arm_commander_group.compute_cartesian_path(
