@@ -270,7 +270,7 @@ class DynamicGraspingWorld:
                     # self.get_obstacles_regions(distance, theta, length, visualize_region=True)
                     self.obstacles = self.load_obstacles_at_poses(reset_dict['obstacle_poses'])
             self.robot.reset()
-            # self.scene.add_box("floor", gu.list_2_ps(((0, 0, -0.055), (0, 0, 0, 1))), size=(2, 2, 0.1))
+            self.scene.add_box("floor", gu.list_2_ps(((0, 0, -0.055), (0, 0, 0, 1))), size=(2, 2, 0.1))
             pu.step(2)
 
             obstacle_poses = []
