@@ -5,7 +5,7 @@ import rospy
 import rospkg
 import tf_conversions as tfc
 
-from ur5_robotiq_moveit import UR5RobotiqMoveIt
+from ur5_robotiq_moveit import UR5RobotiqMoveIt, normalize_angle
 
 import numpy as np
 import os
@@ -209,7 +209,7 @@ class UR5RobotiqPybulletController(object):
 
         return ik_result
 
-    def get_ik_fast(self, eef_pose, avoid_collisions=True, arm_joint_values=None):
+    def get_ik_fast(self, eef_pose, avoid_collisions=True, arm_joint_values=None, ignore_last_joint=True):
         ik_results = self.get_ik_fast_full(eef_pose)
 
         if avoid_collisions and ik_results.any():
@@ -220,9 +220,20 @@ class UR5RobotiqPybulletController(object):
             return None
 
         if arm_joint_values is not None:
-            jv_dists = np.linalg.norm(ik_results - np.array(arm_joint_values), axis=1)
-            # jv_dists = np.max(np.abs(ik_results - np.array(arm_joint_values)), axis=1)
+            if ignore_last_joint:
+                jv_dists = np.linalg.norm(ik_results[:, :-1] - np.array(arm_joint_values)[:-1], axis=1)
+                # jv_dists = np.max(np.abs(ik_results[:, :-1] - np.array(arm_joint_values)[:-1]), axis=1)
+            else:
+                jv_dists = np.linalg.norm(ik_results - np.array(arm_joint_values), axis=1)
+                # jv_dists = np.max(np.abs(ik_results - np.array(arm_joint_values)), axis=1)
             ik_result = ik_results[np.argsort(jv_dists)[0]]
+
+            # parrallel jaw grasp roll duality
+            reference = normalize_angle(arm_joint_values[-1])
+            original = normalize_angle(ik_result[-1])
+            dual = normalize_angle(ik_result[-1] + np.pi)
+            if np.abs(dual - reference) < np.abs(original - reference):
+                ik_result[-1] = dual
         else:
             ik_result = ik_results[0]
         return ik_result
