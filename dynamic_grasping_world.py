@@ -898,20 +898,35 @@ class DynamicGraspingWorld:
         quality = probs[1]
         return quality.item()
 
-    def plan_grasp(self, target_pose, old_grasp_idx):
+    def select_grasp_with_ik_from_ranked_grasp(self, target_pose, grasp_order_idxs):
+        num_ik_called = 0
+        grasp_idx, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = [None] * 5
+        for i, grasp_idx in enumerate(grasp_order_idxs[:self.max_check]):
+            _num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(
+                grasp_idx, target_pose)
+            num_ik_called += _num_ik_called
+            if planned_grasp_jv is not None:
+                break
+
+        if planned_pre_grasp_jv is None:
+            print('pre grasp planning fails')
+            grasp_idx = None
+        elif planned_grasp_jv is None:
+            print('pre grasp planning succeeds but grasp planning fails')
+            grasp_idx = None
+        return grasp_idx, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
+
+    def plan_grasp(self, target_pose, old_grasp_idx, always_try_switching=False):
         """ Plan a reachable pre_grasp and grasp pose"""
         # timing of the best machine
         ik_call_time = 0.01
 
-        num_ik_called = 0
-        grasp_idx = None
-        grasp_switched = False
-
         # if an old grasp index is provided
-        if old_grasp_idx is not None:
+        if old_grasp_idx is not None and not always_try_switching:
             _num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(
                 old_grasp_idx, target_pose)
-            num_ik_called += _num_ik_called
+            grasp_switched = False
+            num_ik_called = _num_ik_called
             if planned_grasp_jv is not None:
                 planning_time = num_ik_called * ik_call_time
                 return old_grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
@@ -923,23 +938,10 @@ class DynamicGraspingWorld:
         rank_grasp_time = actual_rank_grasp_time if self.fix_grasp_ranking_time is None else self.fix_grasp_ranking_time
         print('Rank grasp actually takes {:.6f}, fixed grasp ranking time {:.6}'.format(actual_rank_grasp_time,
                                                                                         self.fix_grasp_ranking_time))
+        selected_g = self.select_grasp_with_ik_from_ranked_grasp(target_pose, grasp_order_idxs)
+        grasp_idx, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = selected_g
 
-        for i, grasp_idx in enumerate(grasp_order_idxs):
-            if i == self.max_check:
-                break
-            _num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(
-                grasp_idx, target_pose)
-            num_ik_called += _num_ik_called
-            if planned_grasp_jv is not None:
-                grasp_switched = (grasp_idx != old_grasp_idx)
-                break
-
-        if planned_pre_grasp_jv is None:
-            print('pre grasp planning fails')
-            grasp_idx = None
-        if planned_pre_grasp_jv is not None and planned_grasp_jv is None:
-            print('pre grasp planning succeeds but grasp planning fails')
-            grasp_idx = None
+        grasp_switched = (grasp_idx != old_grasp_idx) and planned_grasp_jv is not None
         planning_time = rank_grasp_time + num_ik_called * ik_call_time
         print("Planning a grasp takes {:.6f}".format(planning_time))
         return grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
