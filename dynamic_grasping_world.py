@@ -916,6 +916,51 @@ class DynamicGraspingWorld:
             grasp_idx = None
         return grasp_idx, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
 
+    def select_grasp_with_ik_from_ranked_grasp_use_joint_space_dist(self, target_pose, grasp_order_idxs):
+        top_ranked_grasp_idxs = grasp_order_idxs[:self.max_check]
+
+        pre_grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+                                   np.array(self.pre_grasps_eef)[top_ranked_grasp_idxs]]
+        grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+                               np.array(self.grasps_eef)[top_ranked_grasp_idxs]]
+
+        ik_pre_grasps = [self.robot.get_arm_ik(g, timeout=0.02, restarts=2, avoid_collisions=True) for g in
+                         pre_grasps_eef_in_world]
+        ik_grasps = [self.robot.get_arm_ik(g, timeout=0.02, restarts=2, avoid_collisions=False,
+                                           arm_joint_values=ik_pre_grasps[i]) for i, g in
+                     enumerate(grasps_eef_in_world)]
+        num_ik_called = 2 * len(pre_grasps_eef_in_world)
+
+        current_arm_jv = self.robot.get_arm_joint_values()
+
+        pre_grasp_ik_dist = np.zeros(len(ik_pre_grasps)) + np.inf
+        idxs = np.where([val is not None for val in ik_pre_grasps])[0]
+        for idx in idxs:
+            pre_grasp_ik_dist[idx] = np.linalg.norm(np.array(ik_pre_grasps[idx]) - np.array(current_arm_jv))
+
+        grasp_ik_dist = np.zeros(len(ik_grasps)) + np.inf
+        idxs = np.where([val is not None for val in ik_grasps])[0]
+        for idx in idxs:
+            grasp_ik_dist[idx] = np.linalg.norm(np.array(ik_grasps[idx]) - np.array(current_arm_jv))
+
+        ik_dist_sum = np.array(pre_grasp_ik_dist) + np.array(grasp_ik_dist)
+
+        if np.any(np.isfinite(ik_dist_sum)):
+            min_ik_dist_idx = np.argmin(ik_dist_sum)
+        elif np.any(np.isfinite(pre_grasp_ik_dist)):
+            min_ik_dist_idx = np.argmin(pre_grasp_ik_dist)
+            print('pre grasp planning succeeds but grasp planning fails')
+        else:
+            print('pre grasp planning fails')
+            return None, num_ik_called, None, None, None, None
+        grasp_idx = top_ranked_grasp_idxs[min_ik_dist_idx]
+        planned_pre_grasp = pre_grasps_eef_in_world[min_ik_dist_idx]
+        planned_pre_grasp_jv = ik_pre_grasps[min_ik_dist_idx]
+        planned_grasp = grasps_eef_in_world[min_ik_dist_idx]
+        planned_grasp_jv = ik_grasps[min_ik_dist_idx]
+
+        return grasp_idx, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
+
     def plan_grasp(self, target_pose, old_grasp_idx, always_try_switching=False):
         """ Plan a reachable pre_grasp and grasp pose"""
         # timing of the best machine
