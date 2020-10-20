@@ -181,6 +181,8 @@ if __name__ == "__main__":
                                                   distance_travelled_threshold=None,
                                                   distance_low=args.distance_low,
                                                   distance_high=args.distance_high,
+                                                  conveyor_z_low=conveyor_thickness/2,
+                                                  conveyor_z_high=conveyor_thickness/2,
                                                   circular_distance_low=args.distance_low,
                                                   circular_distance_high=args.distance_high,
                                                   use_box=args.use_box,

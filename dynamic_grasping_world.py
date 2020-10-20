@@ -62,6 +62,8 @@ class DynamicGraspingWorld:
                  distance_travelled_threshold,
                  distance_low,
                  distance_high,
+                 conveyor_z_low,
+                 conveyor_z_high,
                  circular_distance_low,
                  circular_distance_high,
                  use_box,
@@ -117,6 +119,8 @@ class DynamicGraspingWorld:
 
         self.distance_low = distance_low  # mico 0.15  ur5_robotiq: 0.3
         self.distance_high = distance_high  # mico 0.4  ur5_robotiq: 0.7
+        self.conveyor_z_low = conveyor_z_low
+        self.conveyor_z_high = conveyor_z_high
         self.circular_distance_low = circular_distance_low
         self.circular_distance_high = circular_distance_high
 
@@ -256,10 +260,13 @@ class DynamicGraspingWorld:
             if mode == 'dynamic_sinusoid':
                 self.conveyor.initialize_sinusoid_motion(distance, theta, length, direction, self.conveyor_speed)
             else:
+                z_start_end = np.random.uniform(self.conveyor_z_low, self.conveyor_z_high, 2)
                 self.conveyor.initialize_linear_motion(distance, theta, length, direction, self.conveyor_speed,
+                                                       z_start_end[0], z_start_end[1],
                                                        variable_speed=mode == 'dynamic_linear_vary_speed')
             conveyor_pose = self.conveyor.start_pose
-            target_pose = [[conveyor_pose[0][0], conveyor_pose[0][1], self.target_initial_pose[0][2]],
+            target_z = self.target_initial_pose[0][2] - self.conveyor_initial_pose[0][2] + conveyor_pose[0][2]
+            target_pose = [[conveyor_pose[0][0], conveyor_pose[0][1], target_z],
                            target_quaternion]
             p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
             self.conveyor.set_pose(conveyor_pose)
@@ -1212,6 +1219,8 @@ class Conveyor:
         self.length = None
         self.direction = None
         self.speed = None
+        self.z_start = None
+        self.z_end = None
 
     def set_pose(self, pose):
         pu.set_pose(self.id, pose)
@@ -1230,7 +1239,7 @@ class Conveyor:
             self.control_pose(self.discretized_trajectory[self.wp_target_index])
             self.wp_target_index += 1
 
-    def initialize_linear_motion(self, dist, theta, length, direction, speed, variable_speed=False):
+    def initialize_linear_motion(self, dist, theta, length, direction, speed, z_start, z_end, variable_speed=False):
         """
         :param dist: distance to robot center,
         :param theta: the angle of rotation, (0, 360)
@@ -1238,6 +1247,8 @@ class Conveyor:
         :param direction: the direction of the motion
             1: from smaller theta to larger theta
             -1: from larger theta to smaller theta
+        :param z_start: the height of the conveyor at the start
+        :param z_end: the height of the conveyor at the end
         :param speed: the speed of the conveyor
         :param variable_speed: determines if the speed of the conveyor is variable or constant
         """
@@ -1246,8 +1257,9 @@ class Conveyor:
         self.length = float(length)
         self.direction = float(direction)
         self.speed = float(speed)
-        # uses the z value and orientation of the current pose
-        z = self.get_pose()[0][-1]
+        self.z_start = float(z_start)
+        self.z_end = float(z_end)
+        # uses the orientation of the current pose
         orientation = self.get_pose()[1]
         # compute start xy and end xy
         new_dist = sqrt(dist ** 2 + (length / 2.0) ** 2)
@@ -1264,8 +1276,8 @@ class Conveyor:
             start_xy = [new_dist * cos(theta_small), new_dist * sin(theta_small)]
         else:
             raise ValueError('direction must be in {-1, 1}')
-        start_position = start_xy + [z]
-        target_position = target_xy + [z]
+        start_position = start_xy + [self.z_start]
+        target_position = target_xy + [self.z_end]
 
         self.start_pose = [start_position, orientation]
         self.target_pose = [target_position, orientation]

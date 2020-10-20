@@ -42,6 +42,8 @@ def get_args():
     parser.add_argument('--back_off', type=float, default=0.05)
     parser.add_argument('--distance_low', type=float, default=0.15)
     parser.add_argument('--distance_high', type=float, default=0.4)
+    parser.add_argument('--conveyor_z_low', type=float, default=0.01, help='typical half the conveyor thickness')
+    parser.add_argument('--conveyor_z_high', type=float, default=0.01)
     parser.add_argument('--circular_distance_low', type=float, default=0.3)
     parser.add_argument('--circular_distance_high', type=float, default=0.5)
     parser.add_argument('--disable_reachability', action='store_true', default=False)
@@ -164,6 +166,8 @@ if __name__ == "__main__":
                                                   distance_travelled_threshold=args.distance_travelled_threshold,
                                                   distance_low=args.distance_low,
                                                   distance_high=args.distance_high,
+                                                  conveyor_z_low=args.conveyor_z_low,
+                                                  conveyor_z_high=args.conveyor_z_high,
                                                   circular_distance_low=args.circular_distance_low,
                                                   circular_distance_high=args.circular_distance_high,
                                                   use_box=args.use_box,
