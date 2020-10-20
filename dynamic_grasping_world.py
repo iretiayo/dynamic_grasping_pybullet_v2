@@ -1259,8 +1259,8 @@ class Conveyor:
         self.speed = float(speed)
         self.z_start = float(z_start)
         self.z_end = float(z_end)
-        # uses the orientation of the current pose
-        orientation = self.get_pose()[1]
+        # use the orientation of the initial pose
+        orientation = self.initial_pose[1]
         # compute start xy and end xy
         new_dist = sqrt(dist ** 2 + (length / 2.0) ** 2)
         delta_theta = atan((length / 2.0) / dist)
