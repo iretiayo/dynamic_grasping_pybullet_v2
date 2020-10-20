@@ -271,7 +271,7 @@ class DynamicGraspingWorld:
             p.resetBasePositionAndOrientation(self.target, target_pose[0], target_pose[1])
             self.conveyor.set_pose(conveyor_pose)
             if self.load_obstacles:
-                if reset_dict['obstacle_poses'] is None:
+                if reset_dict is None or reset_dict['obstacle_poses'] is None:
                     self.obstacles = self.load_obstacles_collision_free(distance, theta, length)
                 else:
                     # self.get_obstacles_regions(distance, theta, length, visualize_region=True)
