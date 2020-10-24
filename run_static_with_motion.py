@@ -165,6 +165,7 @@ if __name__ == "__main__":
                                                   realtime=args.realtime,
                                                   max_check=args.max_check,
                                                   disable_reachability=args.disable_reachability,
+                                                  rank_by_manipulability=True,
                                                   back_off=args.back_off,
                                                   pose_freq=5,
                                                   use_seed_trajectory=None,
