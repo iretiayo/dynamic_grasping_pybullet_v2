@@ -318,7 +318,7 @@ class UR5RobotiqMoveIt(object):
     def create_seed_trajectory(self, waypoints):
 
         planner_description = self.arm_commander_group.get_interface_description()
-        if 'CHOMP' in planner_description.planner_ids:
+        if 'CHOMP' in planner_description.planner_ids or planner_description.name == 'OMPL':
             reference_trajectories = self.encode_seed_trajectory_chomp(waypoints)
         elif 'STOMP' in planner_description.planner_ids:
             reference_trajectories = self.encode_seed_trajectory_stomp(waypoints)
