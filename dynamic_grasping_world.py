@@ -1052,7 +1052,7 @@ class DynamicGraspingWorld:
         if dist is None:
             dist = np.random.uniform(low=self.distance_low, high=self.distance_high)
         if theta is None:
-            theta = np.random.uniform(low=0, high=360)
+            theta = np.random.uniform(low=-90, high=90)
         if length is None:
             length = 1.0
         if direction is None:
