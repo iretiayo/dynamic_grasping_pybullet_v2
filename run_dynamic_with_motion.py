@@ -190,7 +190,7 @@ if __name__ == "__main__":
                                                      '{}.csv'.format(args.object_name))
         if os.path.exists(args.baseline_experiment_path):
             baseline_experiment_config_df = pd.read_csv(args.baseline_experiment_path, index_col=0)
-            for key in ['target_quaternion', 'obstacle_poses']:
+            for key in ['target_quaternion', 'obstacle_poses', 'z_start_end']:
                 if key in baseline_experiment_config_df.keys():
                     baseline_experiment_config_df[key] = baseline_experiment_config_df[key].apply(
                         lambda x: ast.literal_eval(x))
@@ -199,6 +199,10 @@ if __name__ == "__main__":
                             lambda x: [x[p:p + 7] for p in range(0, len(x), 7)])
                 else:
                     baseline_experiment_config_df[key] = None
+            # TODO: remove the next line which is just for backward compatibility
+            if baseline_experiment_config_df['z_start_end'].values[0] is None:
+                baseline_experiment_config_df['z_start_end'] = [[args.conveyor_z_low, args.conveyor_z_low]] * \
+                                                               baseline_experiment_config_df.shape[0]
 
             args.num_trials = len(baseline_experiment_config_df)
 
@@ -219,9 +223,8 @@ if __name__ == "__main__":
                 print('skipping trial {}'.format(i))
                 continue
 
-        distance, theta, length, direction, target_quaternion, obstacle_poses = dynamic_grasping_world.reset(
-            mode=args.motion_mode,
-            reset_dict=reset_dict)
+        distance, theta, length, direction, target_quaternion, obstacle_poses, z_start_end = dynamic_grasping_world.reset(
+            mode=args.motion_mode, reset_dict=reset_dict)
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         if args.record_videos:
             logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, '{}.mp4'.format(i)))
@@ -238,5 +241,6 @@ if __name__ == "__main__":
                   ('distance', distance),
                   ('direction', direction),
                   ('target_quaternion', target_quaternion),
+                  ('z_start_end', z_start_end),
                   ('obstacle_poses', sum(obstacle_poses, []))]
         mu.write_csv_line(result_file_path=args.result_file_path, result=result)

@@ -253,14 +253,15 @@ class DynamicGraspingWorld:
             if reset_dict is None:
                 distance, theta, length, direction = self.sample_convey_linear_motion()
                 target_quaternion = self.sample_target_angle()
+                z_start_end = np.random.uniform(self.conveyor_z_low, self.conveyor_z_high, 2)
             else:
-                distance, theta, length, direction = reset_dict['distance'], reset_dict['theta'], reset_dict['length'], \
-                                                     reset_dict['direction']
+                distance, theta, length, direction, z_start_end = reset_dict['distance'], reset_dict['theta'], \
+                                                                  reset_dict['length'], reset_dict['direction'], \
+                                                                  reset_dict['z_start_end']
                 target_quaternion = reset_dict['target_quaternion']
             if mode == 'dynamic_sinusoid':
                 self.conveyor.initialize_sinusoid_motion(distance, theta, length, direction, self.conveyor_speed)
             else:
-                z_start_end = np.random.uniform(self.conveyor_z_low, self.conveyor_z_high, 2)
                 self.conveyor.initialize_linear_motion(distance, theta, length, direction, self.conveyor_speed,
                                                        z_start_end[0], z_start_end[1],
                                                        variable_speed=mode == 'dynamic_linear_vary_speed')
@@ -299,7 +300,7 @@ class DynamicGraspingWorld:
                 pu.draw_line(self.conveyor.start_pose[0], self.conveyor.target_pose[0])
             p.resetDebugVisualizerCamera(cameraDistance=1.3, cameraYaw=theta + 90, cameraPitch=-35,
                                          cameraTargetPosition=(0.0, 0.0, 0.0))
-            return distance, theta, length, direction, target_quaternion, obstacle_poses
+            return distance, theta, length, direction, target_quaternion, obstacle_poses, z_start_end.tolist()
 
         elif mode == 'dynamic_circular':
             pu.remove_all_markers()
@@ -313,9 +314,11 @@ class DynamicGraspingWorld:
             if reset_dict is None:
                 distance, theta, length, direction = self.sample_convey_circular_motion()
                 target_quaternion = self.sample_target_angle()
+                z_start_end = np.random.uniform(self.conveyor_z_low, self.conveyor_z_high, 2)
             else:
-                distance, theta, length, direction = reset_dict['distance'], reset_dict['theta'], reset_dict['length'], \
-                                                     reset_dict['direction']
+                distance, theta, length, direction, z_start_end = reset_dict['distance'], reset_dict['theta'], \
+                                                                  reset_dict['length'], reset_dict['direction'], \
+                                                                  reset_dict['z_start_end']
                 target_quaternion = reset_dict['target_quaternion']
             self.conveyor.initialize_circular_motion(distance, theta, length, direction, self.conveyor_speed)
             conveyor_pose = self.conveyor.start_pose
