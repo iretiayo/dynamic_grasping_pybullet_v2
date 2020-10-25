@@ -170,6 +170,7 @@ class UR5RobotiqPybulletController(object):
                    gripper_joint_values=None):
 
         start_joint_values = self.get_arm_joint_values() if arm_joint_values is None else arm_joint_values
+        return self.get_ik_fast(pose_2d, avoid_collisions=avoid_collisions, arm_joint_values=start_joint_values)
         # gripper_joint_values = self.get_gripper_joint_values() if gripper_joint_values is None else gripper_joint_values
         if gripper_joint_values is None:
             gripper_joint_values = [self.get_joint_state(self.JOINT_INDICES_DICT[joint_name]).jointPosition for
