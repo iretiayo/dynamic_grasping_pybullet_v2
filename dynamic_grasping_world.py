@@ -161,6 +161,8 @@ class DynamicGraspingWorld:
             p.changeDynamics(self.target, -1, mass=1)
             for joint in range(p.getNumJoints(self.robot.id)):
                 p.changeDynamics(self.robot.id, joint, mass=1)
+        p.setPhysicsEngineParameter(numSolverIterations=150, enableConeFriction=1, contactBreakingThreshold=1e-3)
+
         self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf)
         self.reset('initial')  # the reset is needed to simulate the initial config
 
