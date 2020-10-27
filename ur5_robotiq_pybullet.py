@@ -92,11 +92,11 @@ class UR5RobotiqPybulletController(object):
         rospy.sleep(2)
 
         self.arm_difference_fn = pu.get_difference_fn(self.id, self.GROUP_INDEX['arm'])
-        self.reset()
 
         self.arm_max_joint_velocities = [pu.get_max_velocity(self.id, j_id) for j_id in self.GROUP_INDEX['arm']]
         self.attach_cid = None
         self.attach_object_id = None
+        self.reset()
 
     def reset(self):
         self.set_arm_joints(self.initial_joint_values)
