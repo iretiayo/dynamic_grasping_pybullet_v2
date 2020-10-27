@@ -95,6 +95,8 @@ class UR5RobotiqPybulletController(object):
         self.reset()
 
         self.arm_max_joint_velocities = [pu.get_max_velocity(self.id, j_id) for j_id in self.GROUP_INDEX['arm']]
+        self.attach_cid = None
+        self.attach_object_id = None
 
     def reset(self):
         self.set_arm_joints(self.initial_joint_values)
@@ -104,6 +106,33 @@ class UR5RobotiqPybulletController(object):
         self.gripper_discretized_plan = None
         self.arm_wp_target_index = 0
         self.gripper_wp_target_index = 0
+        if self.attach_cid is not None:
+            p.removeConstraint(self.attach_cid)
+        self.attach_cid = None
+        self.attach_object_id = None
+
+    def attach_object(self, target_id):
+        target_pose = pu.get_body_pose(target_id)
+        eef_pose = self.get_eef_pose()
+        eef_P_world = p.invertTransform(eef_pose[0], eef_pose[1])
+        eef_P_target = p.multiplyTransforms(
+            eef_P_world[0], eef_P_world[1], target_pose[0], target_pose[1])
+        self.attach_cid = p.createConstraint(
+            parentBodyUniqueId=target_id,
+            parentLinkIndex=-1,
+            childBodyUniqueId=self.id,
+            childLinkIndex=self.EEF_LINK_INDEX,
+            jointType=p.JOINT_FIXED,
+            jointAxis=[0, 0, 0],
+            parentFramePosition=[0, 0, 0],
+            childFramePosition=eef_P_target[0],
+            childFrameOrientation=eef_P_target[1])
+        self.attach_object_id = target_id
+
+    def detach(self):
+        p.removeConstraint(self.attach_cid)
+        self.attach_cid = None
+        self.attach_object_id = None
 
     def update_arm_motion_plan(self, arm_discretized_plan):
         self.arm_discretized_plan = arm_discretized_plan
