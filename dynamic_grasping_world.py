@@ -570,6 +570,8 @@ class DynamicGraspingWorld:
         arm_discretized_plan, gripper_discretized_plan = self.get_grasping_plan_timed_control(grasp_idx,
                                                                                               self.back_off,
                                                                                               object_velocity)
+        if arm_discretized_plan is None:
+            return False, 0
         self.execute_approach_and_grasp_timed(arm_discretized_plan, gripper_discretized_plan)
         return True, 0
 
@@ -607,6 +609,13 @@ class DynamicGraspingWorld:
         for eef_pose in grasping_eef_wp:
             grasping_eef_jv.append(self.robot.get_arm_ik(eef_pose, avoid_collisions=False, arm_joint_values=ik_seed))
             ik_seed = grasping_eef_jv[-1]
+
+        if np.any([jv is None for jv in grasping_eef_jv]):
+            return None, None
+        jv_diffs = np.abs(np.diff(np.array(grasping_eef_jv), axis=0))
+        max_joint_jump = 2.0  # there should not be a large jump in configuration during approach and grasp
+        if np.any(jv_diffs > max_joint_jump):
+            return None, None
 
         grasping_gripper_wp = [self.robot.OPEN_POSITION, self.robot.OPEN_POSITION, self.robot.CLOSED_POSITION]
         arm_discretized_plan, gripper_discretized_plan = self.discretize_grasping_plan(grasping_timing, grasping_eef_jv,
