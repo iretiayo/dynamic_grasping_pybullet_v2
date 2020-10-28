@@ -244,7 +244,7 @@ class UR5RobotiqPybulletController(object):
         ik_results = self.get_ik_fast_full(eef_pose)
 
         if avoid_collisions and ik_results.any():
-            collision_check = [self.moveit.check_arm_collision(ik) for ik in ik_results]
+            collision_check = [self.moveit.check_arm_collision(ik).valid for ik in ik_results]
             ik_results = np.array(ik_results)[np.where(collision_check)]
 
         if not ik_results.any():

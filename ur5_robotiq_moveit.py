@@ -289,7 +289,7 @@ class UR5RobotiqMoveIt(object):
         if constraints is not None:
             gsvr.constraints = constraints
         result = self.sv_srv.call(gsvr)
-        return result.valid
+        return result
 
     def clear_scene(self):
         for obj_name in self.get_attached_object_names():
