@@ -33,3 +33,11 @@ do
     --fix_grasp_ranking_time 0.135;
     sleep 5
 done
+
+# Launch experiments with the following in two terminals. Change the port numbers to run multiple experiments at once:
+
+# Terminal 1
+#source ../../devel/setup.bash && export ROS_MASTER_URI=http://localhost:50000 && roslaunch ur5_robotiq_moveit_config demo.launch planner:=ompl
+
+# Terminal 2
+#source ../../devel/setup.bash && export ROS_MASTER_URI=http://localhost:50000 && ./run_dynamic_with_motion_serial.sh
