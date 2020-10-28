@@ -613,7 +613,7 @@ class DynamicGraspingWorld:
             grasping_eef_jv.append(ik_result)
             ik_seed = grasping_eef_jv[-1]
 
-        jv_diffs = np.abs(np.diff(np.array(grasping_eef_jv), axis=0))
+        jv_diffs = np.abs(np.diff(np.array([self.robot.get_arm_joint_values()] + grasping_eef_jv), axis=0))
         max_joint_jump = 2.0  # there should not be a large jump in configuration during approach and grasp
         if np.any(jv_diffs > max_joint_jump):
             return None, None
