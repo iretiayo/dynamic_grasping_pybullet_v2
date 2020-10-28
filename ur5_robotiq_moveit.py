@@ -97,7 +97,10 @@ class UR5RobotiqMoveIt(object):
             plan = plan[1]
         if start_joint_velocities is not None and len(plan.joint_trajectory.points) > 0:
             plan.joint_trajectory.points[0].velocities = start_joint_velocities
-            plan = self.arm_commander_group.retime_trajectory(start_robot_state, plan)
+            velocity_scaling_factor = acceleration_scaling_factor = 0.1   # moveit uses 0.1 by default
+            plan = self.arm_commander_group.retime_trajectory(start_robot_state, plan,
+                                                              velocity_scaling_factor=velocity_scaling_factor,
+                                                              acceleration_scaling_factor=acceleration_scaling_factor)
         return plan
 
     def plan_ee_pose(self, start_joint_values, goal_ee_pose, maximum_planning_time=0.5, gripper_joint_values=[]):
