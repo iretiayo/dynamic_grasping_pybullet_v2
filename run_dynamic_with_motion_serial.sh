@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-timestr=$(date '+%Y-%m-%d_%H-%M-%S')
+exp_name="exp_name"
+timestr=${exp_name}_$(hostname)_$(date '+%Y-%m-%d_%H-%M-%S')
 
 mkdir $timestr
 cp run_dynamic_with_motion_serial.sh $timestr
