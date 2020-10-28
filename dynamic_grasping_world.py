@@ -316,7 +316,9 @@ class DynamicGraspingWorld:
             # step conveyor
             self.conveyor.step()
             # step physics
-            p.stepSimulation()
+            # step longer to make sure all waypoints have been reached
+            # p.stepSimulation()
+            pu.step(0.1)
             self.world_steps += 1
             if self.world_steps % self.pose_steps == 0:
                 self.motion_predictor_kf.update(pu.get_body_pose(self.target.id))
@@ -388,7 +390,7 @@ class DynamicGraspingWorld:
         return success, grasp_idx, grasp_attempted, pre_grasp_reached, grasp_reachaed, grasp_planning_time, num_ik_called, comment
 
     def check_success(self):
-        if pu.get_body_pose(self.target)[0][2] >= self.target_initial_pose[0][2] + 0.03:
+        if pu.get_body_pose(self.target.id)[0][2] >= self.target_initial_pose[0][2] + 0.03:
             return True
         else:
             return False
@@ -435,6 +437,19 @@ class DynamicGraspingWorld:
         distance = None
         initial_motion_plan_success = False  # not necessarily succeed
         while not done:
+            # jv = [-5.331752029968318,
+            #       -0.7179423018959942,
+            #       0.6069145921139503,
+            #       -0.4473897580513591,
+            #       -1.1810350026403182,
+            #       -1.42830591323925]
+            # plan = self.robot.plan_arm_joint_values(jv, excluded_objects=[3])
+            # self.robot.update_arm_motion_plan(plan)
+            # num_steps = len(plan)
+            # for i in range(num_steps):
+            #     self.robot.step()
+            #     p.stepSimulation()
+
             done = self.check_done()
             current_target_pose = pu.get_body_pose(self.target.id)
             duration = self.calculate_prediction_time(distance)
@@ -461,7 +476,7 @@ class DynamicGraspingWorld:
                 self.step(grasp_planning_time, None, None)
                 continue
             self.step(grasp_planning_time, None, None)
-            pu.create_arrow_marker(planned_pre_grasp, color_index=grasp_idx)
+            pu.create_arrow_marker(planned_pre_grasp, axis='x', color_index=grasp_idx)
 
             # plan a motion
             distance = np.linalg.norm(np.array(self.robot.get_eef_pose()[0]) - np.array(planned_pre_grasp[0]))
@@ -556,9 +571,7 @@ class DynamicGraspingWorld:
 
     def execute_lift(self):
         # TODO from here, execute lift
-        plan, fraction = self.robot.plan_cartesian_control(z=0.07)
-        if fraction != 1.0:
-            print('fraction {} not 1'.format(fraction))
+        plan = self.robot.plan_cartesian_control(z=0.07)
         if plan is not None:
             self.robot.execute_arm_plan(plan, self.realtime)
 
@@ -799,7 +812,8 @@ class DynamicGraspingWorld:
                         1. / 240)  # TODO: confirm that getting joint velocity this way is right
             previous_discretized_plan = self.robot.arm_discretized_plan[
                                         future_target_index:] if self.use_seed_trajectory else None
-            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_conf=start_joint_values, timeout=timeout)
+            arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, start_conf=start_joint_values,
+                                                                    timeout=timeout)
         else:
             arm_discretized_plan = self.robot.plan_arm_joint_values(grasp_jv, timeout=timeout)
 
@@ -890,11 +904,14 @@ class DynamicGraspingWorld:
 
                    [(-length / 2.0 + 2 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_low),
                     (
-                    -length / 2.0 + 2 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_high),
+                        -length / 2.0 + 2 * region_length + 2 * self.distance_between_region,
+                        -self.obstacle_distance_high),
                     (
-                    -length / 2.0 + 3 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_high),
+                        -length / 2.0 + 3 * region_length + 2 * self.distance_between_region,
+                        -self.obstacle_distance_high),
                     (
-                    -length / 2.0 + 3 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_low)],
+                        -length / 2.0 + 3 * region_length + 2 * self.distance_between_region,
+                        -self.obstacle_distance_low)],
 
                    [(-length / 2.0 + region_length + self.distance_between_region, -self.obstacle_distance_low),
                     (-length / 2.0 + region_length + self.distance_between_region, -self.obstacle_distance_high),

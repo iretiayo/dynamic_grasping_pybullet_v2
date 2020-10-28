@@ -349,9 +349,10 @@ def get_sample_fn(body, joints):
     return fn
 
 
-def get_extend_fn(body, joints, resolutions=None):
+def get_extend_fn(body, joints, resolutions=None, velocity=3.15):
     if resolutions is None:
-        resolutions = 0.05 * np.ones(len(joints))
+        resolutions = velocity / 240.0 * np.ones(len(joints))
+
     difference_fn = get_difference_fn(body, joints)
 
     def fn(q1, q2):
@@ -620,12 +621,11 @@ def control_joint(body, joint, value):
                                    force=get_max_force(body, joint))
 
 
-def control_joints(body, joints, positions, velocity=0.01, acceleration=2.0):
-    return p.setJointMotorControlArray(body,
-                                       joints,
-                                       p.POSITION_CONTROL,
+def control_joints(body, joints, positions):
+    return p.setJointMotorControlArray(body, joints, p.POSITION_CONTROL,
                                        targetPositions=positions,
-                                       positionGains=[velocity] * len(joints))
+                                       targetVelocities=[0.0] * len(joints),
+                                       forces=[get_max_force(body, joint) for joint in joints])
 
 
 def forward_kinematics(body, joints, positions, eef_link=None):
@@ -876,6 +876,7 @@ def create_frame_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
 
 
 def create_arrow_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
+                        axis='z',
                         line_length=0.1,
                         arrow_length=0.01,
                         line_width=2,
@@ -895,23 +896,33 @@ def create_arrow_marker(pose=((0, 0, 0), (0, 0, 0, 1)),
 
     pts = np.array([[0, 0, 0], [line_length, 0, 0], [
                    0, line_length, 0], [0, 0, line_length]])
-    z_extend = [0, 0, line_length + arrow_length]
+    if axis == 'x':
+        pt = pts[1]
+        end_extend = [line_length + arrow_length, 0, 0]
+    elif axis == 'y':
+        pt = pts[2]
+        end_extend = [0, line_length + arrow_length, 0]
+    elif axis == 'z':
+        pt = pts[3]
+        end_extend = [0, 0, line_length + arrow_length]
+    else:
+        raise ValueError('not supported axis')
     rotIdentity = np.array([0, 0, 0, 1])
     po, _ = p.multiplyTransforms(position, orientation, pts[0, :], rotIdentity)
-    pz, _ = p.multiplyTransforms(position, orientation, pts[3, :], rotIdentity)
-    pz_extend, _ = p.multiplyTransforms(
-        position, orientation, z_extend, rotIdentity)
+    pe, _ = p.multiplyTransforms(position, orientation, pt, rotIdentity)
+    pe_extend, _ = p.multiplyTransforms(
+        position, orientation, end_extend, rotIdentity)
 
     if replace_frame_id is not None:
-        z_id = p.addUserDebugLine(po, pz, color, line_width, life_time,
+        line_id = p.addUserDebugLine(po, pe, color, line_width, life_time,
                                   replaceItemUniqueId=replace_frame_id[2])
-        z_extend_id = p.addUserDebugLine(pz, pz_extend, color, arrow_width, life_time,
+        extend_id = p.addUserDebugLine(pe, pe_extend, color, arrow_width, life_time,
                                          replaceItemUniqueId=replace_frame_id[2])
     else:
-        z_id = p.addUserDebugLine(po, pz, color, line_width, life_time)
-        z_extend_id = p.addUserDebugLine(
-            pz, pz_extend, color, arrow_width, life_time)
-    frame_id = (z_id, z_extend_id)
+        line_id = p.addUserDebugLine(po, pe, color, line_width, life_time)
+        extend_id = p.addUserDebugLine(
+            pe, pe_extend, color, arrow_width, life_time)
+    frame_id = (line_id, extend_id)
     return frame_id
 
 

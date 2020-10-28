@@ -26,6 +26,7 @@ def rrt_connect(q1,
     start_time = time.time()
     for _ in irange(iterations):
         if time.time() - start_time > timeout:
+            print(time.time() - start_time)
             return False, "timeout", None
         if len(nodes1) > len(nodes2):
             nodes1, nodes2 = nodes2, nodes1
@@ -35,6 +36,9 @@ def rrt_connect(q1,
 
         last1 = argmin(lambda n: distance(n.config, s), nodes1)
         for q in extend(last1.config, s):
+            if time.time() - start_time > timeout:
+                print(time.time() - start_time)
+                return False, "timeout", None
             if collision(q):
                 break
             if visualize:
@@ -53,6 +57,9 @@ def rrt_connect(q1,
 
         last2 = argmin(lambda n: distance(n.config, last1.config), nodes2)
         for q in extend(last2.config, last1.config):
+            if time.time() - start_time > timeout:
+                print(time.time() - start_time)
+                return False, "timeout", None
             if collision(q):
                 break
             if visualize:

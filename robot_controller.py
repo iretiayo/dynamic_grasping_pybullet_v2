@@ -161,28 +161,24 @@ class RobotController(object):
             print('ik call takes {:.2f}'.format(time.time() - start_time))
         return ik_result, pos_distance, quat_distance
 
-    def plan_arm_joint_values_simple(self, goal_joint_values, start_joint_values=None, duration=None):
-        """ Linear interpolation between joint_values """
-        start_joint_values = self.get_arm_joint_values(
-        ) if start_joint_values is None else start_joint_values
-
-        diffs = self.arm_difference_fn(goal_joint_values, start_joint_values)
-        # specifically handle the wrist joint, whose period should be pi instead of 2*pi
-        diffs[-1] = (diffs[-1] + np.pi / 2) % np.pi - np.pi / 2
-        steps = np.abs(np.divide(diffs, self.robot_config['max_arm_velocity'])) * 240
-        num_steps = int(max(steps))
-        if duration is not None:
-            num_steps = int(duration * 240)
-            # num_steps = max(int(duration * 240), steps)     # this should ensure that it satisfies the max velocity of the end-effector
-
-        goal_joint_values = np.array(start_joint_values) + np.array(diffs)
-        waypoints = np.linspace(
-            start_joint_values, goal_joint_values, num_steps)
-
-        # duplicate the last waypoint for 240 times to make sure the target is reached
-        # because the task executer steps every task for 1/240 but the low level controller simulates another 1s in the end
-        waypoints = np.vstack((waypoints, np.repeat(waypoints[-1, None], 240, axis=0)))
-        return waypoints
+    def plan_cartesian_control(self, x=0.0, y=0.0, z=0.0, frame="world"):
+        """
+        Only for small motion, do not check friction
+        :param frame: "eef" or "world"
+        """
+        if frame == "eef":
+            # TODO implement this using pybullet functions when necessary
+            pass
+        elif frame == "world":
+            pose_2d_new = self.get_eef_pose()
+            pose_2d_new[0][0] += x
+            pose_2d_new[0][1] += y
+            pose_2d_new[0][2] += z
+        else:
+            raise TypeError("not supported frame: {}".format(frame))
+        jv, _, _ = self.get_arm_ik_pybullet(pose_2d_new)
+        discretized_plan = self.plan_arm_joint_values_simple(jv)
+        return discretized_plan
 
     @staticmethod
     def convert_range(joint_values):
@@ -223,6 +219,8 @@ class RobotController(object):
         """ step the robot for 1/240 second """
         # calculate the latest conf and control array
         if self.arm_discretized_plan is None or self.arm_wp_target_index == len(self.arm_discretized_plan):
+            if self.arm_discretized_plan is not None and self.arm_wp_target_index == len(self.arm_discretized_plan):
+                print("difference when traj is finished {}".format(np.array(self.get_arm_joint_values()) - np.array(self.arm_discretized_plan[-1])))
             pass
         else:
             self.control_arm_joints(self.arm_discretized_plan[self.arm_wp_target_index])
@@ -373,14 +371,15 @@ class RobotController(object):
                               excluded_objects=[],
                               start_conf=None,
                               planner='birrt',
-                              smooth=200,
-                              greedy=True,
-                              goal_tolerance=0.001,
-                              goal_bias=0.2,
-                              resolutions=0.05,
                               iterations=2000,
                               restarts=10,
                               timeout=0.2):
+        # hyper parameters
+        smooth = 200
+        greedy = True,
+        goal_tolerance = 0.001,
+        goal_bias = 0.2,
+
         current_conf = self.get_arm_joint_values()
         start_conf = current_conf if start_conf is None else start_conf
 
@@ -393,8 +392,8 @@ class RobotController(object):
         extend_fn = self.arm_extend_fn
 
         if planner == 'rrt':
+            iter_start = time.time()
             for i in range(restarts):
-                iter_start = time.time()
                 path_conf = rrt(start=start_conf,
                                 goal_sample=goal_conf,
                                 distance=self.arm_difference_fn,
@@ -418,8 +417,8 @@ class RobotController(object):
                 else:
                     return path_conf
         elif planner == 'birrt':
+            iter_start = time.time()
             for i in range(restarts):
-                iter_start = time.time()
                 success, info, path_conf = birrt(start_conf=start_conf,
                                                  goal_conf=goal_conf,
                                                  distance=self.arm_difference_fn,
@@ -436,16 +435,39 @@ class RobotController(object):
                 self.set_arm_joints(current_conf)
                 iter_time = time.time() - iter_start
                 if iter_time > timeout:
-                    print("planning fails because of timeout")
+                    print('trial {} ({} iterations) fails in {:.2f} seconds because of timeout'.format(
+                        i + 1, iterations, iter_time))
                     return None
                 if path_conf is None:
                     print('trial {} ({} iterations) fails in {:.2f} seconds because of {}'.format(
                         i + 1, iterations, iter_time, info))
-                    pu.remove_all_markers()
                 else:
                     return path_conf
         else:
             raise ValueError('planner must be in \'rrt\' or \'birrt\'')
+
+    def plan_arm_joint_values_simple(self, goal_joint_values, start_joint_values=None, duration=None):
+        """ Linear interpolation between joint_values """
+        start_joint_values = self.get_arm_joint_values(
+        ) if start_joint_values is None else start_joint_values
+
+        diffs = self.arm_difference_fn(goal_joint_values, start_joint_values)
+        # specifically handle the wrist joint, whose period should be pi instead of 2*pi
+        diffs[-1] = (diffs[-1] + np.pi / 2) % np.pi - np.pi / 2
+        steps = np.abs(np.divide(diffs, self.robot_config['max_arm_velocity'])) * 240
+        num_steps = int(max(steps))
+        if duration is not None:
+            num_steps = int(duration * 240)
+            # num_steps = max(int(duration * 240), steps)     # this should ensure that it satisfies the max velocity of the end-effector
+
+        goal_joint_values = np.array(start_joint_values) + np.array(diffs)
+        waypoints = np.linspace(
+            start_joint_values, goal_joint_values, num_steps)
+
+        # duplicate the last waypoint for 240 times to make sure the target is reached
+        # because the task executer steps every task for 1/240 but the low level controller simulates another 1s in the end
+        # waypoints = np.vstack((waypoints, np.repeat(waypoints[-1, None], 240, axis=0)))
+        return waypoints
 
     def attach_object(self, target_id):
         target_pose = pu.get_body_pose(target_id)
