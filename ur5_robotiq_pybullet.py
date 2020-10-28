@@ -243,9 +243,26 @@ class UR5RobotiqPybulletController(object):
                     use_grasp_roll_duality=True):
         ik_results = self.get_ik_fast_full(eef_pose)
 
-        if avoid_collisions and ik_results.any():
-            collision_check = [self.moveit.check_arm_collision(ik).valid for ik in ik_results]
-            ik_results = np.array(ik_results)[np.where(collision_check)]
+        if avoid_collisions:
+            # avoid all collision
+            collision_free = [self.moveit.check_arm_collision(ik).valid for ik in ik_results]
+            ik_results = np.array(ik_results)[np.where(collision_free)]
+        else:
+            # allow collision with target object except floor
+            collision_results_full = [self.moveit.check_arm_collision(ik) for ik in ik_results]
+            collision_free = []
+            for col_result in collision_results_full:
+                is_free = True
+                for contact in col_result.contacts:
+                    if contact.body_type_1 == 0 and contact.contact_body_2 == 0: #self_collision
+                        is_free = False
+                        break
+                    elif (contact.body_type_1 == 0 and contact.body_type_2 == 1 and contact.contact_body_2 == 'floor')\
+                            or (contact.body_type_2 == 0 and contact.body_type_1 == 1 and contact.contact_body_1 == 'floor'):
+                        is_free = False  # allows collision with other bodies asides floor
+                        break
+                collision_free.append(is_free)
+            ik_results = np.array(ik_results)[np.where(collision_free)]
 
         if not ik_results.any():
             return None
