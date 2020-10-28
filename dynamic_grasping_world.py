@@ -533,12 +533,8 @@ class DynamicGraspingWorld:
             can_grasp = self.can_grasp(grasp_idx)
             can_grasp_old = self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=self.grasp_threshold)
             if can_grasp or can_grasp_old:
-                try:
-                    grasp_plan_found, motion_planning_time = self.approach_and_grasp_timed(grasp_idx)
-                    # grasp_plan_found, motion_planning_time = self.approach_and_grasp(grasp_idx, planned_pre_grasp_jv)
-                except:
-                    print('Error during approach_and_grasp_timed...')
-                    continue
+                grasp_plan_found, motion_planning_time = self.approach_and_grasp_timed(grasp_idx)
+                # grasp_plan_found, motion_planning_time = self.approach_and_grasp(grasp_idx, planned_pre_grasp_jv)
                 dynamic_grasp_time += motion_planning_time
                 if not grasp_plan_found:
                     print("the predicted approach motion is not reachable")
