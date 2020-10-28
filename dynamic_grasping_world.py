@@ -158,7 +158,9 @@ class DynamicGraspingWorld:
         if 'robotiq' in self.robot_config_name:
             self.robot_id = load_ur_robotiq_robot(self.robot_initial_pose)
             self.robot = UR5RobotiqPybulletController(self.robot_id)
-            p.changeDynamics(self.target, -1, mass=1)
+            p.changeDynamics(self.target, -1, mass=1,
+                             frictionAnchor=1, restitution=0.1,
+                             spinningFriction=0, rollingFriction=0.01, lateralFriction=0.9)
             for joint in range(p.getNumJoints(self.robot.id)):
                 p.changeDynamics(self.robot.id, joint, mass=1)
         p.setPhysicsEngineParameter(numSolverIterations=150, enableConeFriction=1, contactBreakingThreshold=1e-3)
