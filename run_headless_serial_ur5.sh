@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
+node_id=${1:-10000}   #default port is 10000
+
 exp_name="exp_name"
 timestr=${exp_name}_ur5_$(hostname)_$(date '+%Y-%m-%d_%H-%M-%S')
 
 mkdir $timestr
-cp run_headless_serial.sh $timestr
-
-node_id=50000
+cp run_headless_serial_ur5.sh $timestr
 
 screen -d -m -S ${timestr}_moveit bash -c "source ../../devel/setup.bash && \
     export ROS_MASTER_URI=http://localhost:${node_id} && \
