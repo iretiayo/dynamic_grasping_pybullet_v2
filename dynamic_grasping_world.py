@@ -1556,22 +1556,33 @@ class LSTMMotionPredictorKF:
     def reset_predictor(self):
         self.prediction_model.reset_states()
         self.target_pose = None
+        self.update_counter = 1
 
     def update(self, current_pose):
         # TODO quaternion is not considered yet
         if not self.initialized:
             raise ValueError("predictor not initialized!")
         self.position_history.append(current_pose[0])
-        xy = self.prediction_model.predict(np.array(self.position_history)[:, :2].flatten()[None, None, ...]).squeeze()
-        self.future_position = [xy[0], xy[1], self.position_history[-1][-1]]
+        if self.update_counter == 0:
+            data = np.array(self.position_history)[- self.history * self.subsample_ratio:: self.subsample_ratio]
+            if self.use_lstm:
+                self.future_position = self.prediction_model.predict(data[None, None, ...]).squeeze()
+            else:
+                self.future_position = self.prediction_model.predict(data[None, ...]).squeeze()
         self.target_pose = current_pose
+        self.update_counter = (self.update_counter + 1) % self.subsample_ratio
 
     def predict(self, duration):
         """ return just a predicted pose """
         if not self.initialized:
             raise ValueError("predictor not initialized!")
 
+        if len(self.future_position.shape) > 1:
+            future_idx = np.where(np.array(self.future_horizons) == duration)[0][0]
+            future_position = self.future_position[future_idx]
+        else:
+            future_position = self.future_position
+
         # TODO: make this dependent on duration
-        future_position = self.future_position
         future_orientation = self.target_pose[1]
         return [future_position, future_orientation]
