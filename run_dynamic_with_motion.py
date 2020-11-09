@@ -102,6 +102,9 @@ def get_args():
         args.video_dir = os.path.join(args.result_dir, 'videos')
         if not os.path.exists(args.video_dir):
             os.makedirs(args.video_dir)
+    args.trajectory_dir = os.path.join(args.result_dir, 'trajectories')
+    if not os.path.exists(args.trajectory_dir):
+        os.makedirs(args.trajectory_dir)
     return args
 
 
@@ -228,10 +231,15 @@ if __name__ == "__main__":
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         if args.record_videos:
             logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, '{}.mp4'.format(i)))
-        success, grasp_idx, dynamic_grasping_time, grasp_switched_list, num_ik_called_list = dynamic_grasping_world.dynamic_grasp()
+        success, grasp_idx, dynamic_grasping_time, grasp_switched_list, num_ik_called_list, object_arm_trajectory = dynamic_grasping_world.dynamic_grasp()
         time.sleep(0.5)
         if args.record_videos:
             p.stopStateLogging(logging)
+        with open(os.path.join(args.trajectory_dir, '{}.json'.format(i)), 'w') as outfile:
+            object_arm_trajectory = {'object_pose_traj': [entry[0] for entry in object_arm_trajectory],
+                                     'arm_traj': [entry[1] for entry in object_arm_trajectory]}
+            json.dump(object_arm_trajectory, outfile)
+
         result = [('exp_idx', i),
                   ('grasp_idx', grasp_idx),
                   ('success', success),
