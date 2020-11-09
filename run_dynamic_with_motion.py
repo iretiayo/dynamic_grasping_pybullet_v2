@@ -228,7 +228,7 @@ if __name__ == "__main__":
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         if args.record_videos:
             logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, '{}.mp4'.format(i)))
-        success, grasp_idx, dynamic_grasping_time = dynamic_grasping_world.dynamic_grasp()
+        success, grasp_idx, dynamic_grasping_time, grasp_switched_list, num_ik_called_list = dynamic_grasping_world.dynamic_grasp()
         time.sleep(0.5)
         if args.record_videos:
             p.stopStateLogging(logging)
@@ -236,6 +236,8 @@ if __name__ == "__main__":
                   ('grasp_idx', grasp_idx),
                   ('success', success),
                   ('dynamic_grasping_time', dynamic_grasping_time),
+                  ('grasp_switched_list', grasp_switched_list),
+                  ('num_ik_called_list', num_ik_called_list),
                   ('theta', theta),
                   ('length', length),
                   ('distance', distance),

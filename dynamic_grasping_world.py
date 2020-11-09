@@ -476,6 +476,8 @@ class DynamicGraspingWorld:
         dynamic_grasp_time = 0
         distance = None
         initial_motion_plan_success = False  # not necessarily succeed
+        grasp_switched_list = []
+        num_ik_called_list = []
         while not done:
             done = self.check_done()
             current_target_pose = pu.get_body_pose(self.target)
@@ -498,6 +500,8 @@ class DynamicGraspingWorld:
             else:
                 grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched \
                     = self.plan_grasp(predicted_target_pose, grasp_idx)
+            num_ik_called_list.append(num_ik_called)
+            grasp_switched_list.append(grasp_switched)
             dynamic_grasp_time += grasp_planning_time
             if planned_grasp_jv is None or planned_pre_grasp_jv is None:
                 self.step(grasp_planning_time, None, None)
