@@ -544,8 +544,8 @@ class DynamicGraspingWorld:
                     print("the predicted approach motion is not reachable")
                     continue
                 self.execute_lift()
-                return self.check_success(), grasp_idx, dynamic_grasp_time
-        return False, None, dynamic_grasp_time
+                return self.check_success(), grasp_idx, dynamic_grasp_time, grasp_switched_list, num_ik_called_list, object_arm_trajectory
+        return False, None, dynamic_grasp_time, grasp_switched_list, num_ik_called_list, object_arm_trajectory
 
     def approach_and_grasp(self, grasp_idx, planned_grasp_jv):
         if self.approach_prediction:
