@@ -436,6 +436,18 @@ class DynamicGraspingWorld:
         else:
             return False
 
+    def replay_trajectory(self, object_arm_trajectory):
+        for object_pose, grasp_pose, arm_jv in zip(object_arm_trajectory['object_pose_traj'],
+                                                   object_arm_trajectory['grasp_pose_traj'],
+                                                   object_arm_trajectory['arm_traj']):
+            p.resetBasePositionAndOrientation(self.target, object_pose[0], object_pose[1])
+            self.robot.set_arm_joints(arm_jv)
+            line_length = 0.1
+            pu.create_arrow_marker(tfc.toTf(tfc.fromTf(grasp_pose) * tfc.fromTf(
+                self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT) * tfc.fromTf(((0, 0, -line_length), (0, 0, 0, 1)))),
+                                   color_index=0, line_length=line_length)
+            time.sleep(0.1)
+
     def predict(self, duration):
         if self.use_kf:
             # TODO verify that when duration is 0

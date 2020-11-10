@@ -49,6 +49,7 @@ def get_args():
     parser.add_argument('--disable_reachability', action='store_true', default=False)
     parser.add_argument('--rank_by_manipulability', action='store_true', default=False)
     parser.add_argument('--record_videos', action='store_true', default=False)
+    parser.add_argument('--replay_trajectory', action='store_true', default=False)
     parser.add_argument('--baseline_experiment_path', type=str, help='use motion path in this file for the run')
     parser.add_argument('--failure_only', action='store_true', default=False)
     parser.add_argument('--exp_id', type=int)
@@ -228,6 +229,16 @@ if __name__ == "__main__":
 
         distance, theta, length, direction, target_quaternion, obstacle_poses, z_start_end = dynamic_grasping_world.reset(
             mode=args.motion_mode, reset_dict=reset_dict)
+
+        if args.replay_trajectory:
+            trajectory_path = os.path.join(os.path.dirname(args.baseline_experiment_path), 'trajectories',
+                                           '{}.json'.format(i))
+            if os.path.exists(trajectory_path):
+                with open(trajectory_path, 'r') as infile:
+                    object_arm_trajectory = json.load(infile)
+                dynamic_grasping_world.replay_trajectory(object_arm_trajectory)
+            continue
+
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         if args.record_videos:
             logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, '{}.mp4'.format(i)))
