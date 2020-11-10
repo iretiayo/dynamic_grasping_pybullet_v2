@@ -503,6 +503,8 @@ class DynamicGraspingWorld:
                     = self.plan_grasp(predicted_target_pose, grasp_idx)
             num_ik_called_list.append(num_ik_called)
             grasp_switched_list.append(grasp_switched)
+            object_arm_trajectory.append(
+                (pu.get_body_pose(self.target), planned_pre_grasp, self.robot.get_arm_joint_values()))
             dynamic_grasp_time += grasp_planning_time
             if planned_grasp_jv is None or planned_pre_grasp_jv is None:
                 self.step(grasp_planning_time, None, None)

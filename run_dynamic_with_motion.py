@@ -237,7 +237,8 @@ if __name__ == "__main__":
             p.stopStateLogging(logging)
         with open(os.path.join(args.trajectory_dir, '{}.json'.format(i)), 'w') as outfile:
             object_arm_trajectory = {'object_pose_traj': [entry[0] for entry in object_arm_trajectory],
-                                     'arm_traj': [entry[1] for entry in object_arm_trajectory]}
+                                     'grasp_pose_traj': [entry[1] for entry in object_arm_trajectory],
+                                     'arm_traj': [entry[2] for entry in object_arm_trajectory]}
             json.dump(object_arm_trajectory, outfile)
 
         result = [('exp_idx', i),
