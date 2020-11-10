@@ -478,6 +478,7 @@ class DynamicGraspingWorld:
         initial_motion_plan_success = False  # not necessarily succeed
         grasp_switched_list = []
         num_ik_called_list = []
+        object_arm_trajectory = []
         while not done:
             done = self.check_done()
             current_target_pose = pu.get_body_pose(self.target)
