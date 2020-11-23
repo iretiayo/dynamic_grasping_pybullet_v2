@@ -7,7 +7,7 @@ import ast
 import matplotlib.pyplot as plt
 import pprint
 import json
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
 """
 Given a directory of results for grasping dynamic object with planned motion,
@@ -33,26 +33,29 @@ def evaluate_results(df):
     stats['num_trials'] = len(df)
     stats['success_rate'] = stats['num_successes'] / stats['num_trials']
     stats['dynamic_grasping_time'] = df.mean().dynamic_grasping_time
+
+    if 'grasp_switched_list' in df:
+        stats['num_grasp_switched'] = df['grasp_switched_list'].apply(
+            lambda x: np.array(sum(ast.literal_eval(x)))).mean()
+    if 'num_ik_called_list' in df:
+        stats['num_ik_called'] = df['num_ik_called_list'].apply(lambda x: np.array(np.mean(ast.literal_eval(x)))).mean()
+
     return stats
 
 
 def get_overall_stats(stat_dict):
-    overall_stats = {}
+    overall_stats = defaultdict(list)
 
-    num_successes_list = []
-    num_trials_list = []
-    success_rate_list = []
-    dynamic_grasping_time_list = []
-    for name, stats in stat_dict.items():
-        num_successes_list.append(stats['num_successes'])
-        num_trials_list.append(stats['num_trials'])
-        success_rate_list.append(stats['success_rate'])
-        dynamic_grasping_time_list.append(stats['dynamic_grasping_time'])
+    for object_name in stat_dict:
+        for stat in stat_dict[object_name]:
+            overall_stats[stat].append(stat_dict[object_name][stat])
 
-    overall_stats['num_successes'] = sum(num_successes_list)
-    overall_stats['num_trials'] = sum(num_trials_list)
-    overall_stats['success_rate'] = overall_stats['num_successes'] / overall_stats['num_trials']
-    overall_stats['dynamic_grasping_time'] = np.average(dynamic_grasping_time_list)
+    overall_stats['success_rate'] = sum(overall_stats['num_successes']) / sum(overall_stats['num_trials'])
+    overall_stats['num_successes'] = sum(overall_stats['num_successes'])
+    overall_stats['num_trials'] = sum(overall_stats['num_trials'])
+    for key in ['dynamic_grasping_time', 'num_grasp_switched', 'num_ik_called']:
+        if key in overall_stats:
+            overall_stats[key] = np.average(overall_stats[key])
     return overall_stats
 
 
