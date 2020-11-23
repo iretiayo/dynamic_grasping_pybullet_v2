@@ -442,10 +442,11 @@ class DynamicGraspingWorld:
                                                    object_arm_trajectory['arm_traj']):
             p.resetBasePositionAndOrientation(self.target, object_pose[0], object_pose[1])
             self.robot.set_arm_joints(arm_jv)
-            line_length = 0.1
-            pu.create_arrow_marker(tfc.toTf(tfc.fromTf(grasp_pose) * tfc.fromTf(
-                self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT) * tfc.fromTf(((0, 0, -line_length), (0, 0, 0, 1)))),
-                                   color_index=0, line_length=line_length)
+            if grasp_pose is not None:
+                line_length = 0.1
+                pu.create_arrow_marker(tfc.toTf(
+                    tfc.fromTf(grasp_pose) * tfc.fromTf(self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT) * tfc.fromTf(
+                        ((0, 0, -line_length), (0, 0, 0, 1)))), color_index=0, line_length=line_length)
             time.sleep(0.1)
 
     def predict(self, duration):
@@ -552,13 +553,15 @@ class DynamicGraspingWorld:
             can_grasp = self.can_grasp(grasp_idx)
             can_grasp_old = self.robot.equal_conf(self.robot.get_arm_joint_values(), planned_pre_grasp_jv, tol=self.grasp_threshold)
             if can_grasp or can_grasp_old:
-                grasp_plan_found, motion_planning_time = self.approach_and_grasp_timed(grasp_idx)
-                # grasp_plan_found, motion_planning_time = self.approach_and_grasp(grasp_idx, planned_pre_grasp_jv)
+                grasp_plan_found, motion_planning_time, approach_trajectory = self.approach_and_grasp_timed(grasp_idx)
+                # grasp_plan_found, motion_planning_time, approach_trajectory = self.approach_and_grasp(grasp_idx, planned_pre_grasp_jv)
+                object_arm_trajectory.extend(approach_trajectory)
                 dynamic_grasp_time += motion_planning_time
                 if not grasp_plan_found:
                     print("the predicted approach motion is not reachable")
                     continue
-                self.execute_lift()
+                lift_traj = self.execute_lift()
+                object_arm_trajectory.extend(lift_traj)
                 return self.check_success(), grasp_idx, dynamic_grasp_time, grasp_switched_list, num_ik_called_list, object_arm_trajectory
         return False, None, dynamic_grasp_time, grasp_switched_list, num_ik_called_list, object_arm_trajectory
 
@@ -587,8 +590,8 @@ class DynamicGraspingWorld:
                                                                                               object_velocity)
         if arm_discretized_plan is None:
             return False, 0
-        self.execute_approach_and_grasp_timed(arm_discretized_plan, gripper_discretized_plan)
-        return True, 0
+        object_arm_trajectory = self.execute_approach_and_grasp_timed(arm_discretized_plan, gripper_discretized_plan)
+        return True, 0, object_arm_trajectory
 
     def get_grasping_plan_timed_control(self, grasp_idx, back_off, object_velocity):
 
@@ -654,6 +657,7 @@ class DynamicGraspingWorld:
     def execute_approach_and_grasp_timed(self, arm_discretized_plan, gripper_discretized_plan):
         """ modify the arm and gripper plans according to close delay and execute it """
         assert len(arm_discretized_plan) == len(gripper_discretized_plan)
+        object_arm_trajectory = []
         for arm_wp, gripper_wp in zip(arm_discretized_plan, gripper_discretized_plan):
             self.robot.control_arm_joints(arm_wp)
             self.robot.control_gripper_joints(gripper_wp)
@@ -664,6 +668,9 @@ class DynamicGraspingWorld:
             self.world_steps += 1
             if self.world_steps % self.pose_steps == 0:
                 self.motion_predictor_kf.update(pu.get_body_pose(self.target))
+            object_arm_trajectory.append(
+                (pu.get_body_pose(self.target), None, self.robot.get_arm_joint_values()))
+        return object_arm_trajectory[::10]
 
     def get_pybullet_jacobian(self):
         gripper_joint_values = self.robot.get_gripper_joint_values()
@@ -718,6 +725,7 @@ class DynamicGraspingWorld:
         gripper_plan = np.vstack((gripper_plan, np.tile(gripper_plan[-1], (final_len - len(gripper_plan), 1)))) if len(
             gripper_plan) <= final_len else gripper_plan
         assert len(arm_plan) == len(gripper_plan)
+        object_arm_trajectory = []
         for arm_wp, gripper_wp in zip(arm_plan, gripper_plan):
             self.robot.control_arm_joints(arm_wp)
             self.robot.control_gripper_joints(gripper_wp)
@@ -725,20 +733,32 @@ class DynamicGraspingWorld:
             p.stepSimulation()
             if self.realtime:
                 time.sleep(1.0 / 240.0)
+            object_arm_trajectory.append(
+                (pu.get_body_pose(self.target), None, self.robot.get_arm_joint_values()))
             self.world_steps += 1
             if self.world_steps % self.pose_steps == 0:
                 self.motion_predictor_kf.update(pu.get_body_pose(self.target))
 
     def execute_lift(self):
         # lift twice in case the first lift attempt does not work
+        object_arm_trajectory = []
         for _ in range(2):
             plan, fraction = self.robot.plan_cartesian_control(z=0.07)
             if fraction != 1.0:
                 print('fraction {} not 1'.format(fraction))
             if plan is not None:
-                self.robot.execute_arm_plan(plan, self.realtime)
+                # self.robot.execute_arm_plan(plan, self.realtime)
+                for wp in plan:
+                    self.robot.control_arm_joints(wp)
+                    p.stepSimulation()
+                    if self.realtime:
+                        time.sleep(1. / 240.)
+                pu.step(2)
+                object_arm_trajectory.append(
+                    (pu.get_body_pose(self.target), None, self.robot.get_arm_joint_values()))
                 if fraction == 1.0:
                     break
+        return object_arm_trajectory
 
     def get_ik_error(self, eef_pose, ik_result, coeff=0.4):
 
