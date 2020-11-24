@@ -589,7 +589,7 @@ class DynamicGraspingWorld:
                                                                                               self.back_off,
                                                                                               object_velocity)
         if arm_discretized_plan is None:
-            return False, 0
+            return False, 0, []
         object_arm_trajectory = self.execute_approach_and_grasp_timed(arm_discretized_plan, gripper_discretized_plan)
         return True, 0, object_arm_trajectory
 
