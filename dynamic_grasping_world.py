@@ -441,7 +441,9 @@ class DynamicGraspingWorld:
                                                    object_arm_trajectory['grasp_pose_traj'],
                                                    object_arm_trajectory['arm_traj']):
             p.resetBasePositionAndOrientation(self.target, object_pose[0], object_pose[1])
-            self.robot.set_arm_joints(arm_jv)
+            self.robot.set_arm_joints(arm_jv[:len(self.robot.GROUPS['arm'])])
+            if len(arm_jv) > len(self.robot.GROUPS['arm']):
+                self.robot.set_gripper_joints(arm_jv[len(self.robot.GROUPS['arm']):])
             if grasp_pose is not None:
                 line_length = 0.1
                 pu.create_arrow_marker(tfc.toTf(
@@ -516,8 +518,8 @@ class DynamicGraspingWorld:
                     = self.plan_grasp(predicted_target_pose, grasp_idx)
             num_ik_called_list.append(num_ik_called)
             grasp_switched_list.append(grasp_switched)
-            object_arm_trajectory.append(
-                (pu.get_body_pose(self.target), planned_pre_grasp, self.robot.get_arm_joint_values()))
+            object_arm_trajectory.append((pu.get_body_pose(self.target), planned_pre_grasp,
+                                          self.robot.get_arm_joint_values() + self.robot.get_gripper_joint_values()))
             dynamic_grasp_time += grasp_planning_time
             if planned_grasp_jv is None or planned_pre_grasp_jv is None:
                 self.step(grasp_planning_time, None, None)
@@ -668,8 +670,8 @@ class DynamicGraspingWorld:
             self.world_steps += 1
             if self.world_steps % self.pose_steps == 0:
                 self.motion_predictor_kf.update(pu.get_body_pose(self.target))
-            object_arm_trajectory.append(
-                (pu.get_body_pose(self.target), None, self.robot.get_arm_joint_values()))
+            object_arm_trajectory.append((pu.get_body_pose(self.target), None,
+                                          self.robot.get_arm_joint_values() + self.robot.get_gripper_joint_values()))
         return object_arm_trajectory[::10]
 
     def get_pybullet_jacobian(self):
@@ -733,8 +735,8 @@ class DynamicGraspingWorld:
             p.stepSimulation()
             if self.realtime:
                 time.sleep(1.0 / 240.0)
-            object_arm_trajectory.append(
-                (pu.get_body_pose(self.target), None, self.robot.get_arm_joint_values()))
+            object_arm_trajectory.append((pu.get_body_pose(self.target), None,
+                                          self.robot.get_arm_joint_values() + self.robot.get_gripper_joint_values()))
             self.world_steps += 1
             if self.world_steps % self.pose_steps == 0:
                 self.motion_predictor_kf.update(pu.get_body_pose(self.target))
@@ -753,11 +755,11 @@ class DynamicGraspingWorld:
                     p.stepSimulation()
                     if self.realtime:
                         time.sleep(1. / 240.)
-                    object_arm_trajectory.append(
-                        (pu.get_body_pose(self.target), None, self.robot.get_arm_joint_values()))
+                    object_arm_trajectory.append((pu.get_body_pose(self.target), None,
+                                                  self.robot.get_arm_joint_values() + self.robot.get_gripper_joint_values()))
                 pu.step(2)
-                object_arm_trajectory.append(
-                    (pu.get_body_pose(self.target), None, self.robot.get_arm_joint_values()))
+                object_arm_trajectory.append((pu.get_body_pose(self.target), None,
+                                              self.robot.get_arm_joint_values() + self.robot.get_gripper_joint_values()))
                 if fraction == 1.0:
                     break
         return object_arm_trajectory
