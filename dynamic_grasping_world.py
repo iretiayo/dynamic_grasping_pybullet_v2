@@ -753,6 +753,8 @@ class DynamicGraspingWorld:
                     p.stepSimulation()
                     if self.realtime:
                         time.sleep(1. / 240.)
+                    object_arm_trajectory.append(
+                        (pu.get_body_pose(self.target), None, self.robot.get_arm_joint_values()))
                 pu.step(2)
                 object_arm_trajectory.append(
                     (pu.get_body_pose(self.target), None, self.robot.get_arm_joint_values()))
