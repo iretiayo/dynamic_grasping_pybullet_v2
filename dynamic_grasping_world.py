@@ -863,7 +863,7 @@ class DynamicGraspingWorld:
                                                            self.dims)
         return sdf_values
 
-    def rank_grasps(self, target_pose, visualize_sdf=True):
+    def rank_grasps(self, target_pose, visualize_sdf=False):
 
         if self.disable_reachability:
             grasp_order_idxs = np.random.permutation(np.arange(len(self.graspit_pregrasps)))
