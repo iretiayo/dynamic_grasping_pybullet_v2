@@ -518,8 +518,12 @@ class DynamicGraspingWorld:
                     = self.plan_grasp(predicted_target_pose, grasp_idx)
             num_ik_called_list.append(num_ik_called)
             grasp_switched_list.append(grasp_switched)
+            # get grasp reachability and manipulability
+            grasp_r_score = self.get_reachability_of_pregrasp_and_grasp(predicted_target_pose, grasp_idx)
+            grasp_m_score = self.get_manipulabilities_from_joint_values([planned_pre_grasp_jv, planned_grasp_jv])
             object_arm_trajectory.append((pu.get_body_pose(self.target), planned_pre_grasp,
-                                          self.robot.get_arm_joint_values() + self.robot.get_gripper_joint_values()))
+                                          self.robot.get_arm_joint_values() + self.robot.get_gripper_joint_values(),
+                                          (grasp_r_score, grasp_m_score)))
             dynamic_grasp_time += grasp_planning_time
             if planned_grasp_jv is None or planned_pre_grasp_jv is None:
                 self.step(grasp_planning_time, None, None)
@@ -846,7 +850,20 @@ class DynamicGraspingWorld:
             num_ik_called += 1
         return num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
 
-    def rank_grasps(self, target_pose, visualize_sdf=False):
+    def get_reachability_of_pregrasp_and_grasp(self, target_pose, grasp_idx):
+        if grasp_idx is None:
+            return [None, None]
+
+        graspit_grasp_poses_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+                                        [self.graspit_pregrasps[grasp_idx], self.graspit_grasps[grasp_idx]]]
+        sdf_values = gu.get_reachability_of_grasps_pose_2d(graspit_grasp_poses_in_world,
+                                                           self.sdf_reachability_space,
+                                                           self.mins,
+                                                           self.step_size,
+                                                           self.dims)
+        return sdf_values
+
+    def rank_grasps(self, target_pose, visualize_sdf=True):
 
         if self.disable_reachability:
             grasp_order_idxs = np.random.permutation(np.arange(len(self.graspit_pregrasps)))
@@ -935,6 +952,12 @@ class DynamicGraspingWorld:
         manipulabilities_eef[idx] = self.robot.get_manipulability(np.array(ik_jvs)[idx])
 
         return manipulabilities_eef, ik_jvs
+
+    def get_manipulabilities_from_joint_values(self, arm_joint_values):
+
+        manipulabilities_jv = [self.robot.get_manipulability(arm_joint_values) if jv is not None else None for jv in
+                               arm_joint_values]
+        return manipulabilities_jv
 
     def get_motion_aware_qualities(self, grasps_eef, pre_grasps_eef, angle, speed):
         """
