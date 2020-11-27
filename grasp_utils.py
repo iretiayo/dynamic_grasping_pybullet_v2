@@ -16,6 +16,7 @@ from geometry_msgs.msg import Pose, Point, Quaternion, PoseStamped
 from reachability_utils.reachability_resolution_analysis import interpolate_pose_in_reachability_space_grid
 from reachability_utils.process_reachability_data_from_csv import load_reachability_data_from_dir
 import plyfile
+import skfmm
 from collections import namedtuple
 
 mico_configs = {
@@ -510,6 +511,31 @@ def get_reachability_space(reachability_data_dir):
     start_time = time.time()
     _, mins, step_size, dims, sdf_reachability_space = load_reachability_data_from_dir(reachability_data_dir)
     rospy.loginfo("sdf reachability space created, which takes {}".format(time.time() - start_time))
+    return sdf_reachability_space, mins, step_size, dims
+
+
+def get_reachability_space_obstacles(reachability_data_dir, obstacle_mesh_filepaths=None, obstacle_poses=None):
+    rospy.loginfo("start creating sdf reachability space...")
+    start_time = time.time()
+
+    if obstacle_mesh_filepaths:
+        binary_reachability_space, mins, step_size, dims, _ = load_reachability_data_from_dir(reachability_data_dir)
+
+        obstacles_mask_3d = create_occupancy_grid_from_obstacles(obstacle_mesh_filepaths=obstacle_mesh_filepaths,
+                                                                 obstacle_poses=obstacle_poses,
+                                                                 mins_xyz=mins[:3],
+                                                                 step_size_xyz=step_size[:3],
+                                                                 dims_xyz=dims[:3])
+        # embed obstacles into reachability space
+        binary_reachability_space[obstacles_mask_3d > 0] = 0
+
+        # Generate sdf
+        binary_reachability_space -= 0.5
+        sdf_reachability_space = skfmm.distance(binary_reachability_space, periodic=[False, False, False, True, True, True])
+        binary_reachability_space += 0.5  # undo previous operation
+    else:
+        _, mins, step_size, dims, sdf_reachability_space = load_reachability_data_from_dir(reachability_data_dir)
+    rospy.loginfo("sdf reachability space created, which takes {}".format(time.time()-start_time))
     return sdf_reachability_space, mins, step_size, dims
 
 

@@ -54,6 +54,7 @@ def get_args():
     parser.add_argument('--failure_only', action='store_true', default=False)
     parser.add_argument('--exp_id', type=int)
     parser.add_argument('--load_obstacles', action='store_true', default=False)
+    parser.add_argument('--embed_obstacles_sdf', action='store_true', default=False)
     parser.add_argument('--use_motion_aware', action='store_true', default=False)
     parser.add_argument('--motion_aware_model_path', type=str)
 
@@ -181,6 +182,7 @@ if __name__ == "__main__":
                                                   fix_motion_planning_time=args.fix_motion_planning_time,
                                                   fix_grasp_ranking_time=args.fix_grasp_ranking_time,
                                                   load_obstacles=args.load_obstacles,
+                                                  embed_obstacles_sdf=args.embed_obstacles_sdf,
                                                   obstacle_distance_low=0.15,
                                                   obstacle_distance_high=0.25,
                                                   distance_between_region=0.05,
@@ -230,7 +232,7 @@ if __name__ == "__main__":
         distance, theta, length, direction, target_quaternion, obstacle_poses, z_start_end = dynamic_grasping_world.reset(
             mode=args.motion_mode, reset_dict=reset_dict)
 
-        if args.replay_trajectory:
+        if args.replay_trajectory and args.baseline_experiment_path:
             trajectory_path = os.path.join(os.path.dirname(args.baseline_experiment_path), 'trajectories',
                                            '{}.json'.format(i))
             if os.path.exists(trajectory_path):

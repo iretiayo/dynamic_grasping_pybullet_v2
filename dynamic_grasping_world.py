@@ -73,6 +73,7 @@ class DynamicGraspingWorld:
                  fix_motion_planning_time,
                  fix_grasp_ranking_time,
                  load_obstacles,
+                 embed_obstacles_sdf,
                  obstacle_distance_low,
                  obstacle_distance_high,
                  distance_between_region,
@@ -184,6 +185,7 @@ class DynamicGraspingWorld:
 
         # obstacles
         self.load_obstacles = load_obstacles
+        self.embed_obstacles_sdf = embed_obstacles_sdf
         self.obstacle_distance_low = obstacle_distance_low
         self.obstacle_distance_high = obstacle_distance_high
 
@@ -290,6 +292,16 @@ class DynamicGraspingWorld:
                 for i, n, e in zip(self.obstacles, self.obstacle_names, self.obstacle_extentss):
                     self.scene.add_box(n, gu.list_2_ps(pu.get_body_pose(i)), size=e)
                     obstacle_poses.append(pu.merge_pose_2d(pu.get_body_pose(i)))
+                if self.embed_obstacles_sdf:
+                    # update reachability sdf
+                    obstacle_mesh_filepaths = []
+                    for obstacle_name in self.obstacle_names:
+                        obstacle_mesh_filepaths.append(
+                            os.path.join(self.mesh_dir, '{}'.format(obstacle_name), '{}.ply'.format(obstacle_name)))
+
+                    obstacle_poses_msg = [tfc.toMsg(tfc.fromTf(pu.split_7d(obs_pose))) for obs_pose in obstacle_poses]
+                    self.sdf_reachability_space, self.mins, self.step_size, self.dims = gu.get_reachability_space_obstacles(
+                        self.reachability_data_dir, obstacle_mesh_filepaths, obstacle_poses_msg)
 
             self.motion_predictor_kf.initialize_predictor(target_pose)
 

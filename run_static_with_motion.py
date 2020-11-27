@@ -193,6 +193,7 @@ if __name__ == "__main__":
                                                   fix_motion_planning_time=None,
                                                   fix_grasp_ranking_time=None,
                                                   load_obstacles=False,
+                                                  embed_obstacles_sdf=False,
                                                   obstacle_distance_low=0.15,
                                                   obstacle_distance_high=0.25,
                                                   distance_between_region=0.05,
