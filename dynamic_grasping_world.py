@@ -1616,13 +1616,21 @@ class LSTMMotionPredictorKF:
         self.initialized = False
         self.future_position = None
 
-        input_shape = (4,)
-        output_shape = 2
-        import lstm_prediction_model
-        self.prediction_model = lstm_prediction_model.create_model(input_shape=input_shape, output_shape=output_shape,
-                                                                   stateful=True, batch_size=1)
-        self.prediction_model.load_weights(model_weight_path)
-        self.position_history = deque(maxlen=2)
+        self.future_horizons = (1.0,  2.0)
+        self.history = 5
+        self.dim = 3
+        self.input_shape = (self.history, self.dim)
+        self.output_shape = (len(self.future_horizons), self.dim)
+        self.use_lstm = False
+        self.data_gen_sampling_frequency = 50
+        self.measurement_sampling_frequency = 5
+        self.subsample_ratio = int(self.data_gen_sampling_frequency / self.measurement_sampling_frequency)
+
+        import motion_prediction_model
+        self.prediction_model = motion_prediction_model.load_model(model_weight_path, self.input_shape,
+                                                                   self.output_shape, use_lstm=self.use_lstm)
+        self.position_history = deque(maxlen=self.measurement_sampling_frequency * self.subsample_ratio + 1)
+        self.update_counter = 1
 
     def initialize_predictor(self, initial_pose):
         for _ in range(self.position_history.maxlen):
@@ -1654,8 +1662,11 @@ class LSTMMotionPredictorKF:
         """ return just a predicted pose """
         if not self.initialized:
             raise ValueError("predictor not initialized!")
+        if duration == 0.0:
+            return self.target_pose
 
         if len(self.future_position.shape) > 1:
+            assert duration in self.future_horizons, 'motion prediction network was trained on future_horizons: {}'.format(self.future_horizons)
             future_idx = np.where(np.array(self.future_horizons) == duration)[0][0]
             future_position = self.future_position[future_idx]
         else:
