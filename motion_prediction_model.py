@@ -5,6 +5,7 @@ import tensorflow.keras.layers as tfkl
 import argparse
 from collections import deque
 import datetime
+import os
 
 
 def get_object_trajectory(length, speed, distance, theta, sampling_frequency=240., is_sinusoid=True):
@@ -175,7 +176,7 @@ def test_lstm_model(prediction_model, test_traj=None, args=None):
     prediction_model.reset_states()
     for i in range(len(X)):
         # keep state info until reset
-        Y_pred = prediction_model.predict(X[i][None, None, ...] - X[0, 0, :]) + X[0, 0, :]
+        Y_pred = prediction_model.predict((X[i] - X[i][:1, :])[None, None, ...]).squeeze() + X[i][:1, :]
         predictions.append(Y_pred)
 
         # plt.clf()
@@ -187,7 +188,7 @@ def test_lstm_model(prediction_model, test_traj=None, args=None):
         # plt.draw()
         # plt.pause(0.001)
 
-    Y_pred = np.concatenate(predictions, axis=-3).squeeze()
+    Y_pred = np.array(predictions)
     for j in range(Y.shape[1]):
         for i in range(0, Y.shape[0], 20):
             plt.plot([Y[i, j, 0], Y_pred[i, j, 0]], [Y[i, j, 1], Y_pred[i, j, 1]])
@@ -198,15 +199,22 @@ def test_lstm_model(prediction_model, test_traj=None, args=None):
 
 
 def train_lstm_model(data_gen, trajectories, args):
-    # sample = data_gen.generate_sequence(2).__next__()
+    data_gen_val = DataGenerator(trajectories, data_gen_sampling_frequency=args.data_gen_sampling_frequency,
+                                 measurement_sampling_frequency=args.measurement_sampling_frequency,
+                                 future_horizons=args.future_horizons, history=args.history)
+    # sample = data_gen_val.generate_sequence(2).__next__()
     simple_lstm_model = create_lstm_model(input_shape=data_gen.input_shape, output_shape=data_gen.output_shape)
     simple_lstm_model.compile('adam', 'mean_squared_error')
 
-    batch_sz = 100
-    training_history = simple_lstm_model.fit(data_gen.generate_sequence(batch_sz), epochs=args.epochs,
-                                             steps_per_epoch=5 * len(trajectories) / batch_sz)
+    log_dir = "logs/" + datetime.datetime.now().strftime("lstm_model_%Y%m%d-%H%M%S")
+    tensorboard_callback = tfk.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+
+    training_history = simple_lstm_model.fit(data_gen.generate_sequence(args.batch_sz), epochs=args.epochs,
+                                             steps_per_epoch=5 * len(trajectories) / args.batch_sz,
+                                             validation_data=data_gen_val.generate_sequence(args.batch_sz), validation_steps=10,
+                                             callbacks=[tensorboard_callback])
     plt.plot(training_history.history['loss']); plt.show()
-    simple_lstm_model.save_weights('simple_lstm_model')
+    simple_lstm_model.save_weights(os.path.join(args.model_dir, 'simple_lstm_model'))
 
     prediction_model = create_lstm_model(input_shape=data_gen.input_shape, output_shape=data_gen.output_shape,
                                          stateful=True, batch_sz=1, sequence_len=1)
@@ -221,16 +229,15 @@ def train_mlp_model(data_gen, trajectories, args):
     simple_mlp_model = create_mlp_model(input_shape=data_gen.input_shape, output_shape=data_gen.output_shape)
     simple_mlp_model.compile('adam', 'mean_squared_error')
 
-    log_dir = "logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    log_dir = "logs/" + datetime.datetime.now().strftime("mlp_model_%Y%m%d-%H%M%S")
     tensorboard_callback = tfk.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
-    batch_sz = 1000
-    training_history = simple_mlp_model.fit(data_gen.generate(batch_sz), epochs=args.epochs,
-                                            steps_per_epoch=50 * len(trajectories) / batch_sz,
-                                            validation_data=data_gen.generate(batch_sz), validation_steps=10,
+    training_history = simple_mlp_model.fit(data_gen.generate(args.batch_sz), epochs=args.epochs,
+                                            steps_per_epoch=50 * len(trajectories) / args.batch_sz,
+                                            validation_data=data_gen.generate(args.batch_sz), validation_steps=10,
                                             callbacks=[tensorboard_callback])
     plt.plot(training_history.history['loss']); plt.show()
-    simple_mlp_model.save_weights('simple_mlp_model')
+    simple_mlp_model.save_weights(os.path.join(args.model_dir, 'simple_mlp_model'))
 
     X, Y = create_dataset_from_trajectories(trajectories[:1],
                                             data_gen_sampling_frequency=args.data_gen_sampling_frequency,
@@ -271,6 +278,8 @@ if __name__ == '__main__':
 
     parser.add_argument('-n', '--num_data_points', type=int, default=2000)
     parser.add_argument('-e', '--epochs', type=int, default=100)
+    parser.add_argument('-b', '--batch_sz', type=int, default=1000)
+    parser.add_argument('-md', '--model_dir', type=str, default='motion_model')
     parser.add_argument('-dl', '--distance_low', type=float, default=0.3, help='in meters')
     parser.add_argument('-dh', '--distance_high', type=float, default=0.7, help='in meters')
     parser.add_argument('-l', '--length', type=float, default=1.0, help='in meters')
@@ -282,6 +291,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--is_sinusoid', action='store_true', default=False)
     parser.add_argument('-t', '--train_lstm', action='store_true', default=False)
     args = parser.parse_args()
+    os.makedirs(args.model_dir, exist_ok=True)
 
     trajectories = create_dataset(num_data_points=args.num_data_points,
                                   sampling_frequency=args.data_gen_sampling_frequency, is_sinusoid=args.is_sinusoid,
