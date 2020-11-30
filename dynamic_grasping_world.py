@@ -1608,28 +1608,28 @@ class CircularMotionPredictorKF:
 
 
 class LSTMMotionPredictorKF:
-    def __init__(self, time_step, model_weight_path):
+    def __init__(self, time_step, model_weight_path, is_lstm_model=False, history=5):
         # the predictor takes a pose estimation once every time step
-        self.time_step = time_step
+        self.time_step = time_step      # measurement period (T) i.e. 1/frequency
         self.target_pose = None
         self.kf = None
         self.initialized = False
         self.future_position = None
 
         self.future_horizons = (1.0,  2.0)
-        self.history = 5
+        self.history = history
         self.dim = 3
         self.input_shape = (self.history, self.dim)
         self.output_shape = (len(self.future_horizons), self.dim)
-        self.use_lstm = False
-        self.data_gen_sampling_frequency = 50
-        self.measurement_sampling_frequency = 5
+        self.is_lstm_model = is_lstm_model
+        self.data_gen_sampling_frequency = 1.0 / time_step  # 50 not really needed
+        self.measurement_sampling_frequency = 1.0 / time_step  # 5
         self.subsample_ratio = int(self.data_gen_sampling_frequency / self.measurement_sampling_frequency)
 
         import motion_prediction_model
         self.prediction_model = motion_prediction_model.load_model(model_weight_path, self.input_shape,
-                                                                   self.output_shape, use_lstm=self.use_lstm)
-        self.position_history = deque(maxlen=self.measurement_sampling_frequency * self.subsample_ratio + 1)
+                                                                   self.output_shape, is_lstm_model=self.is_lstm_model)
+        self.position_history = deque(maxlen=int(self.data_gen_sampling_frequency / self.measurement_sampling_frequency * self.history + 1))
         self.update_counter = 1
 
     def initialize_predictor(self, initial_pose):
@@ -1651,10 +1651,11 @@ class LSTMMotionPredictorKF:
         self.position_history.append(current_pose[0])
         if self.update_counter == 0:
             data = np.array(self.position_history)[- self.history * self.subsample_ratio:: self.subsample_ratio]
-            if self.use_lstm:
-                self.future_position = self.prediction_model.predict(data[None, None, ...]).squeeze()
+            if self.is_lstm_model:
+                self.future_position = self.prediction_model.predict((data - data[0])[None, None, ...]).squeeze() + data[0]
             else:
-                self.future_position = self.prediction_model.predict(data[None, ...]).squeeze()
+                # note that the model predicts pose relative to the start of the history
+                self.future_position = self.prediction_model.predict((data - data[0])[None, ...]).squeeze() + data[0]
         self.target_pose = current_pose
         self.update_counter = (self.update_counter + 1) % self.subsample_ratio
 

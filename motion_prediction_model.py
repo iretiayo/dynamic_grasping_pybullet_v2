@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import tensorflow.keras as tfk
 import tensorflow.keras.layers as tfkl
 import argparse
+from collections import deque
+import datetime
 
 
 def get_object_trajectory(length, speed, distance, theta, sampling_frequency=240., is_sinusoid=True):
@@ -148,18 +150,18 @@ class DataGenerator(object):
                         Y[b_id, seq_id] = traj[idx + self.future_index]
 
                 # preprocess data e.g. make first point the reference
-                Y -= X[:, 0:1, 0:1, :]
-                X -= X[:, 0:1, 0:1, :]
-                # X[:, 1:, :] = np.diff(X[0], axis=-2)
+                Y -= X[:, :, 0:1, :]
+                X -= X[:, :, 0:1, :]
+                # X[:, 1:, :] = np.diff(X[0], axis=-2)  # not quite
                 yield X, Y
 
 
-def test_lstm_model(prediction_model, test_traj=None):
+def test_lstm_model(prediction_model, test_traj=None, args=None):
 
     # test_traj = trajectories[:1]
-    X, Y = create_dataset_from_trajectories(test_traj, data_gen_sampling_frequency=data_gen_sampling_frequency,
-                                            measurement_sampling_frequency=measurement_sampling_frequency,
-                                            future_horizons=future_horizons, history=history)
+    X, Y = create_dataset_from_trajectories(test_traj, data_gen_sampling_frequency=args.data_gen_sampling_frequency,
+                                            measurement_sampling_frequency=args.measurement_sampling_frequency,
+                                            future_horizons=args.future_horizons, history=args.history)
     print('X.shape: {}, \t Y.shape: {}'.format(X.shape, Y.shape))
     # import ipdb; ipdb.set_trace()
     # # plt.plot(*trajectories[0][:, :2].T)
@@ -195,13 +197,13 @@ def test_lstm_model(prediction_model, test_traj=None):
     import ipdb; ipdb.set_trace()
 
 
-def train_lstm_model(data_gen, trajectories):
+def train_lstm_model(data_gen, trajectories, args):
     # sample = data_gen.generate_sequence(2).__next__()
     simple_lstm_model = create_lstm_model(input_shape=data_gen.input_shape, output_shape=data_gen.output_shape)
     simple_lstm_model.compile('adam', 'mean_squared_error')
 
     batch_sz = 100
-    training_history = simple_lstm_model.fit(data_gen.generate_sequence(batch_sz), epochs=100,
+    training_history = simple_lstm_model.fit(data_gen.generate_sequence(batch_sz), epochs=args.epochs,
                                              steps_per_epoch=5 * len(trajectories) / batch_sz)
     plt.plot(training_history.history['loss']); plt.show()
     simple_lstm_model.save_weights('simple_lstm_model')
@@ -212,22 +214,28 @@ def train_lstm_model(data_gen, trajectories):
     # prediction_model.load_weights('simple_lstm_model')
     import ipdb; ipdb.set_trace()
 
-    test_lstm_model(prediction_model, test_traj=trajectories[:1])
+    test_lstm_model(prediction_model, test_traj=trajectories[:1], args=args)
 
 
-def train_mlp_model(data_gen, trajectories):
+def train_mlp_model(data_gen, trajectories, args):
     simple_mlp_model = create_mlp_model(input_shape=data_gen.input_shape, output_shape=data_gen.output_shape)
     simple_mlp_model.compile('adam', 'mean_squared_error')
 
-    batch_sz = 100
-    training_history = simple_mlp_model.fit(data_gen.generate(batch_sz), epochs=100,
-                                            steps_per_epoch=50 * len(trajectories) / batch_sz)
+    log_dir = "logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    tensorboard_callback = tfk.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+
+    batch_sz = 1000
+    training_history = simple_mlp_model.fit(data_gen.generate(batch_sz), epochs=args.epochs,
+                                            steps_per_epoch=50 * len(trajectories) / batch_sz,
+                                            validation_data=data_gen.generate(batch_sz), validation_steps=10,
+                                            callbacks=[tensorboard_callback])
     plt.plot(training_history.history['loss']); plt.show()
     simple_mlp_model.save_weights('simple_mlp_model')
 
-    X, Y = create_dataset_from_trajectories(trajectories[:1], data_gen_sampling_frequency=data_gen_sampling_frequency,
-                                            measurement_sampling_frequency=measurement_sampling_frequency,
-                                            future_horizons=future_horizons, history=history)
+    X, Y = create_dataset_from_trajectories(trajectories[:1],
+                                            data_gen_sampling_frequency=args.data_gen_sampling_frequency,
+                                            measurement_sampling_frequency=args.measurement_sampling_frequency,
+                                            future_horizons=args.future_horizons, history=args.history)
     print('X.shape: {}, \t Y.shape: {}'.format(X.shape, Y.shape))
     # plt.plot(*trajectories[0][:, :2].T)
     for i in range(0, len(X), 200):
@@ -237,6 +245,7 @@ def train_mlp_model(data_gen, trajectories):
         plt.show()
 
     Y_pred = simple_mlp_model.predict(X - X[:, 0:1, :]) + X[:, 0:1, :]
+    print('Total Error: {}'.format(np.linalg.norm(Y_pred - Y, axis=2).mean(axis=0)))
     for j in range(Y.shape[1]):
         for i in range(0, Y.shape[0], 200):
             plt.plot([Y[i, j, 0], Y_pred[i, j, 0]], [Y[i, j, 1], Y_pred[i, j, 1]])
@@ -246,8 +255,8 @@ def train_mlp_model(data_gen, trajectories):
     import ipdb; ipdb.set_trace()
 
 
-def load_model(model_file_path, input_shape, output_shape, use_lstm=False):
-    if use_lstm:
+def load_model(model_file_path, input_shape, output_shape, is_lstm_model=False):
+    if is_lstm_model:
         prediction_model = create_lstm_model(input_shape=input_shape, output_shape=output_shape,
                                              stateful=True, batch_sz=1, sequence_len=1)
         prediction_model.load_weights(model_file_path)
@@ -260,28 +269,30 @@ def load_model(model_file_path, input_shape, output_shape, use_lstm=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train Motion Prediction Network')
 
-    parser.add_argument('-n', '--num_data_points', type=int, default=200)
+    parser.add_argument('-n', '--num_data_points', type=int, default=2000)
+    parser.add_argument('-e', '--epochs', type=int, default=100)
+    parser.add_argument('-dl', '--distance_low', type=float, default=0.3, help='in meters')
+    parser.add_argument('-dh', '--distance_high', type=float, default=0.7, help='in meters')
+    parser.add_argument('-l', '--length', type=float, default=1.0, help='in meters')
+    parser.add_argument('-s', '--speeds', nargs='+', type=float, default=(0.01, 0.03, 0.05), help='-f 0.01, 0.03, 0.05')
     parser.add_argument('-d', '--data_gen_sampling_frequency', type=float, default=240, help='in Hertz')
-    parser.add_argument('-m', '--measurement_sampling_frequency', type=float, default=60, help='in Hertz')
+    parser.add_argument('-m', '--measurement_sampling_frequency', type=float, default=5, help='in Hertz')
     parser.add_argument('-f', '--future_horizons', nargs='+', type=float, default=(1., 2.), help='-f 1. 2.')
     parser.add_argument('-his', '--history', type=int, default=5)
     parser.add_argument('-i', '--is_sinusoid', action='store_true', default=False)
     parser.add_argument('-t', '--train_lstm', action='store_true', default=False)
     args = parser.parse_args()
 
-    num_data_points = args.num_data_points
-    data_gen_sampling_frequency = args.data_gen_sampling_frequency
-    measurement_sampling_frequency = args.measurement_sampling_frequency
-    future_horizons = args.future_horizons
-    history = args.history
-    is_sinusoid = args.measurement_sampling_frequency
-    trajectories = create_dataset(num_data_points=num_data_points, sampling_frequency=data_gen_sampling_frequency,
-                                  is_sinusoid=is_sinusoid)
+    trajectories = create_dataset(num_data_points=args.num_data_points,
+                                  sampling_frequency=args.data_gen_sampling_frequency, is_sinusoid=args.is_sinusoid,
+                                  distance_low=args.distance_low, distance_high=args.distance_high, length=args.length,
+                                  speeds=args.speeds)
 
-    data_gen = DataGenerator(trajectories, data_gen_sampling_frequency=data_gen_sampling_frequency,
-                             measurement_sampling_frequency=measurement_sampling_frequency,
-                             future_horizons=future_horizons, history=history)
+    data_gen = DataGenerator(trajectories, data_gen_sampling_frequency=args.data_gen_sampling_frequency,
+                             measurement_sampling_frequency=args.measurement_sampling_frequency,
+                             future_horizons=args.future_horizons, history=args.history)
     # sample = data_gen.generate(2).__next__()
+    # sample = data_gen.generate_sequence(2).__next__()
 
     # import ipdb;    ipdb.set_trace()
     # plt.plot(*trajectories[0][:, :2].T)
@@ -293,6 +304,6 @@ if __name__ == '__main__':
     # import ipdb; ipdb.set_trace()
 
     if args.train_lstm:
-        train_lstm_model(data_gen, trajectories)
+        train_lstm_model(data_gen, trajectories, args)
     else:
-        train_mlp_model(data_gen, trajectories)
+        train_mlp_model(data_gen, trajectories, args)
