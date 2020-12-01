@@ -166,6 +166,8 @@ if __name__ == "__main__":
                                                   max_check=args.max_check,
                                                   disable_reachability=args.disable_reachability,
                                                   rank_by_manipulability=True,
+                                                  always_try_switching=False,
+                                                  use_joint_space_dist=False,
                                                   back_off=args.back_off,
                                                   pose_freq=5,
                                                   use_seed_trajectory=None,

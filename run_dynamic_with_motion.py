@@ -48,6 +48,8 @@ def get_args():
     parser.add_argument('--circular_distance_high', type=float, default=0.5)
     parser.add_argument('--disable_reachability', action='store_true', default=False)
     parser.add_argument('--rank_by_manipulability', action='store_true', default=False)
+    parser.add_argument('--always_try_switching', action='store_true', default=False)
+    parser.add_argument('--use_joint_space_dist', action='store_true', default=False)
     parser.add_argument('--record_videos', action='store_true', default=False)
     parser.add_argument('--replay_trajectory', action='store_true', default=False)
     parser.add_argument('--baseline_experiment_path', type=str, help='use motion path in this file for the run')
@@ -158,6 +160,8 @@ if __name__ == "__main__":
                                                   max_check=args.max_check,
                                                   disable_reachability=args.disable_reachability,
                                                   rank_by_manipulability=args.rank_by_manipulability,
+                                                  always_try_switching=args.always_try_switching,
+                                                  use_joint_space_dist=args.use_joint_space_dist,
                                                   back_off=args.back_off,
                                                   pose_freq=args.pose_freq,
                                                   use_seed_trajectory=args.use_seed_trajectory,

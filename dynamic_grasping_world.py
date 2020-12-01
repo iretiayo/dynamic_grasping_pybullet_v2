@@ -72,6 +72,8 @@ class DynamicGraspingWorld:
                  approach_prediction_duration,
                  fix_motion_planning_time,
                  fix_grasp_ranking_time,
+                 always_try_switching,
+                 use_joint_space_dist,
                  load_obstacles,
                  embed_obstacles_sdf,
                  obstacle_distance_low,
@@ -100,6 +102,8 @@ class DynamicGraspingWorld:
         self.back_off = back_off
         self.disable_reachability = disable_reachability
         self.rank_by_manipulability = rank_by_manipulability
+        self.always_try_switching = always_try_switching
+        self.use_joint_space_dist = use_joint_space_dist
         self.world_steps = 0
         self.pose_freq = pose_freq
         self.pose_duration = 1.0 / self.pose_freq
@@ -1063,13 +1067,13 @@ class DynamicGraspingWorld:
 
         return grasp_idx, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
 
-    def plan_grasp(self, target_pose, old_grasp_idx, always_try_switching=False):
+    def plan_grasp(self, target_pose, old_grasp_idx):
         """ Plan a reachable pre_grasp and grasp pose"""
         # timing of the best machine
         ik_call_time = 0.01
 
         # if an old grasp index is provided
-        if old_grasp_idx is not None and not always_try_switching:
+        if old_grasp_idx is not None and not self.always_try_switching:
             _num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = self.get_iks_pregrasp_and_grasp(
                 old_grasp_idx, target_pose)
             grasp_switched = False
@@ -1085,7 +1089,10 @@ class DynamicGraspingWorld:
         rank_grasp_time = actual_rank_grasp_time if self.fix_grasp_ranking_time is None else self.fix_grasp_ranking_time
         print('Rank grasp actually takes {:.6f}, fixed grasp ranking time {:.6}'.format(actual_rank_grasp_time,
                                                                                         self.fix_grasp_ranking_time))
-        selected_g = self.select_grasp_with_ik_from_ranked_grasp(target_pose, grasp_order_idxs)
+        if self.use_joint_space_dist:
+            selected_g = self.select_grasp_with_ik_from_ranked_grasp_use_joint_space_dist(target_pose, grasp_order_idxs)
+        else:
+            selected_g = self.select_grasp_with_ik_from_ranked_grasp(target_pose, grasp_order_idxs)
         grasp_idx, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = selected_g
 
         grasp_switched = (grasp_idx != old_grasp_idx) and planned_grasp_jv is not None
