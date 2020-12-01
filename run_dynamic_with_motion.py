@@ -55,6 +55,9 @@ def get_args():
     parser.add_argument('--exp_id', type=int)
     parser.add_argument('--load_obstacles', action='store_true', default=False)
     parser.add_argument('--embed_obstacles_sdf', action='store_true', default=False)
+    parser.add_argument('--obstacle_distance_low', type=float, default=0.15)
+    parser.add_argument('--obstacle_distance_high', type=float, default=0.25)
+    parser.add_argument('--distance_between_region', type=float, default=0.05)
     parser.add_argument('--use_motion_aware', action='store_true', default=False)
     parser.add_argument('--motion_aware_model_path', type=str)
 
@@ -183,9 +186,9 @@ if __name__ == "__main__":
                                                   fix_grasp_ranking_time=args.fix_grasp_ranking_time,
                                                   load_obstacles=args.load_obstacles,
                                                   embed_obstacles_sdf=args.embed_obstacles_sdf,
-                                                  obstacle_distance_low=0.15,
-                                                  obstacle_distance_high=0.25,
-                                                  distance_between_region=0.05,
+                                                  obstacle_distance_low=args.obstacle_distance_low,
+                                                  obstacle_distance_high=args.obstacle_distance_high,
+                                                  distance_between_region=args.distance_between_region,
                                                   use_motion_aware=args.use_motion_aware,
                                                   motion_aware_model_path=args.motion_aware_model_path)
 
