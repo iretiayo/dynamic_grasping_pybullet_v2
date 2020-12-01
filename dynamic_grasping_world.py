@@ -449,6 +449,10 @@ class DynamicGraspingWorld:
             return False
 
     def replay_trajectory(self, object_arm_trajectory):
+        # remove conveyor from visible scene
+        conveyor_pose = self.conveyor.get_pose()
+        self.conveyor.set_pose([[-20, -20, conveyor_pose[0][2]], conveyor_pose[1]])
+
         for object_pose, grasp_pose, arm_jv in zip(object_arm_trajectory['object_pose_traj'],
                                                    object_arm_trajectory['grasp_pose_traj'],
                                                    object_arm_trajectory['arm_traj']):

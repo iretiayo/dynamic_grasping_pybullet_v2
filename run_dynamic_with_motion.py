@@ -238,7 +238,12 @@ if __name__ == "__main__":
             if os.path.exists(trajectory_path):
                 with open(trajectory_path, 'r') as infile:
                     object_arm_trajectory = json.load(infile)
+                if args.record_videos:
+                    logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4,
+                                                  os.path.join(args.video_dir, '{}.mp4'.format(i)))
                 dynamic_grasping_world.replay_trajectory(object_arm_trajectory)
+                if args.record_videos:
+                    p.stopStateLogging(logging)
             continue
 
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
