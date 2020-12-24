@@ -1410,7 +1410,7 @@ class Conveyor:
         self.discretized_trajectory = [[list(pos), orientation] for pos in position_trajectory]
         self.wp_target_index = 1
 
-    def initialize_sinusoid_motion(self, dist, theta, length, direction, speed):
+    def initialize_sinusoid_motion(self, dist, theta, length, direction, speed, amp_div=8, period_div=3):
         """
         :param dist: distance to robot center,
         :param theta: the angle of rotation, (0, 360)
@@ -1434,8 +1434,9 @@ class Conveyor:
         start_position = np.array([0, -length / 2.0, 1]) * direction
         target_position = np.array([0, length / 2.0, 1]) * direction
         position_trajectory = np.linspace(start_position, target_position, num_steps)
-        # Amplitude: dist/2., period: self.length/3 i.e. 3 sinusoids within the length of the trajectory
-        position_trajectory[:, 0] = dist/2. * np.sin(2*np.pi * position_trajectory[:, 1] / (self.length/3))
+        # Amplitude: length/4., period: self.length/3 i.e. 3 sinusoids within the length of the trajectory
+        position_trajectory[:, 0] = (self.length * 1.0 / amp_div) * np.sin(2 * np.pi * position_trajectory[:, 1] /
+                                                                           (self.length * 1.0 / period_div))
         T_1 = np.array([[np.cos(radians(self.theta)), -np.sin(radians(self.theta)), 0],
                         [np.sin(radians(self.theta)), np.cos(radians(self.theta)), 0],
                         [0, 0, 1]])
