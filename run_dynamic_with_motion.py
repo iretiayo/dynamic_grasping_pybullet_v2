@@ -55,6 +55,7 @@ def get_args():
     parser.add_argument('--baseline_experiment_path', type=str, help='use motion path in this file for the run')
     parser.add_argument('--failure_only', action='store_true', default=False)
     parser.add_argument('--exp_id', type=int)
+    parser.add_argument('--num_obstacles', type=int, default=3)
     parser.add_argument('--load_obstacles', action='store_true', default=False)
     parser.add_argument('--embed_obstacles_sdf', action='store_true', default=False)
     parser.add_argument('--obstacle_distance_low', type=float, default=0.15)
@@ -138,7 +139,8 @@ if __name__ == "__main__":
     target_initial_pose = [[0.3, 0.3, target_z], [0, 0, 0, 1]]
     robot_initial_pose = [[0, 0, 0], [0, 0, 0, 1]]
     conveyor_initial_pose = [[0.3, 0.3, conveyor_thickness/2], [0, 0, 0, 1]]
-    obstacle_names = ['tomato_soup_can', 'power_drill', 'bleach_cleanser']
+    obstacle_names = ['tomato_soup_can', 'power_drill', 'bleach_cleanser'] * (args.num_obstacles//3 + 1)
+    obstacle_names = obstacle_names[:args.num_obstacles]
 
     dynamic_grasping_world = DynamicGraspingWorld(target_name=args.object_name,
                                                   obstacle_names=obstacle_names,
