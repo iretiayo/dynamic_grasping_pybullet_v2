@@ -609,8 +609,9 @@ class DynamicGraspingWorld:
         return True, motion_planning_time
 
     def approach_and_grasp_timed(self, grasp_idx):
-        object_velocity = np.array(self.conveyor.target_pose[0]) - np.array(self.conveyor.start_pose[0])
-        object_velocity *= self.conveyor.speed / np.linalg.norm(object_velocity)
+        # object_velocity = np.array(self.conveyor.target_pose[0]) - np.array(self.conveyor.start_pose[0])
+        # object_velocity *= self.conveyor.speed / np.linalg.norm(object_velocity)
+        object_velocity = np.array(self.predict(1)[0][0]) - np.array(pu.get_body_pose(self.target)[0])
         arm_discretized_plan, gripper_discretized_plan = self.get_grasping_plan_timed_control(grasp_idx,
                                                                                               self.back_off,
                                                                                               object_velocity)
