@@ -1473,7 +1473,7 @@ class Conveyor:
         self.start_pose = self.discretized_trajectory[0]
         self.target_pose = self.discretized_trajectory[-1]
 
-    def initialize_linear_motion_v2(self, angle, speed, length, start_pose=None):
+    def initialize_conveyor_motion_v2(self, angle, speed, length, start_pose=None, is_sinusoid=False):
         """
         Initialize a motion using the start pose as initial pose, in the direction of the angle.
 
@@ -1485,21 +1485,31 @@ class Conveyor:
         self.speed = float(speed)
         start_pose_in_world = conveyor_pose = self.get_pose() if start_pose is None else start_pose
 
-        target_x = cos(radians(angle)) * length
-        target_y = sin(radians(angle)) * length
-        target_pose_in_conveyor = [[target_x, target_y, 0], [0, 0, 0, 1]]
-        target_pose_in_world = tfc.toMatrix(tfc.fromTf(conveyor_pose)).dot(
-            tfc.toMatrix(tfc.fromTf(target_pose_in_conveyor)))
-        target_pose_in_world = tfc.toTf(tfc.fromMatrix(target_pose_in_world))
-
-        start_pose = start_pose_in_world
-        target_pose = target_pose_in_world
-
         num_steps = int(length / speed * 240)
-        position_trajectory = np.linspace(start_pose[0], target_pose[0], num_steps)
-        self.discretized_trajectory = [[list(p), start_pose[1]] for p in position_trajectory]
+
+        start_position = np.array([0, 0, 1])
+        target_position = np.array([length, 0, 1])
+        position_trajectory = np.linspace(start_position, target_position, num_steps)
+
+        if is_sinusoid:
+            # Amplitude: dist/2., period: self.length/3 i.e. 3 sinusoids within the length of the trajectory
+            position_trajectory[:, 1] = self.length/20. * np.sin(2*np.pi * position_trajectory[:, 0] / (self.length/4))
+
+        # rotate direction of motion according to angle
+        T_1 = np.array([[np.cos(radians(self.theta)), -np.sin(radians(self.theta)), 0],
+                        [np.sin(radians(self.theta)), np.cos(radians(self.theta)), 0],
+                        [0, 0, 1]])
+        position_trajectory = np.dot(T_1, position_trajectory.T).T
+        position_trajectory[:, -1] = 0
+
+        # adjust motion to the reference start position
+        position_trajectory = np.dot(tfc.toMatrix(tfc.fromTf(start_pose_in_world)),
+                                     np.concatenate((position_trajectory, np.ones((position_trajectory.shape[0], 1))),
+                                                    axis=-1).T)[:-1].T
+
+        self.discretized_trajectory = [[list(p), start_pose_in_world[1]] for p in position_trajectory]
         self.wp_target_index = 1
-        return start_pose, target_pose
+        return self.discretized_trajectory[0], self.discretized_trajectory[-1]
 
     def clear_motion(self):
         self.start_pose = None

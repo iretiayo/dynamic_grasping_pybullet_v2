@@ -244,7 +244,7 @@ class EEFOnlyDynamicWorld:
             p.changeDynamics(hand_id, joint, mass=1)
         p.changeDynamics(hand_id, -1, mass=50)
 
-    def reset(self, reset_dict=None):
+    def reset(self, reset_dict=None, is_sinusoid=False):
         pu.remove_all_markers()
         self.conveyor.clear_motion()    # this is not necessary
         if reset_dict is not None:
@@ -266,8 +266,18 @@ class EEFOnlyDynamicWorld:
         # object_target_pose_in_object, object_target_pose_in_world = mu.calculate_target_pose(object_pose, angle, distance)
         # conveyor_target_pose_in_conveyor =
 
-        conveyor_start_pose, conveyor_target_pose = self.conveyor.initialize_linear_motion_v2(angle, speed, distance)
-        pu.draw_line(conveyor_start_pose[0], conveyor_target_pose[0])
+        conveyor_start_pose, conveyor_target_pose = self.conveyor.initialize_conveyor_motion_v2(angle, speed, distance,
+                                                                                                is_sinusoid=is_sinusoid)
+
+        if is_sinusoid:
+            num_plot_points = 100
+            idx = np.linspace(0, len(self.conveyor.discretized_trajectory) - 1, num_plot_points).astype(int)
+            for i in range(len(idx) - 1):
+                pos1 = self.conveyor.discretized_trajectory[idx[i]][0]
+                pos2 = self.conveyor.discretized_trajectory[idx[i+1]][0]
+                pu.draw_line(pos1, pos2)
+        else:
+            pu.draw_line(self.conveyor.discretized_trajectory[0][0], self.conveyor.discretized_trajectory[-1][0])
         return angle, speed
 
     def step(self):
