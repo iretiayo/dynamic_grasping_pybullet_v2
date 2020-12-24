@@ -293,15 +293,18 @@ class EEFOnlyDynamicWorld:
 
         max_eef_speed = 0.05    # should be dependent on the Jacobian
         approach_duration = abs(back_off) / max_eef_speed
-        approach_direction = np.array(grasp_link6_com_in_object[0]) - np.array(pre_grasp_link6_com_in_object[0])
-        approach_direction /= np.linalg.norm(approach_direction)
 
-        object_position_at_grasp_pose = np.array(pu.get_body_pose(self.target)[0]) + object_velocity * approach_duration
+        # position_change = object_velocity * approach_duration
+        position_change = np.array(self.conveyor.predict(approach_duration)[0]) - np.array(self.conveyor.get_pose()[0])
+        object_position_at_grasp_pose = np.array(pu.get_body_pose(self.target)[0]) + position_change
         object_pose_at_grasp_pose = [object_position_at_grasp_pose, object_pose[1]]
         at_grasp_pose = gu.convert_grasp_in_object_to_world(object_pose_at_grasp_pose, grasp_link6_com_in_object)
 
         gripper_close_duration = approach_duration * 0.2
-        object_position_at_grasp_closed = object_position_at_grasp_pose + object_velocity * gripper_close_duration
+        # position_change = object_velocity * gripper_close_duration
+        position_change = np.array(self.conveyor.predict(approach_duration + gripper_close_duration)[0]) - np.array(
+            self.conveyor.get_pose()[0])
+        object_position_at_grasp_closed = np.array(pu.get_body_pose(self.target)[0]) + position_change
         object_pose_at_grasp_closed = [object_position_at_grasp_closed, object_pose[1]]
         final_grasp_pose = gu.convert_grasp_in_object_to_world(object_pose_at_grasp_closed, grasp_link6_com_in_object)
 

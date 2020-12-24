@@ -1473,28 +1473,29 @@ class Conveyor:
         self.start_pose = self.discretized_trajectory[0]
         self.target_pose = self.discretized_trajectory[-1]
 
-    def initialize_linear_motion_v2(self, angle, speed, distance, start_pose=None):
+    def initialize_linear_motion_v2(self, angle, speed, length, start_pose=None):
         """
         Initialize a motion using the start pose as initial pose, in the direction of the angle.
 
         :param angle: the angle of the motion direction in the conveyor frame, in degrees
         :param speed: the speed of the motion
         """
+        self.theta = float(angle)
+        self.length = float(length)
+        self.speed = float(speed)
         start_pose_in_world = conveyor_pose = self.get_pose() if start_pose is None else start_pose
-        start_pose_in_conveyor = [[0, 0, 0], [0, 0, 0, 1]]
 
-        target_x = cos(radians(angle)) * distance
-        target_y = sin(radians(angle)) * distance
+        target_x = cos(radians(angle)) * length
+        target_y = sin(radians(angle)) * length
         target_pose_in_conveyor = [[target_x, target_y, 0], [0, 0, 0, 1]]
         target_pose_in_world = tfc.toMatrix(tfc.fromTf(conveyor_pose)).dot(
             tfc.toMatrix(tfc.fromTf(target_pose_in_conveyor)))
         target_pose_in_world = tfc.toTf(tfc.fromMatrix(target_pose_in_world))
-        target_pose_in_world = [list(target_pose_in_world[0]), list(target_pose_in_world[1])]
 
         start_pose = start_pose_in_world
         target_pose = target_pose_in_world
 
-        num_steps = int(distance / speed * 240)
+        num_steps = int(length / speed * 240)
         position_trajectory = np.linspace(start_pose[0], target_pose[0], num_steps)
         self.discretized_trajectory = [[list(p), start_pose[1]] for p in position_trajectory]
         self.wp_target_index = 1
