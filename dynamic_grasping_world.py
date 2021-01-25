@@ -156,21 +156,7 @@ class DynamicGraspingWorld:
             self.reachability_data_dir)
 
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
-        self.plane = p.loadURDF("plane.urdf")
-        self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
-        if 'mico' in self.robot_config_name:
-            self.robot = MicoController(self.robot_initial_pose, self.robot_initial_state, self.robot_urdf)
-        if 'robotiq' in self.robot_config_name:
-            self.robot_id = load_ur_robotiq_robot(self.robot_initial_pose)
-            self.robot = UR5RobotiqPybulletController(self.robot_id)
-            p.changeDynamics(self.target, -1, mass=1,
-                             frictionAnchor=1, restitution=0.1,
-                             spinningFriction=0, rollingFriction=0.01, lateralFriction=0.9)
-            for joint in range(p.getNumJoints(self.robot.id)):
-                p.changeDynamics(self.robot.id, joint, mass=1)
-        p.setPhysicsEngineParameter(numSolverIterations=150, enableConeFriction=1, contactBreakingThreshold=1e-3)
-
-        self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf)
+        self.load_world()
         self.reset('initial')  # the reset is needed to simulate the initial config
 
         self.scene = mc.PlanningSceneInterface()
@@ -216,6 +202,23 @@ class DynamicGraspingWorld:
             self.motion_aware_network.load_state_dict(torch.load(
                 os.path.join(self.motion_aware_model_path, self.target_name, epoch_dir,
                              'motion_ware_net.pt')))
+
+    def load_world(self):
+        self.plane = p.loadURDF("plane.urdf")
+        self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
+        if 'mico' in self.robot_config_name:
+            self.robot = MicoController(self.robot_initial_pose, self.robot_initial_state, self.robot_urdf)
+        if 'robotiq' in self.robot_config_name:
+            self.robot_id = load_ur_robotiq_robot(self.robot_initial_pose)
+            self.robot = UR5RobotiqPybulletController(self.robot_id)
+            p.changeDynamics(self.target, -1, mass=1,
+                             frictionAnchor=1, restitution=0.1,
+                             spinningFriction=0, rollingFriction=0.01, lateralFriction=0.9)
+            for joint in range(p.getNumJoints(self.robot.id)):
+                p.changeDynamics(self.robot.id, joint, mass=1)
+        p.setPhysicsEngineParameter(numSolverIterations=150, enableConeFriction=1, contactBreakingThreshold=1e-3)
+
+        self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf)
 
     def reset(self, mode, reset_dict=None):
         """

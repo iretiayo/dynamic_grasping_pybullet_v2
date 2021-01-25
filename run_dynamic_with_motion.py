@@ -238,6 +238,10 @@ if __name__ == "__main__":
                 print('skipping trial {}'.format(i))
                 continue
 
+        if args.load_obstacles:
+            p.resetSimulation()
+            p.setGravity(0, 0, -9.8)
+            dynamic_grasping_world.load_world()
         distance, theta, length, direction, target_quaternion, obstacle_poses, z_start_end = dynamic_grasping_world.reset(
             mode=args.motion_mode, reset_dict=reset_dict)
 
