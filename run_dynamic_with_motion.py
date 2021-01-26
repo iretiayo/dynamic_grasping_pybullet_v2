@@ -130,7 +130,8 @@ if __name__ == "__main__":
 
     object_mesh_filepath = os.path.join(args.mesh_dir, '{}'.format(args.object_name), '{}.obj'.format(args.object_name))
     object_mesh_filepath_ply = object_mesh_filepath.replace('.obj', '.ply')
-    target_urdf = mu.create_object_urdf(object_mesh_filepath, args.object_name)
+    target_urdf = mu.create_object_urdf(object_mesh_filepath, args.object_name,
+                                        urdf_target_object_filepath='assets/{}_target.urdf'.format(args.object_name))
     target_mesh = trimesh.load_mesh(object_mesh_filepath)
     target_extents = target_mesh.bounding_box.extents.tolist()
     floor_offset = target_mesh.bounds.min(0)[2]
