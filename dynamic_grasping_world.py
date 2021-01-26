@@ -1218,10 +1218,10 @@ class DynamicGraspingWorld:
                     (-length / 2.0 + 3 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_high),
                     (-length / 2.0 + 3 * region_length + 2 * self.distance_between_region, -self.obstacle_distance_low)],
 
-                   [(-length / 2.0 + region_length + self.distance_between_region, -self.obstacle_distance_low),
-                    (-length / 2.0 + region_length + self.distance_between_region, -self.obstacle_distance_high),
-                    (-length / 2.0 + 2 * region_length + self.distance_between_region, -self.obstacle_distance_high),
-                    (-length / 2.0 + 2 * region_length + self.distance_between_region, -self.obstacle_distance_low)],
+                   # [(-length / 2.0 + region_length + self.distance_between_region, -self.obstacle_distance_low),
+                   #  (-length / 2.0 + region_length + self.distance_between_region, -self.obstacle_distance_high),
+                   #  (-length / 2.0 + 2 * region_length + self.distance_between_region, -self.obstacle_distance_high),
+                   #  (-length / 2.0 + 2 * region_length + self.distance_between_region, -self.obstacle_distance_low)],
 
                    [(-length / 2.0, -self.obstacle_distance_low),
                     (-length / 2.0, -self.obstacle_distance_high),
@@ -1252,13 +1252,14 @@ class DynamicGraspingWorld:
 
         poses = []
         obstacles = []
-        if len(self.obstacle_names) <= 6:
-            choices = random.choice(list(combinations(range(6), len(self.obstacle_names))))
+        num_regions = len(polygons)
+        if len(self.obstacle_names) <= num_regions:
+            choices = random.choice(list(combinations(range(num_regions), len(self.obstacle_names))))
         else:
             choices = []
-            for _ in range(len(self.obstacle_names) // 6):
-                choices.extend(np.random.permutation(6))
-            choices.extend(random.choice(list(combinations(range(6), len(self.obstacle_names) % 6))))
+            for _ in range(len(self.obstacle_names) // num_regions):
+                choices.extend(np.random.permutation(num_regions))
+            choices.extend(random.choice(list(combinations(range(num_regions), len(self.obstacle_names) % num_regions))))
         for choice, urdf, extents, z in zip(choices, self.obstacle_urdfs, self.obstacle_extentss, self.obstacle_zs):
             position_xy = mu.random_point_in_polygon(polygons[choice])
             position_xy = tuple(transform_matrix.dot(np.array(position_xy + (1,)))[:2])
