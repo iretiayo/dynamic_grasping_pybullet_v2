@@ -608,8 +608,8 @@ class DynamicGraspingWorld:
 
         motion_planning_time, arm_motion_plan, gripper_motion_plan = self.plan_approach_motion(planned_grasp_jv,
                                                                                                self.approach_prediction_duration)
-        self.execute_approach_and_grasp(arm_motion_plan, gripper_motion_plan)
-        return True, motion_planning_time
+        object_arm_trajectory = self.execute_approach_and_grasp(arm_motion_plan, gripper_motion_plan)
+        return True, motion_planning_time, object_arm_trajectory
 
     def approach_and_grasp_timed(self, grasp_idx):
         # object_velocity = np.array(self.conveyor.target_pose[0]) - np.array(self.conveyor.start_pose[0])
@@ -768,6 +768,7 @@ class DynamicGraspingWorld:
             self.world_steps += 1
             if self.world_steps % self.pose_steps == 0:
                 self.motion_predictor_kf.update(pu.get_body_pose(self.target))
+        return object_arm_trajectory
 
     def execute_lift(self):
         # lift twice in case the first lift attempt does not work
