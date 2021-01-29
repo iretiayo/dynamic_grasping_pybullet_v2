@@ -364,7 +364,7 @@ class DynamicGraspingWorld:
                 pos2 = self.conveyor.discretized_trajectory[idx[i+1]][0]
                 pu.draw_line(pos1, pos2)
 
-            return distance, theta, length, direction, target_quaternion, obstacle_poses
+            return distance, theta, length, direction, target_quaternion, obstacle_poses, np.array(z_start_end).tolist()
 
         elif mode == 'hand_over':
             raise NotImplementedError
