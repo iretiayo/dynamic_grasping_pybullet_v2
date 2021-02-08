@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 
-timestr=final_$(date '+%Y-%m-%d_%H-%M-%S')
+node_id=${1:-10000}   #default port is 10000
+
+exp_name="exp_name"
+timestr=${exp_name}_mico_$(hostname)_$(date '+%Y-%m-%d_%H-%M-%S')
 
 mkdir $timestr
 cp run_headless_parallel.sh $timestr
-
-node_id=10000
 
 for object_name in bleach_cleanser mustard_bottle potted_meat_can sugar_box tomato_soup_can cube power_drill
 do

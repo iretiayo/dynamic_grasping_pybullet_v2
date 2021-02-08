@@ -3,7 +3,7 @@
 node_id=${1:-10000}   #default port is 10000
 
 exp_name="exp_name"
-timestr=${exp_name}_ur5_$(hostname)_$(date '+%Y-%m-%d_%H-%M-%S')
+timestr=${exp_name}_mico_$(hostname)_$(date '+%Y-%m-%d_%H-%M-%S')
 
 mkdir $timestr
 cp run_headless_serial.sh $timestr
