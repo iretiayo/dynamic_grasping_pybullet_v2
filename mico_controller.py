@@ -171,7 +171,7 @@ class MicoController:
         max_eef_velocity = np.dot(jacobian, self.arm_max_joint_velocities)
         return np.squeeze(np.array(max_eef_velocity))
 
-    def get_manipulability(self, list_of_joint_values):
+    def get_manipulability_srv(self, list_of_joint_values):
         assert self.use_manipulability, 'self.use_manipulability flag is set to false, check constructor and start manipulability ros service'
         manipulability_indexes = []
         for jvs in list_of_joint_values:
@@ -182,7 +182,26 @@ class MicoController:
                 self.robot_state_template.joint_state.position = jvs
                 result = self.compute_manipulability_svr(self.robot_state_template, self.ARM)
 
-                manipulability_indexes.append(result.manipulability_index)
+                manipulability_iget_manipulability_srvndexes.append(result.manipulability_index)
+        return manipulability_indexes
+
+    def get_manipulability(self, list_of_joint_values, translation_only=True):
+        manipulability_indexes = []
+        for jvs in list_of_joint_values:
+            if jvs is None:
+                manipulability_indexes.append(None)
+            else:
+                jacobian = self.arm_commander_group.get_jacobian_matrix(list(jvs))
+                if translation_only:
+                    matrix = np.dot(jacobian[:3], jacobian[:3].T)
+                else:
+                    matrix = np.dot(jacobian, jacobian.T)
+                manipulability_index = np.sqrt(np.linalg.det(matrix))
+                manipulability_indexes.append(manipulability_index)
+
+                # # u_, s_, vh_ = np.linalg.svd(jacobian, full_matrices=True)
+                # # index2 = np.sqrt(np.prod(s_))
+
         return manipulability_indexes
 
     def get_arm_ik_pybullet(self, pose_2d, arm_joint_values=None, gripper_joint_values=None):
