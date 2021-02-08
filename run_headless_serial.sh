@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 
-timestr=final_$(date '+%Y-%m-%d_%H-%M-%S')
+node_id=${1:-10000}   #default port is 10000
+
+exp_name="exp_name"
+timestr=${exp_name}_ur5_$(hostname)_$(date '+%Y-%m-%d_%H-%M-%S')
 
 mkdir $timestr
 cp run_headless_serial.sh $timestr
-
-node_id=50000
 
 screen -d -m -S ${timestr}_moveit bash -c "source ../../devel/setup.bash && \
     export ROS_MASTER_URI=http://localhost:${node_id} && \
@@ -20,6 +21,7 @@ for object_name in bleach_cleanser mustard_bottle potted_meat_can sugar_box toma
   python run_dynamic_with_motion.py \
     --object_name $object_name \
     --robot_config_name mico \
+    --motion_mode dynamic_linear \
     --num_trials 100 \
     --result_dir $timestr \
     --grasp_database_path assets/grasps/filtered_grasps_noise_100 \
