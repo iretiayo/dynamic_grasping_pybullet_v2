@@ -66,10 +66,10 @@ if __name__ == '__main__':
     csv_paths = [os.path.join(object_name, object_name+'.csv') for object_name in object_names]
     stat_dict = OrderedDict()
     for name, path in zip(object_names, csv_paths):
+        result_file_path = os.path.join(args.result_dir, path)
         if not os.path.exists(result_file_path):
             print('{} not found'.format(result_file_path))
             continue
-        result_file_path = os.path.join(args.result_dir, path)
         df = pd.read_csv(result_file_path, index_col=0)
         stats = evaluate_results(df)
         stat_dict[name] = stats
