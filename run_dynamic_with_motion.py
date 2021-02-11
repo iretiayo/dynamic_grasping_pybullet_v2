@@ -22,6 +22,7 @@ from dynamic_grasping_world import DynamicGraspingWorld
 import json
 import pandas as pd
 import ast
+from distutils.util import strtobool
 
 
 def get_args():
@@ -33,9 +34,9 @@ def get_args():
                         help="name of robot configs to load from grasputils. Ex: mico or ur5_robotiq")
     parser.add_argument('--motion_mode', type=str, default='dynamic_linear')
     parser.add_argument('--grasp_database_path', type=str, required=True)
-    parser.add_argument('--rendering', action='store_true', default=False)
-    parser.add_argument('--debug', action='store_true', default=False)
-    parser.add_argument('--realtime', action='store_true', default=False)
+    parser.add_argument('--rendering', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--debug', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--realtime', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--num_trials', type=int, required=True)
     parser.add_argument('--result_dir', type=str, required=True)
     parser.add_argument('--max_check', type=int, default=1)
@@ -46,22 +47,22 @@ def get_args():
     parser.add_argument('--conveyor_z_high', type=float, default=0.01)
     parser.add_argument('--circular_distance_low', type=float, default=0.3)
     parser.add_argument('--circular_distance_high', type=float, default=0.5)
-    parser.add_argument('--disable_reachability', action='store_true', default=False)
-    parser.add_argument('--rank_by_manipulability', action='store_true', default=False)
-    parser.add_argument('--always_try_switching', action='store_true', default=False)
-    parser.add_argument('--use_joint_space_dist', action='store_true', default=False)
-    parser.add_argument('--record_videos', action='store_true', default=False)
-    parser.add_argument('--replay_trajectory', action='store_true', default=False)
+    parser.add_argument('--disable_reachability', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--rank_by_manipulability', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--always_try_switching', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--use_joint_space_dist', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--record_videos', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--replay_trajectory', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--baseline_experiment_path', type=str, help='use motion path in this file for the run')
-    parser.add_argument('--failure_only', action='store_true', default=False)
+    parser.add_argument('--failure_only', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--exp_id', type=int)
     parser.add_argument('--num_obstacles', type=int, default=3)
-    parser.add_argument('--load_obstacles', action='store_true', default=False)
-    parser.add_argument('--embed_obstacles_sdf', action='store_true', default=False)
+    parser.add_argument('--load_obstacles', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--embed_obstacles_sdf', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--obstacle_distance_low', type=float, default=0.15)
     parser.add_argument('--obstacle_distance_high', type=float, default=0.25)
     parser.add_argument('--distance_between_region', type=float, default=0.05)
-    parser.add_argument('--use_motion_aware', action='store_true', default=False)
+    parser.add_argument('--use_motion_aware', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--motion_aware_model_path', type=str)
 
     # dynamic hyper parameter
@@ -72,16 +73,16 @@ def get_args():
     parser.add_argument('--small_prediction_threshold', type=float, default=0.1)
     parser.add_argument('--distance_travelled_threshold', type=float, default=0.1)
     parser.add_argument('--close_delay', type=float, default=0.5)
-    parser.add_argument('--use_seed_trajectory', action='store_true', default=False)
-    parser.add_argument('--use_previous_jv', action='store_true', default=False)
-    parser.add_argument('--use_box', action='store_true', default=False)
-    parser.add_argument('--use_baseline_method', action='store_true', default=False)
-    parser.add_argument('--use_gt', action='store_true', default=False)
-    parser.add_argument('--use_kf', action='store_true', default=False)
-    parser.add_argument('--use_lstm_prediction', action='store_true', default=False)
+    parser.add_argument('--use_seed_trajectory', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--use_previous_jv', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--use_box', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--use_baseline_method', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--use_gt', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--use_kf', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--use_lstm_prediction', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--lstm_model_filepath', type=str)
     parser.add_argument('--pose_freq', type=int, default=5)
-    parser.add_argument('--approach_prediction', action='store_true', default=False)
+    parser.add_argument('--approach_prediction', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--approach_prediction_duration', type=float, default=1.0)
     parser.add_argument('--fix_motion_planning_time', type=float)
     parser.add_argument('--fix_grasp_ranking_time', type=float)
@@ -238,7 +239,6 @@ if __name__ == "__main__":
             if args.failure_only and reset_dict['success']:
                 print('skipping trial {}'.format(i))
                 continue
-
         if args.load_obstacles:
             p.resetSimulation()
             p.setGravity(0, 0, -9.8)
