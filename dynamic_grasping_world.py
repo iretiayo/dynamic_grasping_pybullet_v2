@@ -22,6 +22,8 @@ import misc_utils as mu
 import trimesh
 from itertools import combinations
 from collections import deque
+import torch
+import torch.nn.functional as F
 
 
 class DynamicGraspingWorld:
@@ -168,6 +170,7 @@ class DynamicGraspingWorld:
         self.approach_prediction_duration = approach_prediction_duration
         self.fix_motion_planning_time = fix_motion_planning_time
         self.fix_grasp_ranking_time = fix_grasp_ranking_time
+        self.value_markers = None
 
         # obstacles
         self.load_obstacles = load_obstacles
@@ -199,6 +202,7 @@ class DynamicGraspingWorld:
                 os.path.join(self.motion_aware_model_path, self.target_name, epoch_dir,
                              'motion_ware_net.pt')))
 
+
     def load_world(self):
         self.plane = p.loadURDF("plane.urdf")
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
@@ -228,6 +232,7 @@ class DynamicGraspingWorld:
             hand_over: TODO
         """
         self.world_steps = 0
+        self.value_markers = None
         if mode == 'initial':
             pu.remove_all_markers()
             target_pose, distance = self.target_initial_pose, self.initial_distance
@@ -884,7 +889,7 @@ class DynamicGraspingWorld:
                                                            self.dims)
         return sdf_values
 
-    def rank_grasps(self, target_pose, visualize_sdf=False):
+    def rank_grasps(self, target_pose, visualize_reachability=False, visualize_motion_aware=False):
 
         if self.disable_reachability:
             grasp_order_idxs = np.random.permutation(np.arange(len(self.graspit_pregrasps)))
@@ -903,23 +908,22 @@ class DynamicGraspingWorld:
                                                                    self.dims)
             grasp_order_idxs = np.argsort(sdf_values)[::-1]
 
-        if visualize_sdf and not self.disable_reachability:
+        if visualize_reachability and not self.disable_reachability:
             pre_grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
                                        self.pre_grasps_eef]
             pre_grasps_eef_in_world = [
                 tfc.toTf(tfc.fromTf(g) * tfc.fromTf(self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT)) for g in
                 pre_grasps_eef_in_world]
 
-            if hasattr(self, 'marker_frame_ids'):
-                pu.remove_markers(self.marker_frame_ids)
-                self.marker_frame_ids = []
+            if self.value_markers is not None:
+                pu.remove_markers(self.value_markers)
             frame_ids = gu.visualize_grasps_with_reachability(np.array(pre_grasps_eef_in_world)[grasp_order_idxs[:100]],
                                                               np.array(sdf_values)[grasp_order_idxs[:100]])
-            self.marker_frame_ids = frame_ids
+            self.value_markers = frame_ids
             frame_ids = gu.visualize_grasp_with_reachability(pre_grasps_eef_in_world[grasp_order_idxs[0]],
                                                              sdf_values[grasp_order_idxs[0]], use_cmap_from_mpl=False,
                                                              maximum=max(sdf_values), minimum=min(sdf_values))
-            self.marker_frame_ids.extend(frame_ids)
+            self.value_markers.extend(frame_ids)
 
         # pick top 10 reachable grasp for motion aware quality ranking
         if self.use_motion_aware:
@@ -949,15 +953,18 @@ class DynamicGraspingWorld:
             grasp_order_idxs = [x for _, x in sorted(zip(motion_aware_qualities, most_reachable_grasps_indices))]
 
             # visualization
-            # all_motion_aware_qualities = self.get_motion_aware_qualities(self.grasps_eef,
-            #                                                          self.pre_grasps_eef,
-            #                                                          radians(conveyor_angle_in_object),
-            #                                                          speed)
-            # grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
-            #                        self.grasps_eef]
-            # gu.visualize_grasps_with_reachability(grasps_eef_in_world, all_motion_aware_qualities)
-            # gu.visualize_grasp_with_reachability(grasps_eef_in_world[grasp_order_idxs[0]], sdf_values[grasp_order_idxs[0]],
-            #                                      maximum=max(sdf_values), minimum=min(sdf_values))
+            if visualize_motion_aware:
+                if self.value_markers is not None:
+                    pu.remove_markers(self.value_markers)
+                all_motion_aware_qualities = self.get_motion_aware_qualities(self.grasps_eef,
+                                                                             self.pre_grasps_eef,
+                                                                             radians(conveyor_angle_in_object),
+                                                                             speed)
+                grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+                                       self.grasps_eef]
+                self.value_markers = gu.visualize_grasps_with_reachability(pre_grasps_eef_in_world, all_motion_aware_qualities)
+                # gu.visualize_grasp_with_reachability(grasps_eef_in_world[grasp_order_idxs[0]], sdf_values[grasp_order_idxs[0]],
+                #                                      maximum=max(sdf_values), minimum=min(sdf_values))
 
         return grasp_order_idxs
 
@@ -1001,7 +1008,7 @@ class DynamicGraspingWorld:
         """
         x = torch.tensor(list(grasp_pose_7d_in_object) + list(pre_grasp_pose_7d_in_object) + [angle] + [speed])
         logits = self.motion_aware_network(x)
-        probs = softmax(logits)
+        probs = F.softmax(logits)
         quality = probs[1]
         return quality.item()
 

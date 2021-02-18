@@ -463,7 +463,7 @@ def convert_grasp_in_world_to_object(object_pose, grasp_in_world):
 def visualize_grasps_with_reachability(grasp_poses, sdf_values, use_cmap_from_mpl=True, cmap_name='viridis'):
     """
 
-    :param grasp_poses: a list of pose 2d
+    :param grasp_poses: a list of pose 2d in world frame
     :param sdf_values: a list of their corresponding sdf values
     """
     maximum = max(sdf_values)
@@ -488,7 +488,7 @@ def visualize_grasp_with_reachability(grasp_pose, sdf_value, maximum, minimum, u
                                       cmap_name='viridis'):
     """
 
-    :param grasp_poses: a pose 2d
+    :param grasp_poses: a pose 2d in world frame
     :param sdf_values: the corresponding sdf values
     """
     if use_cmap_from_mpl:
