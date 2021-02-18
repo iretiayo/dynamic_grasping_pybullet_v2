@@ -17,11 +17,9 @@ grasp_threshold=${grasp_threshold:-0.1}
 lazy_threshold=${lazy_threshold:-30.3}
 conveyor_speed=${conveyor_speed:-0.02}
 close_delay=${close_delay:-0.5}
-back_off=${back_off:-0.075}
+back_off=${back_off:--0.075}
 distance_low=${distance_low:-0.15}
 distance_high=${distance_high:-0.20}
-circular_distance_low=${circular_distance_low:-0.15}
-circular_distance_high=${circular_distance_high:-0.20}
 pose_freq=${pose_freq:-5}
 use_previous_jv=${use_previous_jv:-true}
 use_seed_trajectory=${use_seed_trajectory:-true}
@@ -73,8 +71,6 @@ screen -dmS ${timestr}_pybullet bash -c "source ../../devel/setup.bash;
       --back_off ${back_off} \
       --distance_low ${distance_low} \
       --distance_high ${distance_high} \
-      --circular_distance_low ${circular_distance_low} \
-      --circular_distance_high ${circular_distance_high} \
       --pose_freq ${pose_freq} \
       --use_previous_jv ${use_previous_jv} \
       --use_seed_trajectory ${use_seed_trajectory} \

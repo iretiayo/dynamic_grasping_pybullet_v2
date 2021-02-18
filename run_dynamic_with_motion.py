@@ -184,8 +184,6 @@ if __name__ == "__main__":
                                                   distance_high=args.distance_high,
                                                   conveyor_z_low=args.conveyor_z_low,
                                                   conveyor_z_high=args.conveyor_z_high,
-                                                  circular_distance_low=args.circular_distance_low,
-                                                  circular_distance_high=args.circular_distance_high,
                                                   use_box=args.use_box,
                                                   use_baseline_method=args.use_baseline_method,
                                                   approach_prediction=args.approach_prediction,

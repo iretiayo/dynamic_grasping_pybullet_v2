@@ -64,8 +64,6 @@ class DynamicGraspingWorld:
                  distance_high,
                  conveyor_z_low,
                  conveyor_z_high,
-                 circular_distance_low,
-                 circular_distance_high,
                  use_box,
                  use_baseline_method,
                  approach_prediction,
@@ -126,8 +124,6 @@ class DynamicGraspingWorld:
         self.distance_high = distance_high  # mico 0.4  ur5_robotiq: 0.7
         self.conveyor_z_low = conveyor_z_low
         self.conveyor_z_high = conveyor_z_high
-        self.circular_distance_low = circular_distance_low
-        self.circular_distance_high = circular_distance_high
 
         self.grasp_database_path = grasp_database_path
         actual_grasps, graspit_grasps = gu.load_grasp_database_new(grasp_database_path, self.target_name)
@@ -1177,7 +1173,7 @@ class DynamicGraspingWorld:
         """
         # this is effectively the only difference
         if dist is None:
-            dist = np.random.uniform(low=self.circular_distance_low, high=self.circular_distance_high)
+            dist = np.random.uniform(low=self.distance_low, high=self.distance_high)
         if theta is None:
             theta = np.random.uniform(low=0, high=360)
         if length is None:
