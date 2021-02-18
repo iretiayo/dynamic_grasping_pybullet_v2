@@ -31,6 +31,8 @@ disable_reachability=${disable_reachability:-false}
 fix_grasp_ranking_time=${fix_grasp_ranking_time:-0.135}
 always_try_switching=${always_try_switching:-true}
 use_joint_space_dist=${use_joint_space_dist:-true}
+rendering=${rendering:-false}
+record_video=${record_video:-false}
 
 # assign the keyword argument values
 while [[ $# -gt 0 ]]; do
@@ -81,7 +83,9 @@ screen -dmS ${timestr}_pybullet bash -c "source ../../devel/setup.bash;
       --disable_reachability ${disable_reachability} \
       --fix_grasp_ranking_time ${fix_grasp_ranking_time} \
       --use_joint_space_dist \
-      --always_try_switching;
+      --always_try_switching \
+      --record_video ${record_video}
+      --rendering ${rendering};
     sleep 5;
   done;
   $SHELL"

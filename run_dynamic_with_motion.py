@@ -108,6 +108,7 @@ def get_args():
 
     # create a video folders
     if args.record_videos:
+        assert args.rendering
         args.video_dir = os.path.join(args.result_dir, 'videos')
         if not os.path.exists(args.video_dir):
             os.makedirs(args.video_dir)
