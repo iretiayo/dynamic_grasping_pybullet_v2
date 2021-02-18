@@ -84,7 +84,7 @@ screen -dmS ${timestr}_pybullet bash -c "source ../../devel/setup.bash;
       --fix_grasp_ranking_time ${fix_grasp_ranking_time} \
       --use_joint_space_dist \
       --always_try_switching \
-      --record_video ${record_video}
+      --record_video ${record_video} \
       --rendering ${rendering};
     sleep 5;
   done;
