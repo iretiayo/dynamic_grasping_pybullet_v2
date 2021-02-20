@@ -150,9 +150,13 @@ class EEFController:
         return [list(p.getBasePositionAndOrientation(self.id)[0]),
                 list(p.getBasePositionAndOrientation(self.id)[1])]
 
-    def initialize_gripper_plan(self, start_joint_values, goal_joint_values):
+    def initialize_gripper_plan(self, start_joint_values, goal_joint_values, close_delay):
         num_steps = 240
-        self.gripper_discretized_plan = np.linspace(start_joint_values, goal_joint_values, num_steps)
+        num_static_steps = int(num_steps * close_delay)
+        num_close_steps = num_steps - num_static_steps
+        gripper_discretized_plan = np.tile(start_joint_values, (num_static_steps, 1))
+        gripper_discretized_plan = np.vstack((gripper_discretized_plan, np.linspace(start_joint_values, goal_joint_values, num_close_steps)))
+        self.gripper_discretized_plan = gripper_discretized_plan
         self.gripper_wp_target_index = 1
 
     def initialize_hand_plan(self, end_eef_pose, start_eef_pose=None):
@@ -223,7 +227,8 @@ class EEFOnlyDynamicWorld:
                  target_urdf,
                  conveyor_urdf,
                  min_speed,
-                 max_speed):
+                 max_speed,
+                 close_delay):
         self.target_initial_pose = target_initial_pose
         self.conveyor_initial_pose = conveyor_initial_pose
         self.gripper_initial_pose = gripper_initial_pose
@@ -232,6 +237,7 @@ class EEFOnlyDynamicWorld:
         self.conveyor_urdf = conveyor_urdf
         self.min_speed = min_speed
         self.max_speed = max_speed
+        self.close_delay = close_delay
 
         self.plane = p.loadURDF("plane.urdf")
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
@@ -293,7 +299,7 @@ class EEFOnlyDynamicWorld:
 
         self.controller.reset_to(pre_grasp_link6_com_in_world)
         self.controller.initialize_hand_plan(grasp_link6_com_in_world, pre_grasp_link6_com_in_world)
-        self.controller.initialize_gripper_plan(self.controller.OPEN_POSITION, self.controller.CLOSED_POSITION)
+        self.controller.initialize_gripper_plan(self.controller.OPEN_POSITION, self.controller.CLOSED_POSITION, self.close_delay)
 
     def get_grasping_plan_timed_control(self, grasp_link6_com_in_object, pre_grasp_link6_com_in_object, back_off,
                                         object_velocity):
@@ -301,7 +307,7 @@ class EEFOnlyDynamicWorld:
         object_pose = p.getBasePositionAndOrientation(self.target)
         pre_grasp_link6_com_in_world = gu.convert_grasp_in_object_to_world(object_pose, pre_grasp_link6_com_in_object)
 
-        max_eef_speed = 0.05    # should be dependent on the Jacobian
+        max_eef_speed = abs(back_off)    # should be dependent on the Jacobian
         approach_duration = abs(back_off) / max_eef_speed
 
         # position_change = object_velocity * approach_duration

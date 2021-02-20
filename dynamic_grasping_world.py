@@ -632,7 +632,7 @@ class DynamicGraspingWorld:
         pregrasp_object_pose = p.getBasePositionAndOrientation(self.target)
         pre_grasp_link6_com_in_world = gu.convert_grasp_in_object_to_world(pregrasp_object_pose, pre_grasp_in_object)
 
-        max_eef_speed = 0.05    # should be dependent on the Jacobian
+        max_eef_speed = abs(back_off)    # should be dependent on the Jacobian
         # max_eef_speed = self.robot.get_current_max_eef_velocity(self.robot.get_arm_joint_values())
         # jac_t, jac_r, jacobian_moveit = self.get_pybullet_jacobian()
         # np.dot(np.array(jac_t)[:, :6], self.robot.arm_max_joint_velocities)

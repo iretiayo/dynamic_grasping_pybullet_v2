@@ -10,25 +10,33 @@ from eef_only_grasping_world import EEFOnlyDynamicWorld
 import misc_utils as mu
 from math import radians
 
+"""
+7D pregrasp pose, 7D grasp pose, 1 angle (radians), 1 speed (m/s)
+"""
+
 
 def get_args():
     parser = argparse.ArgumentParser(description='Run Dynamic Grasping Experiment')
 
     parser.add_argument('--object_name', type=str, default='bleach_cleanser',
                         help="Target object to be grasped. Ex: cube")
-    parser.add_argument('--robot_config_name', type=str, default='mico',
+    parser.add_argument('--robot_config_name', type=str, default='ur5_robotiq',
                         help="name of robot configs to load from grasputils. Ex: mico or ur5_robotiq")
     parser.add_argument('--grasp_database_path', type=str, required=True)
     parser.add_argument('--save_folder_path', type=str, required=True)
     parser.add_argument('--disable_gui', action='store_true', default=False)
-    parser.add_argument('--back_off', type=float, default=0.05)
+    parser.add_argument('--use_simple', action='store_true', default=False)
+    parser.add_argument('--back_off', type=float)
+    parser.add_argument('--close_delay', type=float, default=0.5)
 
-    parser.add_argument('--max_speed', type=float, default=0.05, help='maximum speed of the object')
+    parser.add_argument('--max_speed', type=float, default=0.07, help='maximum speed of the object')
     parser.add_argument('--min_speed', type=float, default=0.01, help='minimum speed of the object')
     parser.add_argument('--num_trials_per_grasp', type=int, default=1000, help='num trials for each grasp')
 
     args = parser.parse_args()
-
+    # -0.075 for ur5 and 0.05 for MICO
+    if args.back_off is None:
+        args.back_off = -0.075 if args.robot_config_name == 'ur5_robotiq' else 0.05
     args.mesh_dir = os.path.abspath('assets/models')
     args.gripper_urdf = os.path.abspath('assets/mico/mico_hand.urdf')
     args.conveyor_urdf = os.path.abspath('assets/conveyor.urdf')
@@ -62,7 +70,8 @@ if __name__ == "__main__":
                                 target_urdf,
                                 args.conveyor_urdf,
                                 min_speed=args.min_speed,
-                                max_speed=args.max_speed)
+                                max_speed=args.max_speed,
+                                close_delay=args.close_delay)
 
     actual_grasps, graspit_grasps = gu.load_grasp_database_new(args.grasp_database_path, args.object_name)
     graspit_pregrasps = [pu.merge_pose_2d(
@@ -100,7 +109,8 @@ if __name__ == "__main__":
             object_velocity = np.array([np.cos(radians(angle)), np.sin(radians(angle)), 0]) * speed
             success = world.dynamic_grasp(pu.split_7d(grasp_link6_com_in_object),
                                           pu.split_7d(pre_grasp_link6_com_in_object),
-                                          args.back_off, object_velocity)
+                                          args.back_off, object_velocity,
+                                          use_simple=args.use_simple)
             data[i * args.num_trials_per_grasp + t] = list(pre_grasp_eef) + list(grasp_eef) + [radians(angle)] + [speed]
             labels[i * args.num_trials_per_grasp + t] = float(success)
             pbar.update(1)
