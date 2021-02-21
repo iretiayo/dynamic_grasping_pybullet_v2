@@ -61,7 +61,7 @@ def get_args():
                         help="Target object to be grasped. Ex: cube")
     parser.add_argument('--dataset_path', type=str, required=True)
     parser.add_argument('--seed', type=int, default=10,
-                        help='random seed (default: 1)')
+                        help='random seed (default: 10)')
     parser.add_argument('--no_cuda', action='store_true', default=False,
                         help='disables CUDA training')
     parser.add_argument('--batch_size', type=int, default=64, metavar='N',
@@ -71,7 +71,7 @@ def get_args():
                         help='number of epochs to train (default: 100)')
     parser.add_argument('--log_dir', type=str, default='logs',
                         help='the path to the directory to save logs')
-    parser.add_argument('--save_dir', type=str, default='checkpoint',
+    parser.add_argument('--save_dir', type=str, default='models',
                         help='the path to the directory to save models')
     parser.add_argument('--split', type=float, default=0.2,
                         help='proportion of the test set (default: 0.2)')
