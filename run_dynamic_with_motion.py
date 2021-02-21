@@ -75,6 +75,7 @@ def get_args():
     parser.add_argument('--close_delay', type=float, default=0.5)
     parser.add_argument('--use_seed_trajectory', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--use_previous_jv', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--add_top_shelf', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--use_box', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--use_baseline_method', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--use_gt', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
@@ -185,6 +186,7 @@ if __name__ == "__main__":
                                                   distance_high=args.distance_high,
                                                   conveyor_z_low=args.conveyor_z_low,
                                                   conveyor_z_high=args.conveyor_z_high,
+                                                  add_top_shelf=args.add_top_shelf,
                                                   use_box=args.use_box,
                                                   use_baseline_method=args.use_baseline_method,
                                                   approach_prediction=args.approach_prediction,
