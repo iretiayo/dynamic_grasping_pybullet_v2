@@ -67,6 +67,7 @@ class DynamicGraspingWorld:
                  conveyor_z_low,
                  conveyor_z_high,
                  use_box,
+                 add_top_shelf,
                  use_baseline_method,
                  approach_prediction,
                  approach_prediction_duration,
@@ -167,6 +168,7 @@ class DynamicGraspingWorld:
         self.small_prediction_threshold = small_prediction_threshold
         self.distance_travelled_threshold = distance_travelled_threshold
         self.use_box = use_box
+        self.add_top_shelf = add_top_shelf
         self.use_baseline_method = use_baseline_method
         self.approach_prediction = approach_prediction
         self.approach_prediction_duration = approach_prediction_duration
@@ -204,7 +206,6 @@ class DynamicGraspingWorld:
                 os.path.join(self.motion_aware_model_path, self.target_name, epoch_dir,
                              'motion_ware_net.pt')))
 
-
     def load_world(self):
         self.plane = p.loadURDF("plane.urdf")
         self.target = p.loadURDF(self.target_urdf, self.target_initial_pose[0], self.target_initial_pose[1])
@@ -221,6 +222,29 @@ class DynamicGraspingWorld:
         p.setPhysicsEngineParameter(numSolverIterations=150, enableConeFriction=1, contactBreakingThreshold=1e-3)
 
         self.conveyor = Conveyor(self.conveyor_initial_pose, self.conveyor_urdf)
+
+    def add_top_shelf_to_scene(self, dist, theta, z=0.4, width=0.1):
+        theta = np.radians(theta)
+        T1 = tfc.fromTf(((0, 0, 0), tfc.Rotation.RPY(0, 0, theta).GetQuaternion()))
+        T2 = tfc.fromTf(((dist, 0, z), (0, 0, 0, 1)))
+
+        T_final = T1*T2
+        top_shelf_pose = tfc.toTf(T_final)
+
+        slab_size = [width, 1, .02]
+        half_extents = np.array(slab_size)/2
+
+
+        vs_id = p.createVisualShape(p.GEOM_BOX, halfExtents=half_extents, rgbaColor=(86./255, 47./255, 14./255, 0.75))
+        cs_id = p.createCollisionShape(p.GEOM_BOX, halfExtents=half_extents)
+        object_id = p.createMultiBody(basePosition=top_shelf_pose[0], baseOrientation=top_shelf_pose[1],
+                                    baseCollisionShapeIndex=cs_id, baseVisualShapeIndex=vs_id)
+
+        pu.create_frame_marker(((top_shelf_pose[0][0], top_shelf_pose[0][1], top_shelf_pose[0][2]), top_shelf_pose[1]))
+
+
+        self.scene.add_box('top_shelf', gu.list_2_ps(top_shelf_pose), size=slab_size)
+        return object_id
 
     def reset(self, mode, reset_dict=None):
         """
@@ -300,7 +324,7 @@ class DynamicGraspingWorld:
             obstacle_poses = []
             if self.load_obstacles:
                 for i, n, e in zip(self.obstacles, self.obstacle_names, self.obstacle_extentss):
-                    self.scene.add_box(n, gu.list_2_ps(pu.get_body_pose(i)), size=e)
+                    self.scene.add_box('{}_{}'.format(n, i), gu.list_2_ps(pu.get_body_pose(i)), size=e)
                     obstacle_poses.append(pu.merge_pose_2d(pu.get_body_pose(i)))
                 if self.embed_obstacles_sdf:
                     # update reachability sdf
@@ -324,6 +348,10 @@ class DynamicGraspingWorld:
                     pu.draw_line(pos1, pos2)
             else:
                 pu.draw_line(self.conveyor.start_pose[0], self.conveyor.target_pose[0])
+
+            if self.add_top_shelf:
+                shelf_id = self.add_top_shelf_to_scene(distance, theta, width=0.08)
+                self.obstacles.append(shelf_id)
             p.resetDebugVisualizerCamera(cameraDistance=1.3, cameraYaw=theta + 90, cameraPitch=-35,
                                          cameraTargetPosition=(0.0, 0.0, 0.0))
             return distance, theta, length, direction, target_quaternion, obstacle_poses, np.array(z_start_end).tolist()
