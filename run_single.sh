@@ -15,7 +15,7 @@ num_trials=${num_trials:-100}
 grasp_database_path=${grasp_database_path:-assets/grasps/filtered_grasps_noise_robotiq_100_1.00}
 grasp_threshold=${grasp_threshold:-0.1}
 lazy_threshold=${lazy_threshold:-30.3}
-conveyor_speed=${conveyor_speed:-0.02}
+conveyor_speed=${conveyor_speed:-0.05}
 close_delay=${close_delay:-0.5}
 back_off=${back_off:--0.075}
 distance_low=${distance_low:-0.3}
@@ -48,7 +48,7 @@ done
 
 timestr=${exp_name}_ur5_$(hostname)_$(date '+%Y-%m-%d_%H-%M-%S')
 mkdir $timestr
-cp run_headless_serial_ur5.sh $timestr
+cp run_single.sh $timestr
 
 echo ${timestr}_moveit
 screen -dmS ${timestr}_moveit bash -c "source ../../devel/setup.bash;
