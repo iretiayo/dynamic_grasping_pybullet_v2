@@ -49,12 +49,13 @@ class UR5RobotiqMoveIt(object):
     FINGER_MAXTURN = 1.3
     MOVEIT_ARM_MAX_VELOCITY = [3.15, 3.15, 3.15, 3.15, 3.15, 3.15]
 
-    def __init__(self, use_manipulability=False):
+    def __init__(self, use_manipulability=False, planner_id='PRM'): # PRM, RRTConnect
         # the service names have to be this
         self.arm_ik_svr = rospy.ServiceProxy('compute_ik', GetPositionIK)
         self.arm_fk_svr = rospy.ServiceProxy('compute_fk', GetPositionFK)
 
         self.arm_commander_group = mc.MoveGroupCommander(self.ARM)
+        self.arm_commander_group.set_planner_id(planner_id)
 
         self.robot = mc.RobotCommander()
         self.scene = mc.PlanningSceneInterface()
@@ -321,7 +322,11 @@ class UR5RobotiqMoveIt(object):
     def create_seed_trajectory(self, waypoints):
 
         planner_description = self.arm_commander_group.get_interface_description()
-        if 'CHOMP' in planner_description.planner_ids or planner_description.name == 'OMPL':
+        if 'CHOMP' in planner_description.planner_ids:
+            reference_trajectories = self.encode_seed_trajectory_chomp(waypoints)
+        if planner_description.name == 'OMPL':
+            # seed trajectory is densely sampled for chomp, sampling based methods might not need as much
+            # waypoints = np.array(waypoints)[::10]
             reference_trajectories = self.encode_seed_trajectory_chomp(waypoints)
         elif 'STOMP' in planner_description.planner_ids:
             reference_trajectories = self.encode_seed_trajectory_stomp(waypoints)
