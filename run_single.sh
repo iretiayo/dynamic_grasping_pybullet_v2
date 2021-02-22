@@ -9,7 +9,7 @@
 
 node_id=${node_id:-10000}
 exp_name=${exp_name:-run}
-motion_mode=${motion_mode:-dynamic_circular}
+motion_mode=${motion_mode:-dynamic_linear}
 robot_config_name=${robot_config_name:-ur5_robotiq}
 num_trials=${num_trials:-100}
 grasp_database_path=${grasp_database_path:-assets/grasps/filtered_grasps_noise_robotiq_100_1.00}
@@ -18,8 +18,8 @@ lazy_threshold=${lazy_threshold:-30.3}
 conveyor_speed=${conveyor_speed:-0.02}
 close_delay=${close_delay:-0.5}
 back_off=${back_off:--0.075}
-distance_low=${distance_low:-0.15}
-distance_high=${distance_high:-0.20}
+distance_low=${distance_low:-0.3}
+distance_high=${distance_high:-0.7}
 pose_freq=${pose_freq:-5}
 use_previous_jv=${use_previous_jv:-true}
 use_seed_trajectory=${use_seed_trajectory:-true}
@@ -27,7 +27,10 @@ max_check=${max_check:-10}
 use_box=${use_box:-true}
 use_kf=${use_kf:-true}
 fix_motion_planning_time=${fix_motion_planning_time:-0.14}
-disable_reachability=${disable_reachability:-false}
+use_reachability=${disable_reachability:-true}
+use_motion_aware=${use_motion_aware:-true}
+motion_aware_model_path=${motion_aware_model_path:-assets/motion_aware_models/ur5_robotiq}
+alpha=${alpha:-0.5}
 fix_grasp_ranking_time=${fix_grasp_ranking_time:-0.135}
 always_try_switching=${always_try_switching:-true}
 use_joint_space_dist=${use_joint_space_dist:-true}
@@ -80,7 +83,10 @@ screen -dmS ${timestr}_pybullet bash -c "source ../../devel/setup.bash;
       --use_box ${use_box} \
       --use_kf ${use_kf} \
       --fix_motion_planning_time ${fix_motion_planning_time} \
-      --disable_reachability ${disable_reachability} \
+      --use_reachability ${use_reachability} \
+      --use_motion_aware ${use_motion_aware} \
+      --motion_aware_model_path ${motion_aware_model_path} \
+      --alpha ${alpha} \
       --fix_grasp_ranking_time ${fix_grasp_ranking_time} \
       --use_joint_space_dist \
       --always_try_switching \

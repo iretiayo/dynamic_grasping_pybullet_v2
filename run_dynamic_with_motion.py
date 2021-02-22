@@ -47,7 +47,7 @@ def get_args():
     parser.add_argument('--conveyor_z_high', type=float, default=0.01)
     parser.add_argument('--circular_distance_low', type=float, default=0.3)
     parser.add_argument('--circular_distance_high', type=float, default=0.5)
-    parser.add_argument('--disable_reachability', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
+    parser.add_argument('--use_reachability', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--rank_by_manipulability', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--always_try_switching', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--use_joint_space_dist', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
@@ -62,6 +62,7 @@ def get_args():
     parser.add_argument('--obstacle_distance_low', type=float, default=0.15)
     parser.add_argument('--obstacle_distance_high', type=float, default=0.25)
     parser.add_argument('--distance_between_region', type=float, default=0.05)
+    parser.add_argument('--alpha', type=float)
     parser.add_argument('--use_motion_aware', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--motion_aware_model_path', type=str)
 
@@ -163,7 +164,7 @@ if __name__ == "__main__":
                                                   reachability_data_dir=args.reachability_data_dir,
                                                   realtime=args.realtime,
                                                   max_check=args.max_check,
-                                                  disable_reachability=args.disable_reachability,
+                                                  use_reachability=args.use_reachability,
                                                   rank_by_manipulability=args.rank_by_manipulability,
                                                   always_try_switching=args.always_try_switching,
                                                   use_joint_space_dist=args.use_joint_space_dist,
@@ -197,7 +198,8 @@ if __name__ == "__main__":
                                                   obstacle_distance_high=args.obstacle_distance_high,
                                                   distance_between_region=args.distance_between_region,
                                                   use_motion_aware=args.use_motion_aware,
-                                                  motion_aware_model_path=args.motion_aware_model_path)
+                                                  motion_aware_model_path=args.motion_aware_model_path,
+                                                  alpha=args.alpha)
 
     # adding option to use previous experiment as config
     baseline_experiment_config_df = None

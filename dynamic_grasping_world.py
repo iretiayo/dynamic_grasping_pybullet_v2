@@ -46,7 +46,7 @@ class DynamicGraspingWorld:
                  reachability_data_dir,
                  realtime,
                  max_check,
-                 disable_reachability,
+                 use_reachability,
                  rank_by_manipulability,
                  back_off,
                  pose_freq,
@@ -80,7 +80,8 @@ class DynamicGraspingWorld:
                  obstacle_distance_high,
                  distance_between_region,
                  use_motion_aware,
-                 motion_aware_model_path):
+                 motion_aware_model_path,
+                 alpha):
         self.target_name = target_name
         self.obstacle_names = obstacle_names
         self.mesh_dir = mesh_dir
@@ -100,7 +101,7 @@ class DynamicGraspingWorld:
         self.realtime = realtime
         self.max_check = max_check
         self.back_off = back_off
-        self.disable_reachability = disable_reachability
+        self.use_reachability = use_reachability
         self.rank_by_manipulability = rank_by_manipulability
         self.always_try_switching = always_try_switching
         self.use_joint_space_dist = use_joint_space_dist
@@ -114,6 +115,7 @@ class DynamicGraspingWorld:
         self.use_lstm_prediction = use_lstm_prediction
         self.lstm_model_filepath = lstm_model_filepath
         self.use_gt = use_gt
+        self.alpha = alpha
         if use_lstm_prediction:
             self.motion_predictor_kf = LSTMMotionPredictorKF(self.pose_duration, lstm_model_filepath)
         else:
@@ -889,7 +891,7 @@ class DynamicGraspingWorld:
                                                            self.dims)
         return sdf_values
 
-    def rank_grasps(self, target_pose, visualize_reachability=False, visualize_motion_aware=False):
+    def rank_grasps_bkup(self, target_pose, visualize_reachability=True, visualize_motion_aware=True):
 
         if self.disable_reachability:
             grasp_order_idxs = np.random.permutation(np.arange(len(self.graspit_pregrasps)))
@@ -965,6 +967,71 @@ class DynamicGraspingWorld:
                 self.value_markers = gu.visualize_grasps_with_reachability(pre_grasps_eef_in_world, all_motion_aware_qualities)
                 # gu.visualize_grasp_with_reachability(grasps_eef_in_world[grasp_order_idxs[0]], sdf_values[grasp_order_idxs[0]],
                 #                                      maximum=max(sdf_values), minimum=min(sdf_values))
+
+        return grasp_order_idxs
+
+    def rank_grasps(self, target_pose, visualize_reachability=False, visualize_motion_aware=False):
+        if self.use_reachability:
+            graspit_pregrasps_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+                                          self.graspit_pregrasps]
+            reachability_qualities = gu.get_reachability_of_grasps_pose_2d(graspit_pregrasps_in_world,
+                                                               self.sdf_reachability_space,
+                                                               self.mins,
+                                                               self.step_size,
+                                                               self.dims)
+            if visualize_reachability:
+                pre_grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+                                           self.pre_grasps_eef]
+                pre_grasps_eef_in_world = [
+                    tfc.toTf(tfc.fromTf(g) * tfc.fromTf(self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT)) for g in
+                    pre_grasps_eef_in_world]
+
+                if self.value_markers is not None:
+                    pu.remove_markers(self.value_markers)
+                self.value_markers = gu.visualize_grasps_with_reachability(pre_grasps_eef_in_world,reachability_qualities)
+
+        if self.use_motion_aware:
+            if self.conveyor.direction == 1:
+                conveyor_angle_in_world = self.conveyor.theta + 90
+            elif self.conveyor.direction == -1:
+                conveyor_angle_in_world = self.conveyor.theta - 90
+            else:
+                raise TypeError
+            target_angle_in_world = degrees(pu.get_euler_from_quaternion(target_pose[1])[2])
+            conveyor_angle_in_object = conveyor_angle_in_world - target_angle_in_world
+            speed = self.conveyor.speed
+            motion_aware_qualities = self.get_motion_aware_qualities(self.grasps_eef,
+                                                                         self.pre_grasps_eef,
+                                                                         radians(conveyor_angle_in_object),
+                                                                         speed)
+            grasp_order_idxs = np.argsort(motion_aware_qualities)[::-1]
+            # visualization
+            if visualize_motion_aware:
+                pre_grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+                                           self.pre_grasps_eef]
+                pre_grasps_eef_in_world = [
+                    tfc.toTf(tfc.fromTf(g) * tfc.fromTf(self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT)) for g in
+                    pre_grasps_eef_in_world]
+                if self.value_markers is not None:
+                    pu.remove_markers(self.value_markers)
+                self.value_markers = gu.visualize_grasps_with_reachability(pre_grasps_eef_in_world, motion_aware_qualities)
+
+        # rank grasps based on two qualities
+        if self.use_reachability and not self.use_motion_aware:
+            grasp_order_idxs = np.argsort(reachability_qualities)[::-1]
+        elif not self.use_reachability and self.use_motion_aware:
+            grasp_order_idxs = np.argsort(motion_aware_qualities)[::-1]
+        elif self.use_reachability and self.use_motion_aware:
+            assert self.alpha is not None
+            # normalize reachability qualities
+            reachability_qualities = mu.normalize_values(reachability_qualities)
+            # normalize motion aware qualities
+            motion_aware_qualities = mu.normalize_values(motion_aware_qualities)
+            # combine two qualities
+            overall_qualities = (1 - self.alpha) * np.array(reachability_qualities) + self.alpha * np.array(motion_aware_qualities)
+            grasp_order_idxs = np.argsort(overall_qualities)[::-1]
+        else:
+            grasp_order_idxs = np.random.permutation(np.arange(len(self.graspit_pregrasps)))
 
         return grasp_order_idxs
 

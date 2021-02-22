@@ -99,3 +99,11 @@ def random_point_in_polygon(polygon):
     return (x, y)
 
 
+def normalize_values(values):
+    min_v = min(values)
+    max_v = max(values)
+    if min_v == max_v:
+        # the values do not matter in the overall ranking any more
+        return [0.0] * len(values)
+    return list((np.array(values) - min_v) / (max_v - min_v))
+
