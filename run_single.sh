@@ -13,6 +13,7 @@ motion_mode=${motion_mode:-dynamic_linear}
 robot_config_name=${robot_config_name:-ur5_robotiq}
 num_trials=${num_trials:-100}
 grasp_database_path=${grasp_database_path:-assets/grasps/filtered_grasps_noise_robotiq_100_1.00}
+baseline_experiment_path=${baseline_experiment_path:-assets/benchmark_tasks/ur5_robotiq/linear_obstacles}
 grasp_threshold=${grasp_threshold:-0.1}
 lazy_threshold=${lazy_threshold:-30.3}
 conveyor_speed=${conveyor_speed:-0.05}
@@ -70,6 +71,7 @@ screen -dmS ${timestr}_pybullet bash -c "source ../../devel/setup.bash;
       --num_trials ${num_trials} \
       --result_dir $timestr \
       --grasp_database_path ${grasp_database_path} \
+      --baseline_experiment_path ${baseline_experiment_path} \
       --grasp_threshold ${grasp_threshold} \
       --lazy_threshold ${lazy_threshold} \
       --conveyor_speed ${conveyor_speed} \
