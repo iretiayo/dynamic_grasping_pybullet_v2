@@ -60,6 +60,7 @@ class UR5RobotiqPybulletController(object):
                     'right_inner_knuckle_joint', 'right_inner_finger_joint']
     }
     HOME = [0, -0.8227210029571718, -0.130, -0.660, 0, 1.62]
+    HOME = [0, -1.15, 0.9, -0.660, 0, 0.0]
     OPEN_POSITION = [0] * 6
     CLOSED_POSITION = 0.72 * np.array([1, 1, -1, 1, 1, -1])
 
@@ -347,6 +348,10 @@ class UR5RobotiqPybulletController(object):
             seed_discretized_plan = previous_discretized_plan  # TODO: is there a need to normalize range of joint values? i.e. undo process_plan
             seed_trajectory = self.create_seed_trajectory(seed_discretized_plan, start_joint_values_converted,
                                                           goal_joint_values_converted)
+            # if seed_trajectory:
+            #     # for visualizing seed trajectory
+            #     self.moveit.display_trajectory(seed_trajectory)
+            #     import ipdb; ipdb.set_trace()
 
         # STOMP does not convert goal joint values
         moveit_plan = self.moveit.plan(start_joint_values_converted, goal_joint_values_converted,
