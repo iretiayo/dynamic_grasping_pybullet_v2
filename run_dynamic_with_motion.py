@@ -267,6 +267,7 @@ if __name__ == "__main__":
         if args.record_videos:
             logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, '{}.mp4'.format(i)))
         success, grasp_idx, dynamic_grasping_time, grasp_switched_list, num_ik_called_list, object_arm_trajectory = dynamic_grasping_world.dynamic_grasp()
+        # success, grasp_idx, dynamic_grasping_time, grasp_switched_list, num_ik_called_list, object_arm_trajectory = None, None, None, None, None, None
         time.sleep(0.5)
         if args.record_videos:
             p.stopStateLogging(logging)
