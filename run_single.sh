@@ -27,7 +27,7 @@ max_check=${max_check:-10}
 use_box=${use_box:-true}
 use_kf=${use_kf:-true}
 fix_motion_planning_time=${fix_motion_planning_time:-0.14}
-use_reachability=${disable_reachability:-true}
+use_reachability=${use_reachability:-true}
 use_motion_aware=${use_motion_aware:-true}
 motion_aware_model_path=${motion_aware_model_path:-assets/motion_aware_models/ur5_robotiq}
 alpha=${alpha:-0.5}
@@ -36,6 +36,7 @@ always_try_switching=${always_try_switching:-true}
 use_joint_space_dist=${use_joint_space_dist:-true}
 rendering=${rendering:-false}
 record_video=${record_video:-false}
+load_obstacles=${load_obstacles:-false}
 
 # assign the keyword argument values
 while [[ $# -gt 0 ]]; do
@@ -91,7 +92,8 @@ screen -dmS ${timestr}_pybullet bash -c "source ../../devel/setup.bash;
       --use_joint_space_dist \
       --always_try_switching \
       --record_video ${record_video} \
-      --rendering ${rendering};
+      --rendering ${rendering} \
+      --load_obstacles ${load_obstacles};
     sleep 5;
   done;
   $SHELL"
