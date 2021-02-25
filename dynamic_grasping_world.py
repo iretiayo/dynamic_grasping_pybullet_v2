@@ -1050,14 +1050,12 @@ class DynamicGraspingWorld:
         elif not self.use_reachability and self.use_motion_aware:
             grasp_order_idxs = np.argsort(motion_aware_qualities)[::-1]
         elif self.use_reachability and self.use_motion_aware:
-            assert self.alpha is not None
-            # normalize reachability qualities
-            reachability_qualities = mu.normalize_values(reachability_qualities)
-            # normalize motion aware qualities
-            motion_aware_qualities = mu.normalize_values(motion_aware_qualities)
-            # combine two qualities
-            overall_qualities = (1 - self.alpha) * np.array(reachability_qualities) + self.alpha * np.array(motion_aware_qualities)
-            grasp_order_idxs = np.argsort(overall_qualities)[::-1]
+            # only return self.max_check grasp indices
+            grasp_order_idxs = np.argsort(reachability_qualities)[::-1]
+            grasp_order_idxs = grasp_order_idxs[:self.max_check]
+            zipped = zip(grasp_order_idxs, [motion_aware_qualities[m] for m in grasp_order_idxs])
+            zipped = sorted(zipped, key = lambda t: t[1], reverse=True)
+            grasp_order_idxs = [z[0] for z in zipped]
         else:
             grasp_order_idxs = np.random.permutation(np.arange(len(self.graspit_pregrasps)))
 
@@ -1170,6 +1168,35 @@ class DynamicGraspingWorld:
 
         return grasp_idx, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
 
+    def select_grasp_combining_reachability_and_motion(self, target_pose, grasp_order_idxs):
+        top_ranked_grasp_idxs = grasp_order_idxs
+
+        pre_grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+                                   np.array(self.pre_grasps_eef)[top_ranked_grasp_idxs]]
+        grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+                               np.array(self.grasps_eef)[top_ranked_grasp_idxs]]
+
+        ik_pre_grasps = [self.robot.get_arm_ik(g, timeout=0.02, restarts=2, avoid_collisions=True) for g in
+                         pre_grasps_eef_in_world]
+        ik_grasps = [self.robot.get_arm_ik(g, timeout=0.02, restarts=2, avoid_collisions=False,
+                                           arm_joint_values=ik_pre_grasps[i]) for i, g in
+                     enumerate(grasps_eef_in_world)]
+        num_ik_called = 2 * len(pre_grasps_eef_in_world)
+
+        grasp_idx = None
+        for idx in range(self.max_check):
+            if ik_grasps[idx] is not None and ik_pre_grasps[idx] is not None:
+                grasp_idx = top_ranked_grasp_idxs[idx]
+                break
+        if grasp_idx is None:
+            return None, num_ik_called, None, None, None, None
+        planned_pre_grasp = pre_grasps_eef_in_world[idx]
+        planned_pre_grasp_jv = ik_pre_grasps[idx]
+        planned_grasp = grasps_eef_in_world[idx]
+        planned_grasp_jv = ik_grasps[idx]
+
+        return grasp_idx, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv
+
     def plan_grasp(self, target_pose, old_grasp_idx):
         """ Plan a reachable pre_grasp and grasp pose"""
         # timing of the best machine
@@ -1192,10 +1219,14 @@ class DynamicGraspingWorld:
         rank_grasp_time = actual_rank_grasp_time if self.fix_grasp_ranking_time is None else self.fix_grasp_ranking_time
         print('Rank grasp actually takes {:.6f}, fixed grasp ranking time {:.6}'.format(actual_rank_grasp_time,
                                                                                         self.fix_grasp_ranking_time))
-        if self.use_joint_space_dist:
-            selected_g = self.select_grasp_with_ik_from_ranked_grasp_use_joint_space_dist(target_pose, grasp_order_idxs)
+        if self.use_reachability and self.use_motion_aware:
+            # combining reachability and motion aware:
+            selected_g = self.select_grasp_combining_reachability_and_motion(target_pose, grasp_order_idxs)
         else:
-            selected_g = self.select_grasp_with_ik_from_ranked_grasp(target_pose, grasp_order_idxs)
+            if self.use_joint_space_dist:
+                selected_g = self.select_grasp_with_ik_from_ranked_grasp_use_joint_space_dist(target_pose, grasp_order_idxs)
+            else:
+                selected_g = self.select_grasp_with_ik_from_ranked_grasp(target_pose, grasp_order_idxs)
         grasp_idx, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv = selected_g
 
         grasp_switched = (grasp_idx != old_grasp_idx) and planned_grasp_jv is not None
