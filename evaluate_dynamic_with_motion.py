@@ -33,6 +33,7 @@ def evaluate_results(df):
     stats['num_trials'] = len(df)
     stats['success_rate'] = stats['num_successes'] / stats['num_trials']
     stats['dynamic_grasping_time'] = df.mean().dynamic_grasping_time
+    stats['dynamic_grasping_time_success_only'] = df_success.mean().dynamic_grasping_time
 
     if 'grasp_switched_list' in df:
         stats['num_grasp_switched'] = df['grasp_switched_list'].apply(
@@ -53,7 +54,7 @@ def get_overall_stats(stat_dict):
     overall_stats['success_rate'] = sum(overall_stats['num_successes']) / sum(overall_stats['num_trials'])
     overall_stats['num_successes'] = sum(overall_stats['num_successes'])
     overall_stats['num_trials'] = sum(overall_stats['num_trials'])
-    for key in ['dynamic_grasping_time', 'num_grasp_switched', 'num_ik_called']:
+    for key in ['dynamic_grasping_time', 'dynamic_grasping_time_success_only', 'num_grasp_switched', 'num_ik_called']:
         if key in overall_stats:
             overall_stats[key] = np.average(overall_stats[key])
     return overall_stats
