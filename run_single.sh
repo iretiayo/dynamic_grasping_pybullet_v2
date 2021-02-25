@@ -69,7 +69,7 @@ screen -dmS ${timestr}_pybullet bash -c "source ../../devel/setup.bash;
       --object_name \${object_name} \
       --robot_config_name ${robot_config_name} \
       --num_trials ${num_trials} \
-      --result_dir $timestr \
+      --result_dir ${timestr} \
       --grasp_database_path ${grasp_database_path} \
       --baseline_experiment_path ${baseline_experiment_path} \
       --grasp_threshold ${grasp_threshold} \
@@ -91,8 +91,8 @@ screen -dmS ${timestr}_pybullet bash -c "source ../../devel/setup.bash;
       --motion_aware_model_path ${motion_aware_model_path} \
       --alpha ${alpha} \
       --fix_grasp_ranking_time ${fix_grasp_ranking_time} \
-      --use_joint_space_dist \
-      --always_try_switching \
+      --use_joint_space_dist ${use_joint_space_dist}\
+      --always_try_switching ${always_try_switching}\
       --record_video ${record_video} \
       --rendering ${rendering} \
       --load_obstacles ${load_obstacles};
