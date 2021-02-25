@@ -13,6 +13,7 @@ motion_mode=${motion_mode:-dynamic_linear}
 robot_config_name=${robot_config_name:-ur5_robotiq}
 num_trials=${num_trials:-100}
 grasp_database_path=${grasp_database_path:-assets/grasps/filtered_grasps_noise_robotiq_100_1.00}
+baseline_experiment_path=${baseline_experiment_path:-assets/benchmark_tasks/ur5_robotiq/linear_obstacles}
 grasp_threshold=${grasp_threshold:-0.1}
 lazy_threshold=${lazy_threshold:-30.3}
 conveyor_speed=${conveyor_speed:-0.05}
@@ -27,7 +28,7 @@ max_check=${max_check:-10}
 use_box=${use_box:-true}
 use_kf=${use_kf:-true}
 fix_motion_planning_time=${fix_motion_planning_time:-0.14}
-use_reachability=${disable_reachability:-true}
+use_reachability=${use_reachability:-true}
 use_motion_aware=${use_motion_aware:-true}
 motion_aware_model_path=${motion_aware_model_path:-assets/motion_aware_models/ur5_robotiq}
 alpha=${alpha:-0.5}
@@ -36,6 +37,7 @@ always_try_switching=${always_try_switching:-true}
 use_joint_space_dist=${use_joint_space_dist:-true}
 rendering=${rendering:-false}
 record_video=${record_video:-false}
+load_obstacles=${load_obstacles:-false}
 
 # assign the keyword argument values
 while [[ $# -gt 0 ]]; do
@@ -69,6 +71,7 @@ screen -dmS ${timestr}_pybullet bash -c "source ../../devel/setup.bash;
       --num_trials ${num_trials} \
       --result_dir $timestr \
       --grasp_database_path ${grasp_database_path} \
+      --baseline_experiment_path ${baseline_experiment_path} \
       --grasp_threshold ${grasp_threshold} \
       --lazy_threshold ${lazy_threshold} \
       --conveyor_speed ${conveyor_speed} \
@@ -91,7 +94,8 @@ screen -dmS ${timestr}_pybullet bash -c "source ../../devel/setup.bash;
       --use_joint_space_dist \
       --always_try_switching \
       --record_video ${record_video} \
-      --rendering ${rendering};
+      --rendering ${rendering} \
+      --load_obstacles ${load_obstacles};
     sleep 5;
   done;
   $SHELL"
