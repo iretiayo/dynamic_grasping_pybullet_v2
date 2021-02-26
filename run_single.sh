@@ -38,6 +38,7 @@ use_joint_space_dist=${use_joint_space_dist:-true}
 rendering=${rendering:-false}
 record_video=${record_video:-false}
 load_obstacles=${load_obstacles:-false}
+add_top_shelf=${add_top_shelf:-false}
 
 # assign the keyword argument values
 while [[ $# -gt 0 ]]; do
@@ -95,7 +96,8 @@ screen -dmS ${timestr}_pybullet bash -c "source ../../devel/setup.bash;
       --always_try_switching ${always_try_switching}\
       --record_video ${record_video} \
       --rendering ${rendering} \
-      --load_obstacles ${load_obstacles};
+      --load_obstacles ${load_obstacles} \
+      --add_top_shelf ${add_top_shelf};
     sleep 5;
   done;
   $SHELL"
