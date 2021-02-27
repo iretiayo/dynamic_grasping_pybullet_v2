@@ -1533,7 +1533,7 @@ class Conveyor:
             # speed_multipliers = set(np.concatenate((np.arange(1, acc_levels+1), 1./np.arange(1, acc_levels+1))))
             # speeds = np.array(sorted(speed_multipliers)) * self.speed
             n_segments = 10  # num speed switches
-            speeds = np.random.uniform(0, self.speed, n_segments)
+            speeds = np.random.uniform(1, self.speed, n_segments)
             segments = np.linspace(start_position, target_position, n_segments+1)
             position_trajectory = []
             for i in range(n_segments):
