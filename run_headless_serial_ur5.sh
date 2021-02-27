@@ -27,7 +27,7 @@ for object_name in bleach_cleanser mustard_bottle potted_meat_can sugar_box toma
     --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles/ \
     --grasp_threshold 0.1 \
     --lazy_threshold 30.3 \
-    --conveyor_speed 0.03 \
+    --conveyor_speed 0.05 \
     --close_delay 0.5 \
     --back_off -0.075 \
     --distance_low 0.3 \
