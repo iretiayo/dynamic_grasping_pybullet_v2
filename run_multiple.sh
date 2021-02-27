@@ -24,7 +24,8 @@ echo node id, ${node_id}
   --use_reachability false \
   --use_motion_aware true \
   --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
-  --conveyor_speed 0.05;
+  --conveyor_speed 0.05 \
+  --load_obstacles true;
 let "node_id=node_id+1";
 sleep 5;
 
@@ -109,10 +110,11 @@ echo node id, ${node_id}
 ./run_single.sh --node_id ${node_id} \
   --exp_name ra_linear_ob \
   --motion_mode dynamic_linear \
-  --use_reachability ture \
+  --use_reachability true \
   --use_motion_aware false \
   --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
-  --conveyor_speed 0.05;
+  --conveyor_speed 0.05 \
+  --load_obstacles true;
 let "node_id=node_id+1";
 sleep 5;
 
