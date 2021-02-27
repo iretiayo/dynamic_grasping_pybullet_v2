@@ -1020,9 +1020,11 @@ class DynamicGraspingWorld:
 
         if self.use_motion_aware:
             if self.conveyor.direction == 1:
-                conveyor_angle_in_world = self.conveyor.theta + 90
+                conveyor_angle_in_world = degrees(self.conveyor.circular_angles[self.conveyor.wp_target_index - 1]) + 90 \
+                    if self.conveyor.circular_angles is not None else self.conveyor.theta + 90
             elif self.conveyor.direction == -1:
-                conveyor_angle_in_world = self.conveyor.theta - 90
+                conveyor_angle_in_world = degrees(self.conveyor.circular_angles[self.conveyor.wp_target_index - 1]) - 90 \
+                    if self.conveyor.circular_angles is not None else self.conveyor.theta - 90
             else:
                 raise TypeError
             target_angle_in_world = degrees(pu.get_euler_from_quaternion(target_pose[1])[2])
@@ -1464,6 +1466,7 @@ class Conveyor:
         self.speed = None
         self.z_start = None
         self.z_end = None
+        self.circular_angles = None
 
     def set_pose(self, pose):
         pu.set_pose(self.id, pose)
@@ -1608,6 +1611,7 @@ class Conveyor:
         angles = np.linspace(radians(theta), radians(theta)+delta_angle, num_points)
         if direction == -1:
             angles = angles[::-1]
+        self.circular_angles = angles
 
         self.discretized_trajectory = [[(cos(ang) * self.distance, sin(ang) * self.distance, z), orientation] for ang in angles]
         self.wp_target_index = 1
@@ -1662,6 +1666,7 @@ class Conveyor:
         self.theta = None
         self.length = None
         self.direction = None
+        self.circular_angles = None
 
     def predict(self, duration):
         # predict the ground truth future pose of the conveyor
