@@ -24,7 +24,7 @@ for object_name in bleach_cleanser mustard_bottle potted_meat_can sugar_box toma
     --num_trials 100 \
     --result_dir $timestr \
     --grasp_database_path assets/grasps/filtered_grasps_noise_robotiq_100_1.00 \
-    --baseline_experiment_path ur5_dynamic_medium_speed_z_motion \
+    --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles/ \
     --grasp_threshold 0.1 \
     --lazy_threshold 30.3 \
     --conveyor_speed 0.03 \
@@ -35,10 +35,14 @@ for object_name in bleach_cleanser mustard_bottle potted_meat_can sugar_box toma
     --pose_freq 5 \
     --use_previous_jv \
     --use_seed_trajectory \
-    --max_check 3 \
+    --use_reachability \
+    --max_check 10 \
     --use_box \
     --use_kf \
+    --always_try_switching \
+    --use_joint_space_dist \
     --fix_motion_planning_time 0.14 \
-    --fix_grasp_ranking_time 0.135;
+    --fix_grasp_ranking_time 0.135 \
+    ;
   sleep 5
 done
