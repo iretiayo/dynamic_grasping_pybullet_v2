@@ -1529,14 +1529,16 @@ class Conveyor:
         self.target_pose = [target_position, orientation]
 
         if variable_speed:
-            acc_levels = 2     # accelerate / decelerate level e.g. acc_levels = 3 -> [1/3, 1/2, 1, 2, 3]
-            speed_multipliers = set(np.concatenate((np.arange(1, acc_levels+1), 1./np.arange(1, acc_levels+1))))
-            speeds = np.array(sorted(speed_multipliers)) * self.speed
+            # acc_levels = 2     # accelerate / decelerate level e.g. acc_levels = 3 -> [1/3, 1/2, 1, 2, 3]
+            # speed_multipliers = set(np.concatenate((np.arange(1, acc_levels+1), 1./np.arange(1, acc_levels+1))))
+            # speeds = np.array(sorted(speed_multipliers)) * self.speed
             n_segments = 10  # num speed switches
+            speeds = np.random.uniform(0, self.speed, n_segments)
             segments = np.linspace(start_position, target_position, n_segments+1)
             position_trajectory = []
             for i in range(n_segments):
-                speed = np.random.choice(speeds)
+                # speed = np.random.choice(speeds)
+                speed = speeds[i]
                 dist = np.linalg.norm(segments[i] - segments[i+1])
                 num_steps = int(dist / speed * 240)
                 wps = np.linspace(segments[i], segments[i+1], num_steps)
