@@ -45,8 +45,6 @@ def get_args():
     parser.add_argument('--distance_high', type=float, default=0.4)
     parser.add_argument('--conveyor_z_low', type=float, default=0.01, help='typical half the conveyor thickness')
     parser.add_argument('--conveyor_z_high', type=float, default=0.01)
-    parser.add_argument('--circular_distance_low', type=float, default=0.3)
-    parser.add_argument('--circular_distance_high', type=float, default=0.5)
     parser.add_argument('--use_reachability', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--rank_by_manipulability', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--always_try_switching', type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)

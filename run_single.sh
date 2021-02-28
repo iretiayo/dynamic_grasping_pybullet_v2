@@ -27,6 +27,7 @@ use_seed_trajectory=${use_seed_trajectory:-true}
 max_check=${max_check:-10}
 use_box=${use_box:-true}
 use_kf=${use_kf:-true}
+use_gt=${use_gt:-false}
 fix_motion_planning_time=${fix_motion_planning_time:-0.14}
 use_reachability=${use_reachability:-true}
 use_motion_aware=${use_motion_aware:-true}
@@ -86,6 +87,7 @@ screen -dmS ${timestr}_pybullet bash -c "source ../../devel/setup.bash;
       --max_check ${max_check} \
       --use_box ${use_box} \
       --use_kf ${use_kf} \
+      --use_gt ${use_gt} \
       --fix_motion_planning_time ${fix_motion_planning_time} \
       --use_reachability ${use_reachability} \
       --use_motion_aware ${use_motion_aware} \
