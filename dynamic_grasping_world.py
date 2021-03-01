@@ -1536,7 +1536,7 @@ class Conveyor:
             # speed_multipliers = np.array(list(range(1, n_segments//2 + 1)) * 2) / (n_segments/2.)
             # rng = np.random.RandomState(2)
             # speeds = rng.permutation(speed_multipliers) * self.speed
-            speed_multipliers = np.linspace(0.6, 1.0, n_segments)
+            speed_multipliers = np.linspace(0.6, 1.0, n_segments)[::-1]
             speeds = speed_multipliers * self.speed
             segments = np.linspace(start_position, target_position, n_segments+1)
             position_trajectory = []
