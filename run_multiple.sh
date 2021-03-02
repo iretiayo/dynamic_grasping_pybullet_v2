@@ -281,7 +281,7 @@ sleep 5;
 # linear 5 cm/s
 echo node id, ${node_id}
 ./run_single.sh --node_id ${node_id} \
-  --exp_name ma_ra_linear \
+  --exp_name no_seed_linear \
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware false \
@@ -294,7 +294,7 @@ sleep 5;
 # linear 5 cm/s, with obstacles
 echo node id, ${node_id}
 ./run_single.sh --node_id ${node_id} \
-  --exp_name ma_ra_linear_ob \
+  --exp_name no_seed_linear_ob \
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware false \
@@ -308,7 +308,7 @@ sleep 5;
 # linear 3 cm/s, with slab
 echo node id, ${node_id}
 ./run_single.sh --node_id ${node_id} \
-  --exp_name ma_ra_linear_slab \
+  --exp_name no_seed_linear_slab \
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware false \
@@ -322,7 +322,7 @@ sleep 5;
 # linear 5 cm/s, with z motion
 echo node id, ${node_id}
 ./run_single.sh --node_id ${node_id} \
-  --exp_name ma_ra_linear_z \
+  --exp_name no_seed_linear_z \
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware false \
@@ -335,7 +335,7 @@ sleep 5;
 # linear 5 cm/s, vary speed
 echo node id, ${node_id}
 ./run_single.sh --node_id ${node_id} \
-  --exp_name ma_ra_linear_vary \
+  --exp_name no_seed_linear_vary \
   --motion_mode dynamic_linear_vary_speed \
   --use_reachability true \
   --use_motion_aware false \
@@ -348,7 +348,7 @@ sleep 5;
 # circular 3 cm/s
 echo node id, ${node_id}
 ./run_single.sh --node_id ${node_id} \
-  --exp_name ma_ra_circular \
+  --exp_name no_seed_circular \
   --motion_mode dynamic_circular \
   --use_reachability true \
   --use_motion_aware false \
@@ -361,7 +361,7 @@ sleep 5;
 # sinusoidal 1 cm/s
 echo node id, ${node_id}
 ./run_single.sh --node_id ${node_id} \
-  --exp_name ma_ra_sinusoid \
+  --exp_name no_seed_sinusoid \
   --motion_mode dynamic_sinusoid \
   --use_reachability true \
   --use_motion_aware false \
