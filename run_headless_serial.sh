@@ -27,20 +27,23 @@ for object_name in bleach_cleanser mustard_bottle potted_meat_can sugar_box toma
     --grasp_database_path assets/grasps/filtered_grasps_noise_100 \
     --baseline_experiment_path assets/results/dynamic/linear_motion/2020-01-10_18-33-49 \
     --grasp_threshold 0.03 \
-    --lazy_threshold 0.3 \
-    --conveyor_speed 0.03 \
+    --lazy_threshold 30.3 \
+    --conveyor_speed 0.01 \
     --close_delay 0.5 \
     --back_off 0.05 \
     --distance_low 0.15 \
     --distance_high 0.4 \
     --pose_freq 5 \
-    --max_check 3 \
+    --use_previous_jv \
+    --use_seed_trajectory \
+    --use_reachability \
+    --max_check 10 \
     --use_box \
     --use_kf \
-    --approach_prediction \
+    --always_try_switching \
+    --use_joint_space_dist \
     --fix_motion_planning_time 0.14 \
     --fix_grasp_ranking_time 0.135 \
-    --use_motion_aware \
-    --motion_aware_model_path assets/motion_aware_models;
+    ;
   sleep 5
 done
