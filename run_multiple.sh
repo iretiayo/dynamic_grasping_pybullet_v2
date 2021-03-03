@@ -190,8 +190,7 @@ echo node id, ${node_id}
   --use_reachability true \
   --use_motion_aware true \
   --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
-  --conveyor_speed 0.05 \
-  --always_try_switching false;
+  --conveyor_speed 0.05;
 let "node_id=node_id+1";
 sleep 5;
 
@@ -204,8 +203,7 @@ echo node id, ${node_id}
   --use_motion_aware true \
   --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
   --conveyor_speed 0.05 \
-  --load_obstacles true \
-  --always_try_switching false;
+  --load_obstacles true;
 let "node_id=node_id+1";
 sleep 5;
 
@@ -218,8 +216,7 @@ echo node id, ${node_id}
   --use_motion_aware true \
   --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
   --conveyor_speed 0.03 \
-  --add_top_shelf true \
-  --always_try_switching false;
+  --add_top_shelf true;
 let "node_id=node_id+1";
 sleep 5;
 
@@ -231,8 +228,7 @@ echo node id, ${node_id}
   --use_reachability true \
   --use_motion_aware true \
   --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/variable_z \
-  --conveyor_speed 0.05 \
-  --always_try_switching false;
+  --conveyor_speed 0.05;
 let "node_id=node_id+1";
 sleep 5;
 
@@ -244,8 +240,7 @@ echo node id, ${node_id}
   --use_reachability true \
   --use_motion_aware true \
   --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
-  --conveyor_speed 0.05 \
-  --always_try_switching false;
+  --conveyor_speed 0.05;
 let "node_id=node_id+1";
 sleep 5;
 
@@ -257,8 +252,7 @@ echo node id, ${node_id}
   --use_reachability true \
   --use_motion_aware true \
   --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/dynamic_circular \
-  --conveyor_speed 0.03 \
-  --always_try_switching false;
+  --conveyor_speed 0.03;
 let "node_id=node_id+1";
 sleep 5;
 
@@ -272,8 +266,7 @@ echo node id, ${node_id}
   --use_gt true \
   --use_kf false \
   --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
-  --conveyor_speed 0.01 \
-  --always_try_switching false;
+  --conveyor_speed 0.01;
 let "node_id=node_id+1";
 sleep 5;
 
