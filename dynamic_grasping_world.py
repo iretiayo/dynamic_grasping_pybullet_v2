@@ -503,6 +503,12 @@ class DynamicGraspingWorld:
                 pu.create_arrow_marker(tfc.toTf(
                     tfc.fromTf(grasp_pose) * tfc.fromTf(self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT) * tfc.fromTf(
                         ((0, 0, -line_length), (0, 0, 0, 1)))), color_index=0, line_length=line_length)
+                # plot the grasps
+                # current_target_pose = pu.get_body_pose(self.target)
+                # predicted_target_pose = current_target_pose
+                # grasp_idx = 0
+                # grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched \
+                #     = self.plan_grasp(predicted_target_pose, grasp_idx)
             time.sleep(0.1)
 
     def predict(self, duration):
@@ -973,13 +979,20 @@ class DynamicGraspingWorld:
         elif not self.use_reachability and self.use_motion_aware:
             grasp_order_idxs = np.argsort(motion_aware_qualities)[::-1][:self.max_check]
         elif self.use_reachability and self.use_motion_aware:
-            # only return self.max_check grasp indices
-            reachability_grasp_order_idxs = np.argsort(reachability_qualities)[::-1][:int(self.max_check/2)]
-            motion_grasp_order_idxs = np.argsort(motion_aware_qualities)[::-1][:int(self.max_check/2)]
-            # only include good motion aware grasps
-            motion_grasp_order_idxs = np.array([i for i in motion_grasp_order_idxs if motion_aware_qualities[i] > 0.5], dtype=np.int)
-            grasp_order_idxs = np.concatenate((reachability_grasp_order_idxs, motion_grasp_order_idxs))
-            grasp_order_idxs = np.unique(grasp_order_idxs)
+            # version 1
+            # # only return self.max_check grasp indices
+            # reachability_grasp_order_idxs = np.argsort(reachability_qualities)[::-1][:int(self.max_check/2)]
+            # motion_grasp_order_idxs = np.argsort(motion_aware_qualities)[::-1][:int(self.max_check/2)]
+            # # only include good motion aware grasps
+            # motion_grasp_order_idxs = np.array([i for i in motion_grasp_order_idxs if motion_aware_qualities[i] > 0.5], dtype=np.int)
+            # grasp_order_idxs = np.concatenate((reachability_grasp_order_idxs, motion_grasp_order_idxs))
+            # grasp_order_idxs = np.unique(grasp_order_idxs)
+
+            # version 2
+            reachability_grasp_order_idxs = np.argsort(reachability_qualities)[::-1][:self.max_check]
+            filtered_motion_qualities = [motion_aware_qualities[i] for i in reachability_grasp_order_idxs]
+            grasp_order_idxs = [x for _, x in sorted(zip(filtered_motion_qualities, reachability_grasp_order_idxs))]
+            grasp_order_idxs = grasp_order_idxs[:5]
         else:
             grasp_order_idxs = np.random.permutation(np.arange(len(self.graspit_pregrasps)))[:self.max_check]
 
