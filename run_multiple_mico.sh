@@ -11,7 +11,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability false \
   --use_motion_aware true \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.05;
 let "node_id=node_id+1";
 sleep 5;
@@ -23,7 +23,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability false \
   --use_motion_aware true \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.05 \
   --load_obstacles true;
 let "node_id=node_id+1";
@@ -36,7 +36,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability false \
   --use_motion_aware true \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.03 \
   --add_top_shelf true;
 let "node_id=node_id+1";
@@ -49,7 +49,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability false \
   --use_motion_aware true \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/variable_z \
+  --baseline_experiment_path assets/benchmark_tasks/mico/vary_z_tasks_mico \
   --conveyor_speed 0.05;
 let "node_id=node_id+1";
 sleep 5;
@@ -61,7 +61,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear_vary_speed \
   --use_reachability false \
   --use_motion_aware true \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.05;
 let "node_id=node_id+1";
 sleep 5;
@@ -73,7 +73,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_circular \
   --use_reachability false \
   --use_motion_aware true \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/dynamic_circular \
+  --baseline_experiment_path assets/benchmark_tasks/mico/circular_tasks_mico \
   --conveyor_speed 0.03;
 let "node_id=node_id+1";
 sleep 5;
@@ -87,7 +87,7 @@ echo node id, ${node_id}
   --use_motion_aware true \
   --use_gt true \
   --use_kf false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.01;
 let "node_id=node_id+1";
 sleep 5;
@@ -100,7 +100,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.05;
 let "node_id=node_id+1";
 sleep 5;
@@ -112,7 +112,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.05 \
   --load_obstacles true;
 let "node_id=node_id+1";
@@ -125,7 +125,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.03 \
   --add_top_shelf true;
 let "node_id=node_id+1";
@@ -138,7 +138,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/variable_z \
+  --baseline_experiment_path assets/benchmark_tasks/mico/vary_z_tasks_mico \
   --conveyor_speed 0.05;
 let "node_id=node_id+1";
 sleep 5;
@@ -150,7 +150,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear_vary_speed \
   --use_reachability true \
   --use_motion_aware false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.05;
 let "node_id=node_id+1";
 sleep 5;
@@ -162,7 +162,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_circular \
   --use_reachability true \
   --use_motion_aware false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/dynamic_circular \
+  --baseline_experiment_path assets/benchmark_tasks/mico/circular_tasks_mico \
   --conveyor_speed 0.03;
 let "node_id=node_id+1";
 sleep 5;
@@ -176,7 +176,7 @@ echo node id, ${node_id}
   --use_motion_aware false \
   --use_gt true \
   --use_kf false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.01;
 let "node_id=node_id+1";
 sleep 5;
@@ -189,7 +189,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware true \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.05;
 let "node_id=node_id+1";
 sleep 5;
@@ -201,7 +201,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware true \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.05 \
   --load_obstacles true;
 let "node_id=node_id+1";
@@ -214,7 +214,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware true \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.03 \
   --add_top_shelf true;
 let "node_id=node_id+1";
@@ -227,7 +227,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware true \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/variable_z \
+  --baseline_experiment_path assets/benchmark_tasks/mico/vary_z_tasks_mico \
   --conveyor_speed 0.05;
 let "node_id=node_id+1";
 sleep 5;
@@ -239,7 +239,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear_vary_speed \
   --use_reachability true \
   --use_motion_aware true \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.05;
 let "node_id=node_id+1";
 sleep 5;
@@ -251,7 +251,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_circular \
   --use_reachability true \
   --use_motion_aware true \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/dynamic_circular \
+  --baseline_experiment_path assets/benchmark_tasks/mico/circular_tasks_mico \
   --conveyor_speed 0.03;
 let "node_id=node_id+1";
 sleep 5;
@@ -265,7 +265,7 @@ echo node id, ${node_id}
   --use_motion_aware true \
   --use_gt true \
   --use_kf false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.01;
 let "node_id=node_id+1";
 sleep 5;
@@ -278,7 +278,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.05 \
   --use_seed_trajectory false;
 let "node_id=node_id+1";
@@ -291,7 +291,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.05 \
   --load_obstacles true \
   --use_seed_trajectory false;
@@ -305,7 +305,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.03 \
   --add_top_shelf true \
   --use_seed_trajectory false;
@@ -319,7 +319,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear \
   --use_reachability true \
   --use_motion_aware false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/variable_z \
+  --baseline_experiment_path assets/benchmark_tasks/mico/vary_z_tasks_mico \
   --conveyor_speed 0.05 \
   --use_seed_trajectory false;
 let "node_id=node_id+1";
@@ -332,7 +332,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_linear_vary_speed \
   --use_reachability true \
   --use_motion_aware false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.05 \
   --use_seed_trajectory false;
 let "node_id=node_id+1";
@@ -345,7 +345,7 @@ echo node id, ${node_id}
   --motion_mode dynamic_circular \
   --use_reachability true \
   --use_motion_aware false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/dynamic_circular \
+  --baseline_experiment_path assets/benchmark_tasks/mico/circular_tasks_mico \
   --conveyor_speed 0.03 \
   --use_seed_trajectory false;
 let "node_id=node_id+1";
@@ -360,7 +360,7 @@ echo node id, ${node_id}
   --use_motion_aware false \
   --use_gt true \
   --use_kf false \
-  --baseline_experiment_path assets/benchmark_tasks/ur5_robotiq/linear_obstacles \
+  --baseline_experiment_path assets/benchmark_tasks/mico/linear_tasks_mico \
   --conveyor_speed 0.01 \
   --use_seed_trajectory false;
 let "node_id=node_id+1";
