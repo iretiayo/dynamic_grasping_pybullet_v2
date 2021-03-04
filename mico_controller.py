@@ -82,6 +82,7 @@ class MicoController:
                  initial_pose,
                  initial_joint_values,
                  urdf_path,
+                 planner_id='PRM',   # PRM, RRTConnect
                  use_manipulability=False):
         self.initial_pose = initial_pose
         self.initial_joint_values = initial_joint_values
@@ -97,6 +98,7 @@ class MicoController:
         self.arm_fk_svr = rospy.ServiceProxy('compute_fk', GetPositionFK)
 
         self.arm_commander_group = mc.MoveGroupCommander('arm')
+        self.arm_commander_group.set_planner_id(planner_id=planner_id)
         self.robot = mc.RobotCommander()
         self.scene = mc.PlanningSceneInterface()
         rospy.sleep(2)
