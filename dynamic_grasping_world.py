@@ -991,22 +991,22 @@ class DynamicGraspingWorld:
             grasp_order_idxs = np.argsort(motion_aware_qualities)[::-1][:self.max_check]
         elif self.use_reachability and self.use_motion_aware:
             # version 1
-            # # only return self.max_check grasp indices
-            # reachability_grasp_order_idxs = np.argsort(reachability_qualities)[::-1][:int(self.max_check/2)]
-            # motion_grasp_order_idxs = np.argsort(motion_aware_qualities)[::-1][:int(self.max_check/2)]
-            # # only include good motion aware grasps
-            # motion_grasp_order_idxs = np.array([i for i in motion_grasp_order_idxs if motion_aware_qualities[i] > 0.5], dtype=np.int)
-            # grasp_order_idxs = np.concatenate((reachability_grasp_order_idxs, motion_grasp_order_idxs))
-            # grasp_order_idxs = np.unique(grasp_order_idxs)
+            # only return self.max_check grasp indices
+            reachability_grasp_order_idxs = np.argsort(reachability_qualities)[::-1][:int(self.max_check/2)]
+            motion_grasp_order_idxs = np.argsort(motion_aware_qualities)[::-1][:int(self.max_check/2)]
+            # only include good motion aware grasps
+            motion_grasp_order_idxs = np.array([i for i in motion_grasp_order_idxs if motion_aware_qualities[i] > 0.5], dtype=np.int)
+            grasp_order_idxs = np.concatenate((reachability_grasp_order_idxs, motion_grasp_order_idxs))
+            grasp_order_idxs = np.unique(grasp_order_idxs)
 
             # version 2
-            reachability_grasp_order_idxs = np.argsort(reachability_qualities)[::-1][:self.max_check]
-            filtered_motion_qualities = [motion_aware_qualities[i] for i in reachability_grasp_order_idxs]
-            if max(filtered_motion_qualities) > 0.5:
-                grasp_order_idxs = [x for _, x in sorted(zip(filtered_motion_qualities, reachability_grasp_order_idxs))]
-                grasp_order_idxs = grasp_order_idxs[-5:]
-            else:
-                grasp_order_idxs = reachability_grasp_order_idxs
+            # reachability_grasp_order_idxs = np.argsort(reachability_qualities)[::-1][:self.max_check]
+            # filtered_motion_qualities = [motion_aware_qualities[i] for i in reachability_grasp_order_idxs]
+            # if max(filtered_motion_qualities) > 0.5:
+            #     grasp_order_idxs = [x for _, x in sorted(zip(filtered_motion_qualities, reachability_grasp_order_idxs))]
+            #     grasp_order_idxs = grasp_order_idxs[-5:]
+            # else:
+            #     grasp_order_idxs = reachability_grasp_order_idxs
         else:
             grasp_order_idxs = np.random.permutation(np.arange(len(self.graspit_pregrasps)))[:self.max_check]
 
@@ -1086,6 +1086,7 @@ class DynamicGraspingWorld:
                                            arm_joint_values=ik_pre_grasps[i]) for i, g in
                      enumerate(grasps_eef_in_world)]
         num_ik_called = 2 * len(pre_grasps_eef_in_world)
+        # num_ik_called = 2
 
         current_arm_jv = self.robot.get_arm_joint_values()
 
