@@ -804,8 +804,19 @@ class DynamicGraspingWorld:
     def execute_lift(self):
         # lift twice in case the first lift attempt does not work
         object_arm_trajectory = []
-        for _ in range(2):
-            plan, fraction = self.robot.plan_cartesian_control(z=0.07)
+        for i in range(3):
+            if i == 0:
+                plan, fraction = self.robot.plan_cartesian_control(z=0.07)
+            elif i == 1 and isinstance(self.robot, MicoController):
+                current_eef_position = self.robot.get_eef_pose()[0]
+                plan, fraction = self.robot.plan_cartesian_control(z=0.07, x=-np.sign(current_eef_position)[0] * 0.05,
+                                                                   y=-np.sign(current_eef_position)[1] * 0.05)
+            elif i == 2 and isinstance(self.robot, MicoController):
+                current_eef_position = self.robot.get_eef_pose()[0]
+                plan, fraction = self.robot.plan_cartesian_control(z=0.07, x=np.sign(current_eef_position)[0] * 0.05,
+                                                                   y=np.sign(current_eef_position)[1] * 0.05)
+            else:
+                plan, fraction = self.robot.plan_cartesian_control(z=0.07)
             if fraction != 1.0:
                 print('fraction {} not 1'.format(fraction))
             if plan is not None:
