@@ -936,7 +936,7 @@ class DynamicGraspingWorld:
                                                            self.dims)
         return sdf_values
 
-    def rank_grasps(self, target_pose, visualize_reachability=False, visualize_motion_aware=False):
+    def rank_grasps(self, target_pose, visualize_reachability=False, visualize_motion_aware=False, show_top=0):
         if self.use_reachability:
             graspit_pregrasps_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
                                           self.graspit_pregrasps]
@@ -954,7 +954,13 @@ class DynamicGraspingWorld:
 
                 if self.value_markers is not None:
                     pu.remove_markers(self.value_markers)
-                self.value_markers = gu.visualize_grasps_with_reachability(pre_grasps_eef_in_world,reachability_qualities)
+                if show_top < 1:
+                    self.value_markers = gu.visualize_grasps_with_reachability(pre_grasps_eef_in_world, reachability_qualities)
+                else:
+                    top_indices = np.argsort(reachability_qualities)[::-1][:show_top]
+                    selected_grasps = [pre_grasps_eef_in_world[idx] for idx in top_indices]
+                    selected_qualities = [reachability_qualities[idx] for idx in top_indices]
+                    self.value_markers = gu.visualize_grasps_with_reachability(selected_grasps, selected_qualities)
 
         if self.use_motion_aware:
             if self.conveyor.direction == 1:
@@ -982,7 +988,14 @@ class DynamicGraspingWorld:
                     pre_grasps_eef_in_world]
                 if self.value_markers is not None:
                     pu.remove_markers(self.value_markers)
-                self.value_markers = gu.visualize_grasps_with_reachability(pre_grasps_eef_in_world, motion_aware_qualities)
+                if show_top < 1:
+                    self.value_markers = gu.visualize_grasps_with_reachability(pre_grasps_eef_in_world, motion_aware_qualities)
+                    print(motion_aware_qualities)
+                else:
+                    top_indices = np.argsort(motion_aware_qualities)[::-1][:show_top]
+                    selected_grasps = [pre_grasps_eef_in_world[idx] for idx in top_indices]
+                    selected_qualities = [motion_aware_qualities[idx] for idx in top_indices]
+                    self.value_markers = gu.visualize_grasps_with_reachability(selected_grasps, selected_qualities)
 
         # rank grasps based on two qualities
         if self.use_reachability and not self.use_motion_aware:
