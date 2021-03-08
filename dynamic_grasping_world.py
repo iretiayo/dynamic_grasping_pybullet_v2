@@ -491,25 +491,41 @@ class DynamicGraspingWorld:
         conveyor_pose = self.conveyor.get_pose()
         self.conveyor.set_pose([[-20, -20, conveyor_pose[0][2]], conveyor_pose[1]])
 
+        display_choice_grasp = True
+        visualize_reachability = False
+        visualize_motion_aware = False
+        num_grasps_to_visualize = -1
+
         for object_pose, grasp_pose, arm_jv in zip(object_arm_trajectory['object_pose_traj'],
                                                    object_arm_trajectory['grasp_pose_traj'],
                                                    object_arm_trajectory['arm_traj']):
             p.resetBasePositionAndOrientation(self.target, object_pose[0], object_pose[1])
             self.robot.set_arm_joints(arm_jv[:len(self.robot.GROUPS['arm'])])
+
+            target_pose = pu.get_body_pose(self.target)
+            conveyor_pose[0][:2]  = target_pose[0][:2]
+            self.conveyor.set_pose(conveyor_pose)
+
             if len(arm_jv) > len(self.robot.GROUPS['arm']):
                 self.robot.set_gripper_joints(arm_jv[len(self.robot.GROUPS['arm']):])
             if grasp_pose is not None:
-                line_length = 0.1
-                pu.create_arrow_marker(tfc.toTf(
-                    tfc.fromTf(grasp_pose) * tfc.fromTf(self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT) * tfc.fromTf(
-                        ((0, 0, -line_length), (0, 0, 0, 1)))), color_index=0, line_length=line_length)
+                if display_choice_grasp:
+                    line_length = 0.1
+                    pu.create_arrow_marker(tfc.toTf(
+                        tfc.fromTf(grasp_pose) * tfc.fromTf(self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT) * tfc.fromTf(
+                            ((0, 0, -line_length), (0, 0, 0, 1)))), color_index=0, line_length=line_length)
                 # plot the grasps
                 # current_target_pose = pu.get_body_pose(self.target)
                 # predicted_target_pose = current_target_pose
                 # grasp_idx = 0
                 # grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched \
                 #     = self.plan_grasp(predicted_target_pose, grasp_idx)
-            time.sleep(0.1)
+                time.sleep(0.1)
+            else:
+                # approach and grasp trajectory is recorded at a much finer resolution
+                time.sleep(0.009)
+
+            self.rank_grasps(target_pose, visualize_reachability=visualize_reachability, visualize_motion_aware=visualize_motion_aware, show_top=num_grasps_to_visualize)
 
     def predict(self, duration):
         if self.use_kf:
