@@ -714,8 +714,8 @@ class DynamicGraspingWorld:
         self.trajectory_log['grasp_jv'].append(grasp_jv)
         self.trajectory_log['grasp_pose'].append(grasp_pose)
         self.trajectory_log['filtered_grasp_idxs'].append(list(filtered_order_idxs))
-        self.trajectory_log['reachabilities'].append(list(reachabilities))
-        self.trajectory_log['motion_aware_qualities'].append(list(motion_aware_qualities))
+        self.trajectory_log['reachabilities'].append(list(reachabilities) if reachabilities is not None else reachabilities)
+        self.trajectory_log['motion_aware_qualities'].append(list(motion_aware_qualities) if motion_aware_qualities is not None else motion_aware_qualities)
 
     def clean_trajectory_log(self):
         self.trajectory_log = {
