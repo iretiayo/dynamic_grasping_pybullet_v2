@@ -397,6 +397,9 @@ class DynamicGraspingWorld:
                 pos2 = self.conveyor.discretized_trajectory[idx[i+1]][0]
                 pu.draw_line(pos1, pos2)
 
+            p.resetDebugVisualizerCamera(cameraDistance=1.3, cameraYaw=theta + 90, cameraPitch=-35,
+                                         cameraTargetPosition=(0.0, 0.0, 0.0))
+
             return distance, theta, length, direction, target_quaternion, obstacle_poses, np.array(z_start_end).tolist()
 
         elif mode == 'hand_over':
@@ -491,7 +494,7 @@ class DynamicGraspingWorld:
     def replay_trajectory(self, object_arm_trajectory):
         visualize_reachability = False
         visualize_motion_aware = False
-        visualize_final = True
+        visualize_final = False
 
         # go to grasp pose
         for grasp_idx, pre_grasp_jv, pre_grasp_pose, grasp_jv, grasp_pose, filtered_grasp_idxs, reachabilities, motion_aware_qualities, \
@@ -553,7 +556,7 @@ class DynamicGraspingWorld:
                     self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT) * tfc.fromTf(
                     ((0, 0, -line_length), (0, 0, 0, 1)))),
                                        color_index=grasp_idx, line_length=line_length)
-            time.sleep(0.2)
+            time.sleep(0.1)
             # width, height, rgbPixels, depthPixels, segmentationMaskBuffer = p.getCameraImage(width=1024, height=768)
 
         # appraoch and grasp
@@ -566,7 +569,7 @@ class DynamicGraspingWorld:
                 self.robot.set_gripper_joints(gripper_jv)
                 self.conveyor.set_pose(conveyor_pose)
                 pu.set_pose(self.target, target_pose)
-                time.sleep(0.1)
+                time.sleep(0.05)
             i += 1
 
         # lift
@@ -579,7 +582,7 @@ class DynamicGraspingWorld:
                 self.robot.set_gripper_joints(gripper_jv)
                 self.conveyor.set_pose(conveyor_pose)
                 pu.set_pose(self.target, target_pose)
-                time.sleep(0.1)
+                time.sleep(0.05)
             i += 1
         print('finished')
 
@@ -709,9 +712,9 @@ class DynamicGraspingWorld:
         self.trajectory_log['target'].append(pu.get_body_pose(self.target))
         self.trajectory_log['conveyor'].append(self.conveyor.get_pose())
         self.trajectory_log['grasp_idx'].append(grasp_idx)
-        self.trajectory_log['pre_grasp_jv'].append(pre_grasp_jv)
+        self.trajectory_log['pre_grasp_jv'].append(list(pre_grasp_jv) if pre_grasp_jv is not None else pre_grasp_jv)
         self.trajectory_log['pre_grasp_pose'].append(pre_grasp_pose)
-        self.trajectory_log['grasp_jv'].append(grasp_jv)
+        self.trajectory_log['grasp_jv'].append(list(grasp_jv) if grasp_jv is not None else grasp_jv)
         self.trajectory_log['grasp_pose'].append(grasp_pose)
         self.trajectory_log['filtered_grasp_idxs'].append(list(filtered_order_idxs))
         self.trajectory_log['reachabilities'].append(list(reachabilities) if reachabilities is not None else reachabilities)
