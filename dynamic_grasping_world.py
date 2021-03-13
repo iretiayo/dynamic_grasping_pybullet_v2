@@ -107,6 +107,7 @@ class DynamicGraspingWorld:
         self.always_try_switching = always_try_switching
         self.use_joint_space_dist = use_joint_space_dist
         self.world_steps = 0
+        self.clean_trajectory_log()
         self.pose_freq = pose_freq
         self.pose_duration = 1.0 / self.pose_freq
         self.pose_steps = int(self.pose_duration * 240)
@@ -259,6 +260,7 @@ class DynamicGraspingWorld:
         """
         self.world_steps = 0
         self.value_markers = None
+        self.clean_trajectory_log()
         if mode == 'initial':
             pu.remove_all_markers()
             target_pose, distance = self.target_initial_pose, self.initial_distance
@@ -395,6 +397,9 @@ class DynamicGraspingWorld:
                 pos2 = self.conveyor.discretized_trajectory[idx[i+1]][0]
                 pu.draw_line(pos1, pos2)
 
+            p.resetDebugVisualizerCamera(cameraDistance=1.3, cameraYaw=theta + 90, cameraPitch=-35,
+                                         cameraTargetPosition=(0.0, 0.0, 0.0))
+
             return distance, theta, length, direction, target_quaternion, obstacle_poses, np.array(z_start_end).tolist()
 
         elif mode == 'hand_over':
@@ -487,29 +492,99 @@ class DynamicGraspingWorld:
             return False
 
     def replay_trajectory(self, object_arm_trajectory):
-        # remove conveyor from visible scene
-        conveyor_pose = self.conveyor.get_pose()
-        self.conveyor.set_pose([[-20, -20, conveyor_pose[0][2]], conveyor_pose[1]])
+        visualize_reachability = False
+        visualize_motion_aware = False
+        visualize_final = False
 
-        for object_pose, grasp_pose, arm_jv in zip(object_arm_trajectory['object_pose_traj'],
-                                                   object_arm_trajectory['grasp_pose_traj'],
-                                                   object_arm_trajectory['arm_traj']):
-            p.resetBasePositionAndOrientation(self.target, object_pose[0], object_pose[1])
-            self.robot.set_arm_joints(arm_jv[:len(self.robot.GROUPS['arm'])])
-            if len(arm_jv) > len(self.robot.GROUPS['arm']):
-                self.robot.set_gripper_joints(arm_jv[len(self.robot.GROUPS['arm']):])
-            if grasp_pose is not None:
+        # go to grasp pose
+        for grasp_idx, pre_grasp_jv, pre_grasp_pose, grasp_jv, grasp_pose, filtered_grasp_idxs, reachabilities, motion_aware_qualities, \
+            arm_jv, gripper_jv, target_pose, conveyor_pose in zip(object_arm_trajectory['grasp_idx'],
+                                                                  object_arm_trajectory['pre_grasp_jv'],
+                                                                  object_arm_trajectory['pre_grasp_pose'],
+                                                                  object_arm_trajectory['grasp_jv'],
+                                                                  object_arm_trajectory['grasp_pose'],
+                                                                  object_arm_trajectory['filtered_grasp_idxs'],
+                                                                  object_arm_trajectory['reachabilities'],
+                                                                  object_arm_trajectory['motion_aware_qualities'],
+                                                                  object_arm_trajectory['arm'],
+                                                                  object_arm_trajectory['gripper'],
+                                                                  object_arm_trajectory['target'],
+                                                                  object_arm_trajectory['conveyor']):
+            self.robot.set_arm_joints(arm_jv)
+            self.robot.set_gripper_joints(gripper_jv)
+            self.conveyor.set_pose(conveyor_pose)
+            pu.set_pose(self.target, target_pose)
+
+            if visualize_reachability:
+                show_top = 100
+                pre_grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+                                           self.pre_grasps_eef]
+                pre_grasps_eef_in_world = [
+                    tfc.toTf(tfc.fromTf(g) * tfc.fromTf(self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT)) for g in
+                    pre_grasps_eef_in_world]
+
+                if self.value_markers is not None:
+                    pu.remove_markers(self.value_markers)
+                if show_top < 1:
+                    self.value_markers = gu.visualize_grasps_with_reachability(pre_grasps_eef_in_world, reachabilities)
+                else:
+                    top_indices = np.argsort(reachabilities)[::-1][:show_top]
+                    selected_grasps = [pre_grasps_eef_in_world[idx] for idx in top_indices]
+                    selected_qualities = [reachabilities[idx] for idx in top_indices]
+                    self.value_markers = gu.visualize_grasps_with_reachability(selected_grasps, selected_qualities)
+
+            if visualize_motion_aware:
+                show_top = 100
+                pre_grasps_eef_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
+                                           self.pre_grasps_eef]
+                pre_grasps_eef_in_world = [
+                    tfc.toTf(tfc.fromTf(g) * tfc.fromTf(self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT)) for g in
+                    pre_grasps_eef_in_world]
+
+                if self.value_markers is not None:
+                    pu.remove_markers(self.value_markers)
+                if show_top < 1:
+                    self.value_markers = gu.visualize_grasps_with_reachability(pre_grasps_eef_in_world, motion_aware_qualities)
+                else:
+                    top_indices = np.argsort(motion_aware_qualities)[::-1][:show_top]
+                    selected_grasps = [pre_grasps_eef_in_world[idx] for idx in top_indices]
+                    selected_qualities = [motion_aware_qualities[idx] for idx in top_indices]
+                    self.value_markers = gu.visualize_grasps_with_reachability(selected_grasps, selected_qualities)
+            if visualize_final and grasp_idx is not None:
                 line_length = 0.1
-                pu.create_arrow_marker(tfc.toTf(
-                    tfc.fromTf(grasp_pose) * tfc.fromTf(self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT) * tfc.fromTf(
-                        ((0, 0, -line_length), (0, 0, 0, 1)))), color_index=0, line_length=line_length)
-                # plot the grasps
-                # current_target_pose = pu.get_body_pose(self.target)
-                # predicted_target_pose = current_target_pose
-                # grasp_idx = 0
-                # grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched \
-                #     = self.plan_grasp(predicted_target_pose, grasp_idx)
+                pu.create_arrow_marker(tfc.toTf(tfc.fromTf(pre_grasp_pose) * tfc.fromTf(
+                    self.robot_configs.MOVEIT_LINK_TO_GRASPING_POINT) * tfc.fromTf(
+                    ((0, 0, -line_length), (0, 0, 0, 1)))),
+                                       color_index=grasp_idx, line_length=line_length)
             time.sleep(0.1)
+            # width, height, rgbPixels, depthPixels, segmentationMaskBuffer = p.getCameraImage(width=1024, height=768)
+
+        # appraoch and grasp
+        approach_traj = object_arm_trajectory['approach_traj']
+        approach_jump = 10
+        i = 0
+        for arm_jv, gripper_jv, target_pose, conveyor_pose in approach_traj:
+            if i % approach_jump == 0:
+                self.robot.set_arm_joints(arm_jv)
+                self.robot.set_gripper_joints(gripper_jv)
+                self.conveyor.set_pose(conveyor_pose)
+                pu.set_pose(self.target, target_pose)
+                time.sleep(0.05)
+            i += 1
+
+        # lift
+        lift_traj = object_arm_trajectory['lift_traj']
+        lift_jump = 10
+        i = 0
+        for arm_jv, gripper_jv, target_pose, conveyor_pose in lift_traj:
+            if i % lift_jump == 0:
+                self.robot.set_arm_joints(arm_jv)
+                self.robot.set_gripper_joints(gripper_jv)
+                self.conveyor.set_pose(conveyor_pose)
+                pu.set_pose(self.target, target_pose)
+                time.sleep(0.05)
+            i += 1
+        print('finished')
 
     def predict(self, duration):
         if self.use_kf:
@@ -569,26 +644,23 @@ class DynamicGraspingWorld:
             self.scene.add_box('conveyor', gu.list_2_ps(predicted_conveyor_pose), size=(.1, .1, .02))
             # print('Updating scene takes {} second'.format(time.time() - update_start_time))
 
-            # plan a grasp
+            ############################## plan a grasp ################################
             if self.use_baseline_method:
                 grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched \
                     = self.plan_grasp_baseline(predicted_target_pose, grasp_idx)
             else:
-                grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched \
+                grasp_idx, grasp_planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, \
+                planned_grasp_jv, grasp_switched, grasp_order_idxs, reachabilities, motion_aware_qualities \
                     = self.plan_grasp(predicted_target_pose, grasp_idx)
             num_ik_called_list.append(num_ik_called)
             grasp_switched_list.append(grasp_switched)
-            # get grasp reachability and manipulability
-            grasp_r_score = self.get_reachability_of_pregrasp_and_grasp(predicted_target_pose, grasp_idx)
-            grasp_m_score = self.get_manipulabilities_from_joint_values([planned_pre_grasp_jv, planned_grasp_jv])
-            object_arm_trajectory.append((pu.get_body_pose(self.target), planned_pre_grasp,
-                                          self.robot.get_arm_joint_values() + self.robot.get_gripper_joint_values(),
-                                          (grasp_r_score, grasp_m_score)))
             dynamic_grasp_time += grasp_planning_time
             if planned_grasp_jv is None or planned_pre_grasp_jv is None:
                 self.step(grasp_planning_time, None, None)
+                self.save_trajecotry_log(grasp_idx, planned_pre_grasp_jv, planned_pre_grasp, planned_grasp_jv, planned_grasp, grasp_order_idxs, reachabilities, motion_aware_qualities)
                 continue
             self.step(grasp_planning_time, None, None)
+            self.save_trajecotry_log(grasp_idx, planned_pre_grasp_jv, planned_pre_grasp, planned_grasp_jv, planned_grasp, grasp_order_idxs, reachabilities, motion_aware_qualities)
 
             # planned_pre_grasp = gu.convert_grasp_in_object_to_world(pu.get_body_pose(self.target), pu.split_7d(
             #     self.pre_grasps_eef[grasp_idx]))
@@ -599,7 +671,7 @@ class DynamicGraspingWorld:
             # self.robot.set_arm_joints(planned_pre_grasp_jv)
             # continue
 
-            # plan a motion
+            ############################# plan a motion ############################
             distance = np.linalg.norm(np.array(self.robot.get_eef_pose()[0]) - np.array(planned_pre_grasp[0]))
             distance_travelled = np.linalg.norm(np.array(current_target_pose[0]) - np.array(
                 last_motion_plan_success_pos)) if initial_motion_plan_success else 0
@@ -610,8 +682,10 @@ class DynamicGraspingWorld:
             dynamic_grasp_time += motion_planning_time
             if plan is None:
                 self.step(motion_planning_time, None, None)
+                self.save_trajecotry_log(grasp_idx, planned_pre_grasp_jv, planned_pre_grasp, planned_grasp_jv, planned_grasp, grasp_order_idxs, reachabilities, motion_aware_qualities)
                 continue
             self.step(motion_planning_time, plan, None)
+            self.save_trajecotry_log(grasp_idx, planned_pre_grasp_jv, planned_pre_grasp, planned_grasp_jv, planned_grasp, grasp_order_idxs, reachabilities, motion_aware_qualities)
             last_motion_plan_success_pos = current_target_pose[0]
             initial_motion_plan_success = True
 
@@ -621,15 +695,49 @@ class DynamicGraspingWorld:
             if can_grasp or can_grasp_old:
                 grasp_plan_found, motion_planning_time, approach_trajectory = self.approach_and_grasp_timed(grasp_idx)
                 # grasp_plan_found, motion_planning_time, approach_trajectory = self.approach_and_grasp(grasp_idx, planned_pre_grasp_jv)
-                object_arm_trajectory.extend(approach_trajectory)
+                self.trajectory_log['approach_traj'] = approach_trajectory
                 dynamic_grasp_time += motion_planning_time
                 if not grasp_plan_found:
                     print("the predicted approach motion is not reachable")
                     continue
                 lift_traj = self.execute_lift()
-                object_arm_trajectory.extend(lift_traj)
-                return self.check_success(), grasp_idx, dynamic_grasp_time, grasp_switched_list, num_ik_called_list, object_arm_trajectory
-        return False, None, dynamic_grasp_time, grasp_switched_list, num_ik_called_list, object_arm_trajectory
+                self.trajectory_log['lift_traj'] = lift_traj
+                return self.check_success(), grasp_idx, dynamic_grasp_time, grasp_switched_list, num_ik_called_list
+        return False, None, dynamic_grasp_time, grasp_switched_list, num_ik_called_list
+
+    def save_trajecotry_log(self, grasp_idx, pre_grasp_jv, pre_grasp_pose, grasp_jv, grasp_pose, filtered_order_idxs, reachabilities, motion_aware_qualities):
+        self.trajectory_log['world_step'].append(self.world_steps)
+        self.trajectory_log['arm'].append(self.robot.get_arm_joint_values())
+        self.trajectory_log['gripper'].append(self.robot.get_gripper_joint_values())
+        self.trajectory_log['target'].append(pu.get_body_pose(self.target))
+        self.trajectory_log['conveyor'].append(self.conveyor.get_pose())
+        self.trajectory_log['grasp_idx'].append(grasp_idx)
+        self.trajectory_log['pre_grasp_jv'].append(list(pre_grasp_jv) if pre_grasp_jv is not None else pre_grasp_jv)
+        self.trajectory_log['pre_grasp_pose'].append(pre_grasp_pose)
+        self.trajectory_log['grasp_jv'].append(list(grasp_jv) if grasp_jv is not None else grasp_jv)
+        self.trajectory_log['grasp_pose'].append(grasp_pose)
+        self.trajectory_log['filtered_grasp_idxs'].append(list(filtered_order_idxs))
+        self.trajectory_log['reachabilities'].append(list(reachabilities) if reachabilities is not None else reachabilities)
+        self.trajectory_log['motion_aware_qualities'].append(list(motion_aware_qualities) if motion_aware_qualities is not None else motion_aware_qualities)
+
+    def clean_trajectory_log(self):
+        self.trajectory_log = {
+            'world_step': [],
+            'arm': [],
+            'gripper': [],
+            'target': [],
+            'conveyor': [],
+            'grasp_idx': [],
+            'pre_grasp_jv': [],
+            'pre_grasp_pose': [],
+            'grasp_jv': [],
+            'grasp_pose': [],
+            'filtered_grasp_idxs': [],
+            'reachabilities': [],
+            'motion_aware_qualities': [],
+            'appraoch_traj': [],
+            'lift_traj': []
+        }
 
     def approach_and_grasp(self, grasp_idx, planned_grasp_jv):
         if self.approach_prediction:
@@ -724,7 +832,7 @@ class DynamicGraspingWorld:
     def execute_approach_and_grasp_timed(self, arm_discretized_plan, gripper_discretized_plan):
         """ modify the arm and gripper plans according to close delay and execute it """
         assert len(arm_discretized_plan) == len(gripper_discretized_plan)
-        object_arm_trajectory = []
+        object_arm_trajectory = []  # arm, gripper, target, conveyor
         for arm_wp, gripper_wp in zip(arm_discretized_plan, gripper_discretized_plan):
             self.robot.control_arm_joints(arm_wp)
             self.robot.control_gripper_joints(gripper_wp)
@@ -735,9 +843,9 @@ class DynamicGraspingWorld:
             self.world_steps += 1
             if self.world_steps % self.pose_steps == 0:
                 self.motion_predictor_kf.update(pu.get_body_pose(self.target))
-            object_arm_trajectory.append((pu.get_body_pose(self.target), None,
-                                          self.robot.get_arm_joint_values() + self.robot.get_gripper_joint_values()))
-        return object_arm_trajectory[::10]
+            object_arm_trajectory.append((self.robot.get_arm_joint_values(), self.robot.get_gripper_joint_values(),
+                                          pu.get_body_pose(self.target), self.conveyor.get_pose()))
+        return object_arm_trajectory
 
     def get_pybullet_jacobian(self):
         gripper_joint_values = self.robot.get_gripper_joint_values()
@@ -809,7 +917,7 @@ class DynamicGraspingWorld:
 
     def execute_lift(self):
         # lift twice in case the first lift attempt does not work
-        object_arm_trajectory = []
+        object_arm_trajectory = []  # arm, gripper, target, conveyor
         for i in range(3):
             if i == 0:
                 plan, fraction = self.robot.plan_cartesian_control(z=0.07)
@@ -832,11 +940,11 @@ class DynamicGraspingWorld:
                     p.stepSimulation()
                     if self.realtime:
                         time.sleep(1. / 240.)
-                    object_arm_trajectory.append((pu.get_body_pose(self.target), None,
-                                                  self.robot.get_arm_joint_values() + self.robot.get_gripper_joint_values()))
+                    object_arm_trajectory.append((self.robot.get_arm_joint_values(), self.robot.get_gripper_joint_values(),
+                                                  pu.get_body_pose(self.target), self.conveyor.get_pose()))
                 pu.step(2)
-                object_arm_trajectory.append((pu.get_body_pose(self.target), None,
-                                              self.robot.get_arm_joint_values() + self.robot.get_gripper_joint_values()))
+                object_arm_trajectory.append((self.robot.get_arm_joint_values(), self.robot.get_gripper_joint_values(),
+                                              pu.get_body_pose(self.target), self.conveyor.get_pose()))
                 if fraction == 1.0:
                     break
         return object_arm_trajectory
@@ -936,7 +1044,9 @@ class DynamicGraspingWorld:
                                                            self.dims)
         return sdf_values
 
-    def rank_grasps(self, target_pose, visualize_reachability=False, visualize_motion_aware=False):
+    def rank_grasps(self, target_pose, visualize_reachability=False, visualize_motion_aware=False, show_top=0):
+        reachability_qualities = None
+        motion_aware_qualities = None
         if self.use_reachability:
             graspit_pregrasps_in_world = [gu.convert_grasp_in_object_to_world(target_pose, pu.split_7d(g)) for g in
                                           self.graspit_pregrasps]
@@ -954,7 +1064,13 @@ class DynamicGraspingWorld:
 
                 if self.value_markers is not None:
                     pu.remove_markers(self.value_markers)
-                self.value_markers = gu.visualize_grasps_with_reachability(pre_grasps_eef_in_world,reachability_qualities)
+                if show_top < 1:
+                    self.value_markers = gu.visualize_grasps_with_reachability(pre_grasps_eef_in_world, reachability_qualities)
+                else:
+                    top_indices = np.argsort(reachability_qualities)[::-1][:show_top]
+                    selected_grasps = [pre_grasps_eef_in_world[idx] for idx in top_indices]
+                    selected_qualities = [reachability_qualities[idx] for idx in top_indices]
+                    self.value_markers = gu.visualize_grasps_with_reachability(selected_grasps, selected_qualities)
 
         if self.use_motion_aware:
             if self.conveyor.direction == 1:
@@ -982,7 +1098,14 @@ class DynamicGraspingWorld:
                     pre_grasps_eef_in_world]
                 if self.value_markers is not None:
                     pu.remove_markers(self.value_markers)
-                self.value_markers = gu.visualize_grasps_with_reachability(pre_grasps_eef_in_world, motion_aware_qualities)
+                if show_top < 1:
+                    self.value_markers = gu.visualize_grasps_with_reachability(pre_grasps_eef_in_world, motion_aware_qualities)
+                    print(motion_aware_qualities)
+                else:
+                    top_indices = np.argsort(motion_aware_qualities)[::-1][:show_top]
+                    selected_grasps = [pre_grasps_eef_in_world[idx] for idx in top_indices]
+                    selected_qualities = [motion_aware_qualities[idx] for idx in top_indices]
+                    self.value_markers = gu.visualize_grasps_with_reachability(selected_grasps, selected_qualities)
 
         # rank grasps based on two qualities
         if self.use_reachability and not self.use_motion_aware:
@@ -1010,7 +1133,7 @@ class DynamicGraspingWorld:
         else:
             grasp_order_idxs = np.random.permutation(np.arange(len(self.graspit_pregrasps)))[:self.max_check]
 
-        return grasp_order_idxs
+        return grasp_order_idxs, reachability_qualities, motion_aware_qualities
 
     def get_manipulabilities_eef_poses(self, eef_poses_in_object, target_pose):
 
@@ -1164,7 +1287,7 @@ class DynamicGraspingWorld:
 
         # if an old grasp index is not provided or the old grasp is not reachable any more
         rank_grasp_time_start = time.time()
-        grasp_order_idxs = self.rank_grasps(target_pose)
+        grasp_order_idxs, reachabilities, motion_aware_qualities = self.rank_grasps(target_pose)
         actual_rank_grasp_time = time.time() - rank_grasp_time_start
         rank_grasp_time = actual_rank_grasp_time if self.fix_grasp_ranking_time is None else self.fix_grasp_ranking_time
         print('Rank grasp actually takes {:.6f}, fixed grasp ranking time {:.6}'.format(actual_rank_grasp_time,
@@ -1178,7 +1301,7 @@ class DynamicGraspingWorld:
         grasp_switched = (grasp_idx != old_grasp_idx) and planned_grasp_jv is not None
         planning_time = rank_grasp_time + num_ik_called * ik_call_time
         print("Planning a grasp takes {:.6f}".format(planning_time))
-        return grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched
+        return grasp_idx, planning_time, num_ik_called, planned_pre_grasp, planned_pre_grasp_jv, planned_grasp, planned_grasp_jv, grasp_switched, grasp_order_idxs, reachabilities, motion_aware_qualities
 
     def plan_arm_motion(self, grasp_jv):
         """ plan a discretized motion for the arm """

@@ -256,6 +256,8 @@ if __name__ == "__main__":
                 if args.record_videos:
                     logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4,
                                                   os.path.join(args.video_dir, '{}.mp4'.format(i)))
+                distance, theta, length, direction, target_quaternion, obstacle_poses, z_start_end = dynamic_grasping_world.reset(
+                    mode=args.motion_mode, reset_dict=reset_dict)
                 dynamic_grasping_world.replay_trajectory(object_arm_trajectory)
                 if args.record_videos:
                     p.stopStateLogging(logging)
@@ -264,18 +266,13 @@ if __name__ == "__main__":
         time.sleep(2)  # for moveit to update scene, might not be necessary, depending on computing power
         if args.record_videos:
             logging = p.startStateLogging(p.STATE_LOGGING_VIDEO_MP4, os.path.join(args.video_dir, '{}.mp4'.format(i)))
-        success, grasp_idx, dynamic_grasping_time, grasp_switched_list, num_ik_called_list, object_arm_trajectory = dynamic_grasping_world.dynamic_grasp()
+        success, grasp_idx, dynamic_grasping_time, grasp_switched_list, num_ik_called_list = dynamic_grasping_world.dynamic_grasp()
         # success, grasp_idx, dynamic_grasping_time, grasp_switched_list, num_ik_called_list, object_arm_trajectory = None, None, None, None, None, None
         time.sleep(0.5)
         if args.record_videos:
             p.stopStateLogging(logging)
         with open(os.path.join(args.trajectory_dir, '{}.json'.format(i)), 'w') as outfile:
-            object_arm_trajectory = {'object_pose_traj': [entry[0] for entry in object_arm_trajectory],
-                                     'grasp_pose_traj': [entry[1] for entry in object_arm_trajectory],
-                                     'arm_traj': [entry[2] for entry in object_arm_trajectory],
-                                     'reachability_manip_scores': [entry[3] if (len(entry) > 4) else None for entry in
-                                                                   object_arm_trajectory]}
-            json.dump(object_arm_trajectory, outfile)
+            json.dump(dynamic_grasping_world.trajectory_log, outfile)
 
         result = [('exp_idx', i),
                   ('grasp_idx', grasp_idx),
