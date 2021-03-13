@@ -13,7 +13,7 @@ for distance_low in 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75; do
     --distance_high ${distance_high} \
     --use_reachability true \
     --use_motion_aware false \
-    --conveyor_speed 0.05 ;
+    --conveyor_speed 0.05 \
     --baseline_experiment_path None;
   echo $node_id;
   echo ${distance_low};
